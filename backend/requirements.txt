@@ -1,0 +1,32 @@
+# ──────────────────────────────────────
+# XtractNote Backend — Python Dependencies
+# ──────────────────────────────────────
+
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Data validation (used by FastAPI automatically)
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# AI — LangGraph multi-agent pipeline
+langgraph==0.2.61
+langchain==0.3.14
+langchain-openai==0.2.14
+langchain-anthropic==0.3.2
+
+# Supabase — database + auth
+supabase==2.11.0
+
+# YouTube — transcript extraction (free, no API key needed)
+youtube-transcript-api==1.2.4
+
+# HTTP client — for YouTube Data API calls
+httpx==0.28.1
+
+# Rate limiting
+slowapi==0.1.9
+
+# Environment variable management
+python-dotenv==1.0.1

@@ -1,120 +1,289 @@
-/* ──────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────
    XtractNote — Global Styles
-   ────────────────────────────────────── */
+   ─────────────────────────────────────────────────────────────
+   How theme switching works:
+   
+   1. This file defines CSS variables inside [data-theme="..."] blocks
+   2. The ThemeProvider component sets data-theme on <html>
+   3. When data-theme changes, CSS instantly swaps all variables
+   4. Tailwind reads these variables via tailwind.config.ts
+   5. Components use Tailwind classes like bg-xn-surface, text-xn-ink
+   
+   Result: change one attribute, everything updates. No re-render.
+   ───────────────────────────────────────────────────────────── */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Import Tailwind's base styles, components, and utilities */
+@import "tailwindcss";
 
-/* ── Light Theme (default) ── */
-:root {
-  /* Backgrounds — three-layer depth system */
-  --xn-bg:           #f8f7f5;    /* Page background — near-white */
-  --xn-bg-recessed:  #f0eee9;    /* Sidebar, topbar, input fields */
-  --xn-surface:      #ffffff;    /* Card surfaces — pure white "paper" */
+/* Instrument Serif isn't available in next/font, so we load it via CSS.
+   The other fonts (DM Sans, JetBrains Mono, Caveat) are loaded in layout.tsx
+   using next/font which is more performant (self-hosted, no layout shift). */
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
 
-  /* Ink ramp — warm, not pure black */
-  --xn-ink:          #1c1813;    /* Darkest — headings */
-  --xn-ink-body:     #3d3830;    /* Body text */
-  --xn-ink-muted:    #5c564c;    /* Secondary text */
-  --xn-ink-soft:     #8e8478;    /* Tertiary — timestamps, meta */
-  --xn-ink-ghost:    #b8b0a4;    /* Placeholders, disabled */
 
-  /* Borders */
-  --xn-border:       #e8e5de;    /* Default card border */
-  --xn-border-strong:#d8d3c8;    /* Emphasized borders */
+/* ══════════════════════════════════════════════════════════════
+   THEME VARIABLES
+   ══════════════════════════════════════════════════════════════
+   Three themes: paper (warm cream), clean (crisp white), dark.
+   
+   The naming convention:
+   - bg          = page background (deepest layer)
+   - bg-deep     = recessed areas like sidebar, topbar
+   - surface     = card background (brightest layer — the "paper")
+   - surface-alt = subtle alternate surface
+   - ink         = primary text color
+   - ink-muted   = secondary text (labels, descriptions)
+   - ink-soft    = tertiary text (placeholders, hints)
+   - ink-faint   = barely visible (dividers, hover fills)
+   - border      = default border color
+   - border-strong = emphasized borders
+   - shadow      = default card shadow
+   - shadow-lg   = large shadow (modals, dropdowns, prominent cards)
+   - accent      = terracotta action color
+   - accent-soft = 12% alpha tint of accent (for backgrounds)
+   - highlight   = yellow marker highlighter
+   ══════════════════════════════════════════════════════════════ */
+
+
+/* ── Paper Theme (Default — warm cream like Notability/Readwise) ── */
+
+:root,
+[data-theme="paper"] {
+  --xn-bg: #fbf8f1;
+  --xn-bg-deep: #f3edde;
+  --xn-surface: #ffffff;
+  --xn-surface-alt: #fbf8f1;
+
+  --xn-ink: #1c1813;
+  --xn-ink-muted: #6b6055;
+  --xn-ink-soft: #8e8478;
+  --xn-ink-faint: rgba(28, 24, 19, 0.10);
+
+  --xn-border: #ece5d4;
+  --xn-border-strong: #dccfb1;
+
+  --xn-shadow: 0 1px 2px rgba(28, 24, 19, 0.04), 0 4px 16px rgba(28, 24, 19, 0.05);
+  --xn-shadow-lg: 0 4px 12px rgba(28, 24, 19, 0.06), 0 12px 40px rgba(28, 24, 19, 0.10);
+
+  --xn-accent: #c54f2a;
+  --xn-accent-soft: rgba(197, 79, 42, 0.12);
+  --xn-highlight: #fbe28f;
+
+  /* Border radius scale — consistent across all components */
+  --xn-radius-sm: 6px;
+  --xn-radius-md: 10px;
+  --xn-radius-lg: 14px;
+  --xn-radius-xl: 20px;
+  --xn-radius-pill: 999px;
 }
 
-/* ── Dark Theme ── */
-.dark {
-  --xn-bg:           #0e0e0e;
-  --xn-bg-recessed:  #171717;
-  --xn-surface:      #242424;
 
-  --xn-ink:          #f1ece0;
-  --xn-ink-body:     #d4cfc2;
-  --xn-ink-muted:    #a59e8e;
-  --xn-ink-soft:     #7d776b;
-  --xn-ink-ghost:    #4a4640;
+/* ── Clean Theme (crisp white — more neutral, less warm) ── */
 
-  --xn-border:       #333333;
-  --xn-border-strong:#444444;
+[data-theme="clean"] {
+  --xn-bg: #f6f6f4;
+  --xn-bg-deep: #eeeeea;
+  --xn-surface: #ffffff;
+  --xn-surface-alt: #fafaf8;
+
+  --xn-ink: #161614;
+  --xn-ink-muted: #5e5d57;
+  --xn-ink-soft: #86847d;
+  --xn-ink-faint: rgba(22, 22, 20, 0.10);
+
+  --xn-border: #e6e5e0;
+  --xn-border-strong: #d4d3cc;
+
+  --xn-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 4px 16px rgba(0, 0, 0, 0.04);
+  --xn-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.05), 0 12px 40px rgba(0, 0, 0, 0.08);
 }
 
-/* ── Base Styles ── */
-@layer base {
-  html {
-    font-family: var(--font-dm-sans), system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
 
-  body {
-    @apply bg-xn-bg text-xn-ink-body;
-    transition: background-color 0.2s ease, color 0.2s ease;
-  }
+/* ── Dark Theme (warm dark — not pure black) ── */
 
-  /* Smooth transitions when toggling themes */
-  *,
-  *::before,
-  *::after {
-    transition-property: background-color, border-color, color;
-    transition-duration: 0.15s;
-    transition-timing-function: ease;
-  }
+[data-theme="dark"] {
+  --xn-bg: #15130f;
+  --xn-bg-deep: #100e0b;
+  --xn-surface: #1d1a15;
+  --xn-surface-alt: #22201a;
 
-  /* Scrollbar styling */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: var(--xn-border-strong);
-    border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--xn-ink-ghost);
-  }
+  --xn-ink: #f1ece0;
+  --xn-ink-muted: #a59e8e;
+  --xn-ink-soft: #7d776b;
+  --xn-ink-faint: rgba(241, 236, 224, 0.10);
+
+  --xn-border: #2d2922;
+  --xn-border-strong: #3b362d;
+
+  --xn-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+  --xn-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 40px rgba(0, 0, 0, 0.5);
+
+  /* Accent tint is slightly more opaque in dark mode for visibility */
+  --xn-accent-soft: rgba(197, 79, 42, 0.18);
+
+  /* Highlight is semi-transparent in dark mode so it doesn't blind you */
+  --xn-highlight: rgba(251, 226, 143, 0.28);
 }
 
-/* ── Utility Classes ── */
+
+/* ══════════════════════════════════════════════════════════════
+   BASE RESET & DEFAULTS
+   ══════════════════════════════════════════════════════════════ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* DM Sans is loaded via next/font in layout.tsx as --font-dm-sans.
+     We fall back to system-ui if it hasn't loaded yet. */
+  font-family: var(--font-dm-sans), system-ui, sans-serif;
+  color: var(--xn-ink);
+  background: var(--xn-bg);
+  font-size: 14px;
+  line-height: 1.45;
+
+  /* Font rendering — makes text crisper on Mac/Windows */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* OpenType features — DM Sans has stylistic alternates that look better */
+  font-feature-settings: 'ss01' on, 'cv11' on;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+
+/* ── Focus Ring ───────────────────────────────────────────── */
+/* When a user tabs to an interactive element, show a clear accent ring.
+   :focus-visible only triggers on keyboard navigation, not mouse clicks. */
+
+:focus-visible {
+  outline: 2px solid var(--xn-accent);
+  outline-offset: 2px;
+}
+
+
+/* ── Text Selection ───────────────────────────────────────── */
+/* When you highlight text, it uses a soft accent tint instead of
+   the browser's default blue. Small detail, but feels polished. */
+
+::selection {
+  background: var(--xn-accent-soft);
+  color: var(--xn-ink);
+}
+
+
+/* ── Scrollbar Utility ────────────────────────────────────── */
+/* Add class="hide-scrollbar" to any element to hide its scrollbar.
+   Used on the sidebar and embedded panels. */
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   TYPOGRAPHY & EDITORIAL UTILITIES
+   ══════════════════════════════════════════════════════════════
+   These are extra CSS classes used in editorial content (blog posts,
+   notes, summaries). Tailwind handles most styling, but these
+   specific treatments are easier to express in CSS.
+   ══════════════════════════════════════════════════════════════ */
+
 @layer utilities {
-  /* Editorial highlight marks */
-  .mark-yellow {
-    background: linear-gradient(180deg, transparent 55%, #FEF08A 55%, #FEF08A 90%, transparent 90%);
-    padding: 0 3px;
+
+  /* ── Font family shortcuts ── */
+
+  .font-serif {
+    font-family: 'Instrument Serif', Georgia, serif;
+    letter-spacing: -0.01em;
   }
+
+  .font-mono {
+    font-family: var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
+    letter-spacing: 0.02em;
+  }
+
+  .font-hand {
+    font-family: var(--font-caveat), cursive;
+  }
+
+  /* ── Eyebrow ──
+     Mono uppercase micro text used for section labels and metadata.
+     Example: "STUDY NOTES" above a content card, or "12:42" video duration.
+     Colored with the accent color for visual hierarchy. */
+
+  .eyebrow {
+    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--xn-accent);
+  }
+
+  /* ── Highlight Marks ──
+     These create the Notability-style highlighter effect from your hi-fi.
+     The gradient trick makes the highlight sit behind the bottom half of
+     the text (55% from top = transparent, then color, then transparent).
+     This looks like a real highlighter pen stroke, not a solid background.
+     
+     Usage in blog/notes output:
+       <span class="mark-yellow">important concept</span> */
+
+  .mark-yellow {
+    background: linear-gradient(
+      180deg,
+      transparent 55%,
+      var(--xn-highlight) 55%,
+      var(--xn-highlight) 92%,
+      transparent 92%
+    );
+    padding: 0 2px;
+  }
+
   .mark-green {
     background: linear-gradient(180deg, transparent 55%, #BBF7D0 55%, #BBF7D0 90%, transparent 90%);
     padding: 0 3px;
   }
+
   .mark-blue {
     background: linear-gradient(180deg, transparent 55%, #BFDBFE 55%, #BFDBFE 90%, transparent 90%);
     padding: 0 3px;
   }
+
   .mark-pink {
     background: linear-gradient(180deg, transparent 55%, #FECDD3 55%, #FECDD3 90%, transparent 90%);
     padding: 0 3px;
   }
+
   .mark-purple {
     background: linear-gradient(180deg, transparent 55%, #E9D5FF 55%, #E9D5FF 90%, transparent 90%);
     padding: 0 3px;
   }
 
-  /* Accent underline for emphasis */
+  /* ── Accent Underline ──
+     A thin terracotta underline under important terms.
+     Unlike a regular underline, this uses a background-image so it sits
+     exactly at the baseline and has a controlled 1.5px thickness.
+     
+     Usage: <span class="underline-accent">attention is all you need</span> */
+
   .underline-accent {
-    background-image: linear-gradient(var(--xn-ink), var(--xn-ink));
+    background-image: linear-gradient(var(--xn-accent), var(--xn-accent));
     background-position: 0 100%;
     background-size: 100% 1.5px;
     background-repeat: no-repeat;
     padding-bottom: 1px;
-  }
-
-  /* Mono eyebrow text style */
-  .eyebrow {
-    @apply font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-xn-ink-soft;
   }
 }

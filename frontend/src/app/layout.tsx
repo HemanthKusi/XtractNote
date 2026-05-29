@@ -3,19 +3,33 @@ import { DM_Sans, JetBrains_Mono, Caveat } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/shared/theme-provider";
 
-// ── Font Loading ──
-// Next.js automatically optimizes and self-hosts these fonts
-// They're available as CSS variables throughout the app
+// ─────────────────────────────────────────────────────────────
+// Font Loading
+// ─────────────────────────────────────────────────────────────
+// next/font downloads these at build time and self-hosts them.
+// Each font gets a CSS variable that we reference in tailwind.config.ts
+// and globals.css.
+//
+// Font usage in XtractNote:
+//   DM Sans        → All UI text (buttons, labels, body paragraphs)
+//   Instrument Serif → Editorial headings (blog titles, section headers)
+//   JetBrains Mono → Metadata, timestamps, code, eyebrow labels
+//   Caveat         → Handwritten margin notes (only on Notes screen)
+//
+// Instrument Serif is loaded via @import in globals.css because
+// next/font doesn't support it. The other three are loaded here.
+// ─────────────────────────────────────────────────────────────
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
+  // This creates a CSS variable --font-dm-sans that we can use anywhere.
+  // In globals.css: font-family: var(--font-dm-sans)
+  // In tailwind.config.ts: fontFamily.sans uses this variable
   variable: "--font-dm-sans",
+  // "swap" means: show text immediately in a fallback font, then swap
+  // to DM Sans once it loads. This prevents invisible text while loading.
   display: "swap",
 });
-
-// Note: Instrument Serif is loaded via @import in globals.css
-// because next/font doesn't support it directly yet.
-// We use a CSS variable fallback for it.
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -27,10 +41,18 @@ const caveat = Caveat({
   subsets: ["latin"],
   variable: "--font-caveat",
   display: "swap",
+  // Caveat only needs these two weights. Loading fewer weights = smaller file.
+  // 500 for normal margin notes, 700 for bold annotations.
   weight: ["500", "700"],
 });
 
-// ── Metadata ──
+// ─────────────────────────────────────────────────────────────
+// Metadata
+// ─────────────────────────────────────────────────────────────
+// This is used by search engines and social media when your app
+// is shared. Next.js automatically generates the <title> and
+// <meta> tags from this object.
+
 export const metadata: Metadata = {
   title: "XtractNote — YouTube to Content, Powered by AI",
   description:
@@ -45,8 +67,19 @@ export const metadata: Metadata = {
   ],
 };
 
-// ── Root Layout ──
-// This wraps every page in the app. It sets up fonts, theme, and base HTML.
+// ─────────────────────────────────────────────────────────────
+// Root Layout
+// ─────────────────────────────────────────────────────────────
+// This component wraps every page in the app. It:
+// 1. Sets the <html> lang and font CSS variables
+// 2. Sets data-theme="paper" as the initial theme (server-side)
+// 3. Wraps everything in ThemeProvider (which updates data-theme
+//    on the client side based on localStorage)
+// 4. Renders the page content inside <body>
+//
+// Every page you create (landing page, dashboard, etc.) renders
+// as {children} inside this layout.
+
 export default function RootLayout({
   children,
 }: {
@@ -55,21 +88,24 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      // suppressHydrationWarning prevents React warning when theme
-      // class is added by ThemeProvider before hydration completes
-      suppressHydrationWarning
+      // Default theme for server-side rendering.
+      // ThemeProvider will override this on the client if the user
+      // has a different theme saved in localStorage.
+      data-theme="paper"
+      // The .variable classes add the CSS variables to <html>.
+      // After this, --font-dm-sans, --font-jetbrains-mono, and
+      // --font-caveat are available everywhere in CSS.
       className={`${dmSans.variable} ${jetbrainsMono.variable} ${caveat.variable}`}
+      // Prevents React warning when ThemeProvider changes data-theme
+      // from "paper" (server default) to the user's saved theme.
+      suppressHydrationWarning
     >
-      <head>
-        {/* Instrument Serif — loaded via Google Fonts link because
-            next/font doesn't include it in the standard package */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body className="min-h-screen bg-xn-bg font-sans antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
+      <body>
+        {/* ThemeProvider reads localStorage, updates data-theme,
+            and provides useTheme() to all child components. */}
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

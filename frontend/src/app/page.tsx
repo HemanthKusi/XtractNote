@@ -1,7 +1,7 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// Component Showcase — Phase 3, Sessions 1 + 2
+// Component Showcase — Phase 3, Sessions 1 + 2 + 3
 // ─────────────────────────────────────────────────────────────
 // Test page for all base UI components.
 // Access at: http://localhost:3000
@@ -16,9 +16,11 @@ import { Chip } from "@/components/ui/chip";
 import { Avatar } from "@/components/ui/avatar";
 import { Toggle } from "@/components/ui/toggle";
 import { ProgressBar } from "@/components/ui/progress-bar";
+import { Modal } from "@/components/ui/modal";
+import { Logo } from "@/components/layout/logo";
 import { useTheme } from "@/components/shared/theme-provider";
-import type { ThemeName } from "@/lib/constants/theme";
-import type { ContentType } from "@/lib/constants/theme";
+import { useToast } from "@/components/shared/toast-provider";
+import type { ThemeName, ContentType } from "@/lib/constants/theme";
 
 // ── Inline SVG Icons (temporary — replaced by Lucide in Session 3+) ──
 
@@ -55,6 +57,12 @@ const DocIcon = () => (
   </svg>
 );
 
+const TrashIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none">
+    <path d="M2.5 4h11M5.5 4V2.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1V4M6.5 7v4M9.5 7v4M3.5 4l.5 9a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l.5-9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 // ── Layout helpers ──
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -80,14 +88,18 @@ function SubSection({ title, children }: { title: string; children: React.ReactN
 
 export default function ShowcasePage() {
   const { theme, setTheme } = useTheme();
+  const toast = useToast();
   const themeOptions: ThemeName[] = ["paper", "clean", "dark"];
 
-  // State for the controlled toggle demo
+  // Session 2 state
   const [toggleA, setToggleA] = useState(false);
   const [toggleB, setToggleB] = useState(true);
-
-  // State for animated progress demo
   const [progress, setProgress] = useState(33);
+
+  // Session 3 state — modals
+  const [basicModal, setBasicModal] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(false);
+  const [formModal, setFormModal] = useState(false);
 
   return (
     <div className="min-h-screen bg-xn-bg text-xn-ink transition-colors duration-300">
@@ -96,12 +108,12 @@ export default function ShowcasePage() {
         {/* ── Header ── */}
         <div className="flex items-center justify-between mb-12">
           <div>
-            <p className="eyebrow mb-2">Phase 3 · Sessions 1 & 2</p>
+            <p className="eyebrow mb-2">Phase 3 · Sessions 1, 2 & 3</p>
             <h1 className="font-serif text-display text-xn-ink">
               Component Showcase
             </h1>
             <p className="text-sm text-xn-ink-muted mt-2">
-              Theme + Button + Input + Card + Chip + Avatar + Toggle + ProgressBar
+              All base UI components — matching the hi-fi design.
             </p>
           </div>
           <div className="flex gap-2">
@@ -193,32 +205,27 @@ export default function ShowcasePage() {
               <Button variant="danger">Danger</Button>
             </div>
           </SubSection>
-          <SubSection title="Sizes">
-            <div className="flex items-center gap-3">
+          <SubSection title="Sizes, Icons & Shortcuts">
+            <div className="flex items-center gap-3 mb-3">
               <Button size="sm">Small</Button>
               <Button size="md">Medium</Button>
               <Button size="lg">Large</Button>
             </div>
-          </SubSection>
-          <SubSection title="With Icons & Shortcuts">
             <div className="flex flex-wrap gap-3">
               <Button icon={<SparkIcon />} variant="accent">Generate</Button>
-              <Button icon={<PlusIcon />}>New Project</Button>
               <Button icon={<PlusIcon />} kbd="⌘N">Create</Button>
               <Button variant="ghost" kbd="⌘K">Search Library</Button>
             </div>
           </SubSection>
-          <SubSection title="Icon Only & Full Width">
+          <SubSection title="Icon Only, Full Width & Disabled">
             <div className="flex items-center gap-3 mb-3">
               <Button iconOnly size="sm" variant="ghost" icon={<SearchIcon />} aria-label="Search" />
               <Button iconOnly size="md" variant="ghost" icon={<PlusIcon />} aria-label="Add" />
               <Button iconOnly size="lg" variant="default" icon={<SparkIcon />} aria-label="Generate" />
             </div>
-            <div className="max-w-xs">
+            <div className="max-w-xs mb-3">
               <Button variant="primary" fullWidth>Upgrade →</Button>
             </div>
-          </SubSection>
-          <SubSection title="Disabled">
             <div className="flex gap-3">
               <Button disabled>Default</Button>
               <Button variant="primary" disabled>Primary</Button>
@@ -229,28 +236,22 @@ export default function ShowcasePage() {
 
         {/* ── Inputs ── */}
         <Section title="Input">
-          <SubSection title="Variants & Sizes">
-            <div className="max-w-md space-y-3">
-              <Input placeholder="Type something..." />
-              <Input placeholder="Search your library..." prefix={<SearchIcon />} />
-              <Input
-                placeholder="https://youtube.com/watch?v=..."
-                prefix={<LinkIcon />}
-                suffix={<Button size="sm" variant="accent">Extract</Button>}
-              />
-              <Input size="sm" placeholder="Small input" prefix={<SearchIcon />} />
-              <Input size="lg" placeholder="Large hero input" prefix={<LinkIcon />} />
+          <div className="max-w-md space-y-3">
+            <Input placeholder="Type something..." />
+            <Input placeholder="Search your library..." prefix={<SearchIcon />} />
+            <Input
+              placeholder="https://youtube.com/watch?v=..."
+              prefix={<LinkIcon />}
+              suffix={<Button size="sm" variant="accent">Extract</Button>}
+            />
+            <Input size="sm" placeholder="Small input" prefix={<SearchIcon />} />
+            <Input size="lg" placeholder="Large hero input" prefix={<LinkIcon />} />
+            <div>
+              <Input placeholder="Paste YouTube URL" prefix={<LinkIcon />} error defaultValue="not-a-valid-url" />
+              <p className="text-xs text-[#D44060] mt-1.5">Please enter a valid YouTube URL</p>
             </div>
-          </SubSection>
-          <SubSection title="Error & Disabled">
-            <div className="max-w-md space-y-3">
-              <div>
-                <Input placeholder="Paste YouTube URL" prefix={<LinkIcon />} error defaultValue="not-a-valid-url" />
-                <p className="text-xs text-[#D44060] mt-1.5">Please enter a valid YouTube URL</p>
-              </div>
-              <Input placeholder="Disabled input" disabled />
-            </div>
-          </SubSection>
+            <Input placeholder="Disabled input" disabled />
+          </div>
         </Section>
 
         {/* ── Cards ── */}
@@ -273,36 +274,6 @@ export default function ShowcasePage() {
                 <p className="text-h4 font-semibold mb-1">Ghost Card</p>
                 <p className="text-sm text-xn-ink-muted">Transparent, no border.</p>
               </Card>
-            </div>
-          </SubSection>
-          <SubSection title="Header, Footer & Interactive">
-            <div className="max-w-md mb-4">
-              <Card
-                header={
-                  <div className="flex items-center justify-between">
-                    <span className="text-h4 font-semibold">Video Preview</span>
-                    <span className="eyebrow">12:42</span>
-                  </div>
-                }
-                footer={
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-xn-ink-soft">By TechChannel · 142K views</span>
-                    <Button size="sm" variant="accent" icon={<SparkIcon />}>Generate</Button>
-                  </div>
-                }
-              >
-                <div className="h-32 rounded-xn-md bg-xn-bg-deep border border-xn-border flex items-center justify-center">
-                  <span className="text-xn-ink-soft text-sm">Video Thumbnail</span>
-                </div>
-              </Card>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {["Blog Post", "Study Notes", "Summary"].map((type) => (
-                <Card key={type} interactive>
-                  <p className="text-h4 font-semibold">{type}</p>
-                  <p className="text-xs text-xn-ink-muted mt-1">Click to select</p>
-                </Card>
-              ))}
             </div>
           </SubSection>
           <SubSection title="Three-Layer Depth">
@@ -328,52 +299,33 @@ export default function ShowcasePage() {
           <SubSection title="Content Types">
             <div className="flex flex-wrap gap-2">
               {(["blog", "notes", "summary", "research", "flashcards", "quiz", "social"] as ContentType[]).map(
-                (type) => (
-                  <Chip key={type} contentType={type} />
-                )
+                (type) => <Chip key={type} contentType={type} />
               )}
             </div>
           </SubSection>
-          <SubSection title="Status">
-            <div className="flex flex-wrap gap-2">
+          <SubSection title="Status & Variants">
+            <div className="flex flex-wrap gap-2 mb-3">
               <Chip status="draft" />
               <Chip status="saved" />
               <Chip status="archived" />
               <Chip status="exported" />
               <Chip status="error" />
             </div>
-          </SubSection>
-          <SubSection title="Variants">
             <div className="flex flex-wrap gap-2">
               <Chip contentType="blog" />
               <Chip contentType="blog" variant="solid" />
               <Chip contentType="blog" variant="outline" />
             </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <Chip contentType="notes" />
-              <Chip contentType="notes" variant="solid" />
-              <Chip contentType="notes" variant="outline" />
-            </div>
           </SubSection>
-          <SubSection title="With Dot">
-            <div className="flex flex-wrap gap-2">
+          <SubSection title="With Dot & Icon">
+            <div className="flex flex-wrap gap-2 mb-3">
               <Chip dot dotColor="#E06030">Marketing</Chip>
               <Chip dot dotColor="#4a5cb8">Class Notes</Chip>
               <Chip dot dotColor="#3f7a4f">AI Research</Chip>
-              <Chip dot dotColor="#b48a00">YT Scripts</Chip>
             </div>
-          </SubSection>
-          <SubSection title="With Icon">
             <div className="flex flex-wrap gap-2">
               <Chip icon={<DocIcon />} contentType="blog" />
               <Chip icon={<SparkIcon />} contentType="summary">AI Generated</Chip>
-            </div>
-          </SubSection>
-          <SubSection title="Custom Children (Override Label)">
-            <div className="flex flex-wrap gap-2">
-              <Chip contentType="blog">Article</Chip>
-              <Chip contentType="notes">Lecture Notes</Chip>
-              <Chip>Neutral Chip</Chip>
             </div>
           </SubSection>
         </Section>
@@ -382,42 +334,16 @@ export default function ShowcasePage() {
         <Section title="Avatar">
           <SubSection title="Sizes">
             <div className="flex items-center gap-4">
-              <div className="flex flex-col items-center gap-1.5">
-                <Avatar initials="MK" size="sm" />
-                <span className="font-mono text-nano text-xn-ink-soft">sm (24)</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5">
-                <Avatar initials="MK" size="md" />
-                <span className="font-mono text-nano text-xn-ink-soft">md (28)</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5">
-                <Avatar initials="MK" size="lg" />
-                <span className="font-mono text-nano text-xn-ink-soft">lg (36)</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5">
-                <Avatar initials="MK" size="xl" />
-                <span className="font-mono text-nano text-xn-ink-soft">xl (48)</span>
-              </div>
+              {(["sm", "md", "lg", "xl"] as const).map((s) => (
+                <div key={s} className="flex flex-col items-center gap-1.5">
+                  <Avatar initials="MK" size={s} />
+                  <span className="font-mono text-nano text-xn-ink-soft">{s}</span>
+                </div>
+              ))}
             </div>
           </SubSection>
-          <SubSection title="Different Initials">
-            <div className="flex items-center gap-3">
-              <Avatar initials="A" size="lg" />
-              <Avatar initials="MK" size="lg" />
-              <Avatar initials="jd" size="lg" />
-              <Avatar initials="SR" size="lg" />
-            </div>
-          </SubSection>
-          <SubSection title="Image Fallback">
-            <div className="flex items-center gap-3">
-              <div className="flex flex-col items-center gap-1.5">
-                <Avatar initials="MK" size="lg" src="https://broken-url.invalid/404.jpg" />
-                <span className="font-mono text-nano text-xn-ink-soft">Broken URL → initials</span>
-              </div>
-            </div>
-          </SubSection>
-          <SubSection title="In Context (Topbar Preview)">
-            <div className="flex items-center gap-2 px-3 py-2 bg-xn-bg border border-xn-border rounded-xn-md">
+          <SubSection title="In Context">
+            <div className="flex items-center gap-2 px-3 py-2 bg-xn-bg border border-xn-border rounded-xn-md inline-flex">
               <span className="text-sm text-xn-ink-muted">Welcome back</span>
               <span className="text-sm font-semibold">Mohan</span>
               <Avatar initials="MK" />
@@ -427,49 +353,13 @@ export default function ShowcasePage() {
 
         {/* ── Toggle ── */}
         <Section title="Toggle">
-          <SubSection title="Controlled (click to toggle)">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between max-w-xs">
-                <span className="text-sm">Auto-save content</span>
-                <Toggle
-                  checked={toggleA}
-                  onChange={setToggleA}
-                  aria-label="Auto-save content"
-                />
-              </div>
-              <div className="flex items-center justify-between max-w-xs">
-                <span className="text-sm">Enable screenshots</span>
-                <Toggle
-                  checked={toggleB}
-                  onChange={setToggleB}
-                  aria-label="Enable screenshots"
-                />
-              </div>
-            </div>
-          </SubSection>
-          <SubSection title="Uncontrolled">
-            <div className="flex items-center justify-between max-w-xs">
-              <span className="text-sm">Manages its own state</span>
-              <Toggle defaultChecked={false} aria-label="Self-managed toggle" />
-            </div>
-          </SubSection>
-          <SubSection title="Disabled">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between max-w-xs">
-                <span className="text-sm text-xn-ink-soft">Disabled (off)</span>
-                <Toggle checked={false} disabled aria-label="Disabled off" />
-              </div>
-              <div className="flex items-center justify-between max-w-xs">
-                <span className="text-sm text-xn-ink-soft">Disabled (on)</span>
-                <Toggle checked={true} disabled aria-label="Disabled on" />
-              </div>
-            </div>
-          </SubSection>
-          <SubSection title="In Context (Settings Card)">
+          <SubSection title="Controlled & Disabled">
             <Card variant="flat" padding="none" className="max-w-sm">
               {[
-                { label: "Auto-save generated content", on: toggleA, set: setToggleA },
-                { label: "Include video screenshots", on: toggleB, set: setToggleB },
+                { label: "Auto-save content", on: toggleA, set: setToggleA, disabled: false },
+                { label: "Enable screenshots", on: toggleB, set: setToggleB, disabled: false },
+                { label: "Disabled (off)", on: false, set: () => {}, disabled: true },
+                { label: "Disabled (on)", on: true, set: () => {}, disabled: true },
               ].map((item, i) => (
                 <div
                   key={item.label}
@@ -477,8 +367,15 @@ export default function ShowcasePage() {
                     i > 0 ? "border-t border-xn-border" : ""
                   }`}
                 >
-                  <span className="text-sm">{item.label}</span>
-                  <Toggle checked={item.on} onChange={item.set} aria-label={item.label} />
+                  <span className={`text-sm ${item.disabled ? "text-xn-ink-soft" : ""}`}>
+                    {item.label}
+                  </span>
+                  <Toggle
+                    checked={item.on}
+                    onChange={item.set}
+                    disabled={item.disabled}
+                    aria-label={item.label}
+                  />
                 </div>
               ))}
             </Card>
@@ -487,48 +384,26 @@ export default function ShowcasePage() {
 
         {/* ── ProgressBar ── */}
         <Section title="ProgressBar">
-          <SubSection title="Values">
+          <SubSection title="Values & Sizes">
             <div className="max-w-md space-y-3">
-              <ProgressBar value={0} />
               <ProgressBar value={25} />
               <ProgressBar value={50} />
               <ProgressBar value={75} />
-              <ProgressBar value={100} />
+              <ProgressBar value={60} size="sm" />
+              <ProgressBar value={60} size="lg" />
             </div>
           </SubSection>
-          <SubSection title="Sizes">
-            <div className="max-w-md space-y-3">
-              <div>
-                <span className="font-mono text-nano text-xn-ink-soft mb-1 block">sm (4px)</span>
-                <ProgressBar value={60} size="sm" />
-              </div>
-              <div>
-                <span className="font-mono text-nano text-xn-ink-soft mb-1 block">md (6px) — default</span>
-                <ProgressBar value={60} size="md" />
-              </div>
-              <div>
-                <span className="font-mono text-nano text-xn-ink-soft mb-1 block">lg (8px)</span>
-                <ProgressBar value={60} size="lg" />
-              </div>
-            </div>
-          </SubSection>
-          <SubSection title="Content Type Colors">
-            <div className="max-w-md space-y-3">
+          <SubSection title="Colors & Labels">
+            <div className="max-w-md space-y-4">
               <ProgressBar value={80} color="#3B7AE8" size="lg" />
               <ProgressBar value={65} color="#48903A" size="lg" />
-              <ProgressBar value={45} color="#D4880C" size="lg" />
-              <ProgressBar value={30} color="#7E4CC5" size="lg" />
-            </div>
-          </SubSection>
-          <SubSection title="With Label">
-            <div className="max-w-md space-y-4">
               <ProgressBar value={33} showLabel label="Free plan — 10 / 30 generations" />
               <ProgressBar value={75} showLabel label="Generating blog post..." size="lg" color="#3B7AE8" />
             </div>
           </SubSection>
           <SubSection title="Interactive Demo">
             <div className="max-w-md">
-              <ProgressBar value={progress} showLabel label="Drag the slider below to test" size="lg" />
+              <ProgressBar value={progress} showLabel label="Drag the slider to test" size="lg" />
               <input
                 type="range"
                 min={0}
@@ -537,24 +412,242 @@ export default function ShowcasePage() {
                 onChange={(e) => setProgress(Number(e.target.value))}
                 className="w-full mt-3"
               />
-              <p className="text-xs text-xn-ink-soft mt-1">
-                Move the slider — notice the smooth animated transition on the bar above.
-              </p>
             </div>
           </SubSection>
-          <SubSection title="In Context (Sidebar Usage)">
+          <SubSection title="Sidebar Usage Context">
             <Card variant="flat" padding="md" className="max-w-[200px]">
-              <p className="font-mono text-nano text-xn-ink-soft uppercase tracking-wide">
-                Free plan
-              </p>
+              <p className="font-mono text-nano text-xn-ink-soft uppercase tracking-wide">Free plan</p>
               <p className="font-semibold text-sm mt-0.5">10 / 30 generations</p>
               <div className="mt-2">
                 <ProgressBar value={33} size="sm" />
               </div>
-              <Button variant="primary" size="sm" fullWidth className="mt-3">
-                Upgrade →
-              </Button>
+              <Button variant="primary" size="sm" fullWidth className="mt-3">Upgrade →</Button>
             </Card>
+          </SubSection>
+        </Section>
+
+        {/* ══════════════════════════════════════════════════════
+            SESSION 3 COMPONENTS
+            ══════════════════════════════════════════════════════ */}
+
+        {/* ── Logo ── */}
+        <Section title="Logo">
+          <SubSection title="Primary Variant (Landscape)">
+            <div className="flex items-center gap-8">
+              <div className="flex flex-col items-center gap-2">
+                <Logo size={20} />
+                <span className="font-mono text-nano text-xn-ink-soft">20px</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <Logo size={28} />
+                <span className="font-mono text-nano text-xn-ink-soft">28px</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <Logo size={40} />
+                <span className="font-mono text-nano text-xn-ink-soft">40px</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <Logo size={56} />
+                <span className="font-mono text-nano text-xn-ink-soft">56px</span>
+              </div>
+            </div>
+          </SubSection>
+          <SubSection title="Square Variant (Favicon)">
+            <div className="flex items-center gap-8">
+              <div className="flex flex-col items-center gap-2">
+                <Logo variant="square" size={24} />
+                <span className="font-mono text-nano text-xn-ink-soft">24px</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <Logo variant="square" size={36} />
+                <span className="font-mono text-nano text-xn-ink-soft">36px</span>
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <Logo variant="square" size={48} />
+                <span className="font-mono text-nano text-xn-ink-soft">48px</span>
+              </div>
+            </div>
+          </SubSection>
+          <SubSection title="With Accent & Wordmark">
+            <div className="space-y-4">
+              <Logo size={28} accent showWordmark />
+              <Logo size={36} accent showWordmark />
+            </div>
+          </SubSection>
+          <SubSection title="On Dark Background (Brand)">
+            <div
+              className="inline-flex flex-col gap-4 p-8 rounded-xn-xl"
+              style={{ backgroundColor: "#0c1b3a" }}
+            >
+              <Logo size={32} color="#f3ebd9" accent showWordmark />
+              <Logo size={24} color="#f3ebd9" accent />
+              <Logo variant="square" size={40} color="#f3ebd9" accent />
+            </div>
+          </SubSection>
+          <SubSection title="In Context (Sidebar Header)">
+            <div className="w-[232px] bg-xn-bg border-r border-xn-border p-4 rounded-xn-md">
+              <Logo size={22} accent showWordmark />
+            </div>
+          </SubSection>
+        </Section>
+
+        {/* ── Modal ── */}
+        <Section title="Modal">
+          <SubSection title="Open Modals">
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => setBasicModal(true)}>
+                Basic Modal
+              </Button>
+              <Button variant="danger" icon={<TrashIcon />} onClick={() => setConfirmModal(true)}>
+                Delete Confirmation
+              </Button>
+              <Button variant="primary" onClick={() => setFormModal(true)}>
+                Form Modal
+              </Button>
+            </div>
+            <p className="text-xs text-xn-ink-soft mt-2">
+              Click a button to open. Close via ✕, backdrop click, or Escape key.
+            </p>
+          </SubSection>
+
+          {/* Basic Modal */}
+          <Modal
+            open={basicModal}
+            onClose={() => setBasicModal(false)}
+            title="Basic Modal"
+            description="This is a simple informational modal with a title and description."
+            footer={
+              <Button variant="primary" onClick={() => setBasicModal(false)}>
+                Got it
+              </Button>
+            }
+          >
+            <p className="text-sm text-xn-ink-muted">
+              Modal content goes here. This could be a message, a list, or any component.
+              Try closing with the ✕ button, clicking outside, or pressing Escape.
+            </p>
+          </Modal>
+
+          {/* Confirm Delete Modal */}
+          <Modal
+            open={confirmModal}
+            onClose={() => setConfirmModal(false)}
+            title="Delete Content?"
+            description="This action cannot be undone. The content will be permanently removed."
+            size="sm"
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setConfirmModal(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    setConfirmModal(false);
+                    toast.success("Content deleted");
+                  }}
+                >
+                  Delete
+                </Button>
+              </>
+            }
+          />
+
+          {/* Form Modal */}
+          <Modal
+            open={formModal}
+            onClose={() => setFormModal(false)}
+            title="Save to Folder"
+            description="Choose a folder for this content."
+            footer={
+              <>
+                <Button variant="ghost" onClick={() => setFormModal(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setFormModal(false);
+                    toast.success("Saved to Marketing folder");
+                  }}
+                >
+                  Save
+                </Button>
+              </>
+            }
+          >
+            <div className="space-y-2">
+              {[
+                { name: "Marketing", color: "#E06030", count: 14 },
+                { name: "Class Notes", color: "#4a5cb8", count: 8 },
+                { name: "AI Research", color: "#3f7a4f", count: 21 },
+                { name: "YT Scripts", color: "#b48a00", count: 3 },
+              ].map((folder) => (
+                <div
+                  key={folder.name}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xn-md hover:bg-xn-surface-alt cursor-pointer transition-colors"
+                >
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: folder.color }}
+                  />
+                  <span className="text-sm flex-1">{folder.name}</span>
+                  <span className="font-mono text-micro text-xn-ink-soft">{folder.count}</span>
+                </div>
+              ))}
+            </div>
+          </Modal>
+        </Section>
+
+        {/* ── Toast ── */}
+        <Section title="Toast">
+          <SubSection title="Fire Toasts">
+            <div className="flex flex-wrap gap-3">
+              <Button
+                onClick={() => toast.success("Content saved successfully!")}
+              >
+                Success Toast
+              </Button>
+              <Button
+                onClick={() =>
+                  toast.error("Could not fetch transcript.", {
+                    description: "This video may not have captions enabled.",
+                  })
+                }
+              >
+                Error Toast
+              </Button>
+              <Button
+                onClick={() => toast.info("Processing your video...")}
+              >
+                Info Toast
+              </Button>
+              <Button
+                onClick={() =>
+                  toast.warning("This video is over 3 hours long.", {
+                    description: "Generation may take longer than usual.",
+                  })
+                }
+              >
+                Warning Toast
+              </Button>
+            </div>
+            <p className="text-xs text-xn-ink-soft mt-2">
+              Toasts appear at the bottom-right. They auto-dismiss after 4 seconds.
+              Click ✕ to dismiss early. Fire multiple to see them stack.
+            </p>
+          </SubSection>
+          <SubSection title="With Description">
+            <Button
+              onClick={() =>
+                toast.success("Blog post generated!", {
+                  description: "2,400 words · 8 sections · SEO optimized",
+                  duration: 6000,
+                })
+              }
+            >
+              Detailed Toast (6s duration)
+            </Button>
           </SubSection>
         </Section>
 
@@ -580,7 +673,7 @@ export default function ShowcasePage() {
         {/* ── Footer ── */}
         <div className="text-center text-xs text-xn-ink-soft py-8 border-t border-xn-border">
           <p>
-            XtractNote · Phase 3, Sessions 1 & 2 · Theme:{" "}
+            XtractNote · Phase 3, Sessions 1–3 · Theme:{" "}
             <span className="font-mono">{theme}</span>
           </p>
         </div>

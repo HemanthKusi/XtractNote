@@ -68,6 +68,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body>
+        {/* Theme loads instantly from localStorage (synchronous read in ThemeProvider).
+            Dev console shows a hydration warning because server renders "paper" while
+            client may render "dark" — this is cosmetic and users never see it.
+            Properly fixed in Phase 8 when Supabase Auth stores theme in a cookie,
+            letting the server render the correct theme from the start. */}
         <ThemeProvider>
           <ToastProvider>
             {children}

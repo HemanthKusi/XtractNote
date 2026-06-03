@@ -78,27 +78,24 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children, defaultTheme }: ThemeProviderProps) {
-  // ── State Initialization ──
-  // useState accepts a function (called a "lazy initializer") that runs
-  // only once on first render. We use this to read from localStorage
-  // without reading it on every re-render.
+  // Read from localStorage immediately so the theme is correct on
+  // first render. This may cause a harmless hydration warning in dev
+  // (server renders "paper", client renders "dark"), but users never
+  // see it and the visual result is instant — no theme flash.
+  //
+  // The blocking script in layout.tsx ensures data-theme is set
+  // before React renders, so the CSS variables are already correct
+  // when the first paint happens.
   const [theme, setThemeState] = useState<ThemeName>(() => {
-    // During server-side rendering, window doesn't exist.
-    // Return the default and let the client-side effect handle the rest.
     if (typeof window === "undefined") {
       return defaultTheme ?? DEFAULT_THEME;
     }
 
-    // Try to read the saved preference from localStorage.
     const stored = localStorage.getItem(STORAGE_KEY);
-
-    // Validate it — only accept known theme names.
-    // This protects against corrupted or tampered localStorage values.
     if (stored && VALID_THEMES.includes(stored as ThemeName)) {
       return stored as ThemeName;
     }
 
-    // Nothing saved or invalid — use the default.
     return defaultTheme ?? DEFAULT_THEME;
   });
 

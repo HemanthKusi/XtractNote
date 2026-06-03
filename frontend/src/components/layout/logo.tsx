@@ -1,70 +1,69 @@
 import { useId } from "react";
 
 // ─────────────────────────────────────────────────────────────
-// XtractNote Logo — Wave-to-Nib Mark
+// XtractNote Logo — Wave-to-Nib Mark + Wordmark
 // ─────────────────────────────────────────────────────────────
-// Ported from xn-marks-v4.jsx (the brand package).
+// The mark is now theme-aware via CSS variables:
+//   --xn-logo-mark  → navy on light themes, cream on dark theme
+//   --xn-logo-muted → gray on light, lighter gray on dark
 //
-// The mark: a sound wave on the left flattens into a straight
-// line. A pen nib (rotated 30°) sits at the right end of the
-// line, as if drawing it. The wave represents video/audio
-// content, and the nib represents written output.
+// These are defined in globals.css alongside other theme variables.
+// The logo reads them automatically — no theme detection needed.
 //
-// Two variants:
-//   primary → Landscape (3:2 ratio), for sidebar and navbar
-//   square  → Compact (1:1), for favicon and small spaces
+// How it works:
+//   1. The wrapper <span> sets CSS `color` to var(--xn-logo-mark)
+//   2. The SVGs use "currentColor" for stroke and fill
+//   3. When the theme changes, the CSS variable updates, and
+//      currentColor resolves to the new value automatically
+//   4. If you pass an explicit `color` prop, it overrides the variable
 //
-// The nib has a breather hole and a slit, achieved via SVG mask.
-// The mark uses currentColor so it inherits text color from
-// its parent — in the sidebar it's xn-ink, on the dark brand
-// background it's cream.
-//
-// Usage:
-//   <Logo />                          → 24px primary mark
-//   <Logo size={32} />                → larger primary mark
-//   <Logo variant="square" size={32}/>→ square favicon mark
-//   <Logo showWordmark />             → mark + "XtractNote" text
-//   <Logo color="#f3ebd9" />          → cream-colored on dark bg
+// Wordmark: Wordmark05 from xn-pages-v4.jsx —
+//   "Xtract" → DM Sans Bold, same color as the mark
+//   "Note"   → DM Sans Medium, muted color (via --xn-logo-muted)
+//   Wave underline under "Note" in amber
 // ─────────────────────────────────────────────────────────────
+
+// ── Brand Constants ─────────────────────────────────────────
+
+const BRAND = {
+  amber: "#e8a955",
+} as const;
 
 // ── Props ───────────────────────────────────────────────────
 
 interface LogoProps {
-  /** Height in pixels. Width is calculated from the aspect ratio. */
+  /** Height in pixels. Width auto-calculated from aspect ratio. */
   size?: number;
-  /** Which mark variant to render */
+  /** Mark variant: primary (landscape) or square (favicon) */
   variant?: "primary" | "square";
-  /** Override color. Defaults to "currentColor" (inherits from parent). */
+  /** Override mark color. Defaults to var(--xn-logo-mark) which is
+      theme-aware: navy on light themes, cream on dark theme. */
   color?: string;
-  /** Show an amber ink drop at the nib tip */
+  /** Show amber ink drop at nib tip. Default: true. */
   accent?: boolean;
-  /** Accent dot color. Defaults to the brand amber (#e8a955). */
+  /** Accent dot color. Defaults to brand amber (#e8a955). */
   accentColor?: string;
-  /** Show "XtractNote" wordmark text beside the mark */
+  /** Show "XtractNote" wordmark beside the mark */
   showWordmark?: boolean;
+  /** Override "Note" text color. Defaults to var(--xn-logo-muted). */
+  mutedColor?: string;
   /** Additional CSS class */
   className?: string;
 }
 
 // ── Primary Mark (Landscape 3:2) ────────────────────────────
-// ViewBox: 120×80. Three-cycle wave flattening into a line.
-// Nib at the right end, rotated 30°, tip touching the line.
 
 function PrimaryMark({
   size,
-  color,
-  accent,
   accentColor,
+  accent,
 }: {
   size: number;
-  color: string;
-  accent: boolean;
   accentColor: string;
+  accent: boolean;
 }) {
-  // useId generates a unique string for this component instance.
-  // We strip colons because SVG ID attributes don't allow them.
   const uid = useId().replace(/[:]/g, "");
-  const ratio = 120 / 80; // width:height = 1.5
+  const ratio = 120 / 80;
 
   return (
     <svg
@@ -74,27 +73,19 @@ function PrimaryMark({
       aria-label="XtractNote"
     >
       <defs>
-        {/* Mask: white = visible, black = cut out.
-            The nib silhouette is white. The breather hole (circle)
-            and slit (thin rectangle) are black, so the background
-            shows through them. */}
         <mask id={`p-${uid}`}>
           <g transform="translate(68 50) rotate(30)">
-            {/* Nib body — chunky fountain-pen shape */}
             <path
               d="M -10 -48 L 10 -48 L 16 -18 L 2 0 L -2 0 L -16 -18 Z"
               fill="#fff"
             />
-            {/* Breather hole — circular cutout near the top */}
             <circle cx="0" cy="-34" r="3" fill="#000" />
-            {/* Slit — thin vertical cutout from hole to tip */}
             <rect x="-1" y="-34" width="2" height="28" fill="#000" />
           </g>
         </mask>
       </defs>
 
-      {/* Wave → line: 3 cycles with decreasing amplitude,
-          flattening into a straight horizontal line at y=50 */}
+      {/* Wave → line: uses currentColor which inherits from the parent span */}
       <path
         d="M 8 50
            Q 11 34 14 50
@@ -103,43 +94,38 @@ function PrimaryMark({
            Q 29 58 32 50
            L 68 50"
         fill="none"
-        stroke={color}
+        stroke="currentColor"
         strokeWidth="5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
 
-      {/* Nib — fill the masked area with the mark color.
-          The rect covers the whole viewBox, but the mask
-          only reveals the nib-shaped area. */}
+      {/* Nib — masked rect, also uses currentColor */}
       <rect
         x="0"
         y="0"
         width="120"
         height="80"
-        fill={color}
+        fill="currentColor"
         mask={`url(#p-${uid})`}
       />
 
-      {/* Optional accent ink drop at the nib tip */}
+      {/* Amber ink drop at the nib tip */}
       {accent && <circle cx="68" cy="50" r="3" fill={accentColor} />}
     </svg>
   );
 }
 
 // ── Square Mark (1:1 for Favicons) ──────────────────────────
-// ViewBox: 64×64. Shorter wave (2 cycles), 0.75× scale nib.
 
 function SquareMark({
   size,
-  color,
-  accent,
   accentColor,
+  accent,
 }: {
   size: number;
-  color: string;
-  accent: boolean;
   accentColor: string;
+  accent: boolean;
 }) {
   const uid = useId().replace(/[:]/g, "");
 
@@ -153,7 +139,6 @@ function SquareMark({
       <defs>
         <mask id={`sq-${uid}`}>
           <g transform="translate(38 38) rotate(30)">
-            {/* Scaled nib — 0.75× of primary proportions */}
             <path
               d="M -7.5 -36 L 7.5 -36 L 12 -14 L 1.5 0 L -1.5 0 L -12 -14 Z"
               fill="#fff"
@@ -164,7 +149,6 @@ function SquareMark({
         </mask>
       </defs>
 
-      {/* Two-cycle compact wave + short flat line */}
       <path
         d="M 4 38
            Q 7 28 10 38
@@ -172,7 +156,7 @@ function SquareMark({
            Q 19 33 22 38
            L 38 38"
         fill="none"
-        stroke={color}
+        stroke="currentColor"
         strokeWidth="3.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -183,11 +167,47 @@ function SquareMark({
         y="0"
         width="64"
         height="64"
-        fill={color}
+        fill="currentColor"
         mask={`url(#sq-${uid})`}
       />
 
       {accent && <circle cx="38" cy="38" r="2" fill={accentColor} />}
+    </svg>
+  );
+}
+
+// ── Wave Underline SVG ──────────────────────────────────────
+
+function WaveUnderline({
+  width,
+  height,
+  color,
+}: {
+  width: string;
+  height: number;
+  color: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 100 12"
+      preserveAspectRatio="none"
+      width={width}
+      height={height}
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: -height * 1.2,
+        display: "block",
+      }}
+    >
+      <path
+        d="M 2 6 Q 14 0 26 6 T 50 6 T 74 6 T 98 6"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -197,37 +217,59 @@ function SquareMark({
 export function Logo({
   size = 24,
   variant = "primary",
-  color = "currentColor",
-  accent = false,
-  accentColor = "#e8a955",
+  color,
+  accent = true,
+  accentColor = BRAND.amber,
   showWordmark = false,
+  mutedColor,
   className = "",
 }: LogoProps) {
-  // Shared props for both mark variants
-  const markProps = { size, color, accent, accentColor };
+  // If no color prop, use the CSS variable (theme-aware).
+  // If color prop is passed, use it (manual override for dark bg sections).
+  const resolvedColor = color || "var(--xn-logo-mark)";
+  const resolvedMuted = mutedColor || "var(--xn-logo-muted)";
+
+  const wordmarkSize = size * 0.85;
 
   return (
+    // The wrapper span sets CSS `color` which the SVGs inherit
+    // via "currentColor" in their stroke and fill attributes.
     <span
       className={`inline-flex items-center gap-2 ${className}`}
+      style={{ color: resolvedColor }}
     >
-      {/* The SVG mark */}
+      {/* The SVG mark — uses currentColor, inherits from this span */}
       {variant === "primary" ? (
-        <PrimaryMark {...markProps} />
+        <PrimaryMark size={size} accentColor={accentColor} accent={accent} />
       ) : (
-        <SquareMark {...markProps} />
+        <SquareMark size={size} accentColor={accentColor} accent={accent} />
       )}
 
-      {/* Optional wordmark text beside the mark */}
+      {/* Wordmark — Wordmark05 style */}
       {showWordmark && (
         <span
-          className="font-serif font-medium"
+          className="font-sans"
           style={{
-            fontSize: size * 0.85,
-            letterSpacing: "-0.01em",
-            color: color === "currentColor" ? undefined : color,
+            fontSize: wordmarkSize,
+            lineHeight: 1,
+            letterSpacing: "-0.025em",
+            display: "inline-flex",
+            alignItems: "baseline",
+            position: "relative",
           }}
         >
-          XtractNote
+          {/* "Xtract" — bold, inherits color from parent (mark color) */}
+          <span style={{ fontWeight: 700 }}>Xtract</span>
+
+          {/* "Note" — medium, muted color + wave underline */}
+          <span style={{ fontWeight: 500, color: resolvedMuted, position: "relative" }}>
+            Note
+            <WaveUnderline
+              width="100%"
+              height={wordmarkSize * 0.18}
+              color={accentColor}
+            />
+          </span>
         </span>
       )}
     </span>

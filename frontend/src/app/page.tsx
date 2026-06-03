@@ -434,59 +434,43 @@ export default function ShowcasePage() {
         <Section title="Logo">
           <SubSection title="Primary Variant (Landscape)">
             <div className="flex items-center gap-8">
-              <div className="flex flex-col items-center gap-2">
-                <Logo size={20} />
-                <span className="font-mono text-nano text-xn-ink-soft">20px</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <Logo size={28} />
-                <span className="font-mono text-nano text-xn-ink-soft">28px</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <Logo size={40} />
-                <span className="font-mono text-nano text-xn-ink-soft">40px</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <Logo size={56} />
-                <span className="font-mono text-nano text-xn-ink-soft">56px</span>
-              </div>
+              {[20, 28, 40, 56].map((s) => (
+                <div key={s} className="flex flex-col items-center gap-2">
+                  <Logo size={s} />
+                  <span className="font-mono text-nano text-xn-ink-soft">{s}px</span>
+                </div>
+              ))}
             </div>
           </SubSection>
           <SubSection title="Square Variant (Favicon)">
             <div className="flex items-center gap-8">
-              <div className="flex flex-col items-center gap-2">
-                <Logo variant="square" size={24} />
-                <span className="font-mono text-nano text-xn-ink-soft">24px</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <Logo variant="square" size={36} />
-                <span className="font-mono text-nano text-xn-ink-soft">36px</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <Logo variant="square" size={48} />
-                <span className="font-mono text-nano text-xn-ink-soft">48px</span>
-              </div>
+              {[24, 36, 48].map((s) => (
+                <div key={s} className="flex flex-col items-center gap-2">
+                  <Logo variant="square" size={s} />
+                  <span className="font-mono text-nano text-xn-ink-soft">{s}px</span>
+                </div>
+              ))}
             </div>
           </SubSection>
-          <SubSection title="With Accent & Wordmark">
+          <SubSection title="With Wordmark">
             <div className="space-y-4">
-              <Logo size={28} accent showWordmark />
-              <Logo size={36} accent showWordmark />
+              <Logo size={28} showWordmark />
+              <Logo size={36} showWordmark />
             </div>
           </SubSection>
-          <SubSection title="On Dark Background (Brand)">
+          <SubSection title="Manual Color Override (for custom backgrounds)">
             <div
               className="inline-flex flex-col gap-4 p-8 rounded-xn-xl"
               style={{ backgroundColor: "#0c1b3a" }}
             >
-              <Logo size={32} color="#f3ebd9" accent showWordmark />
-              <Logo size={24} color="#f3ebd9" accent />
-              <Logo variant="square" size={40} color="#f3ebd9" accent />
+              <Logo size={32} color="#f3ebd9" mutedColor="rgba(243,235,217,0.55)" showWordmark />
+              <Logo size={24} color="#f3ebd9" />
+              <Logo variant="square" size={40} color="#f3ebd9" />
             </div>
           </SubSection>
           <SubSection title="In Context (Sidebar Header)">
             <div className="w-[232px] bg-xn-bg border-r border-xn-border p-4 rounded-xn-md">
-              <Logo size={22} accent showWordmark />
+              <Logo size={22} showWordmark />
             </div>
           </SubSection>
         </Section>

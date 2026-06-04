@@ -1,7 +1,7 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────
-// Component Showcase — Phase 3, Sessions 1 + 2 + 3
+// Component Showcase — Phase 3, Sessions 1 + 2 + 3 + 4
 // ─────────────────────────────────────────────────────────────
 // Test page for all base UI components.
 // Access at: http://localhost:3000
@@ -18,6 +18,8 @@ import { Toggle } from "@/components/ui/toggle";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Modal } from "@/components/ui/modal";
 import { Logo } from "@/components/layout/logo";
+import { Sidebar } from "@/components/layout/sidebar";
+import { Topbar } from "@/components/layout/topbar";
 import { useTheme } from "@/components/shared/theme-provider";
 import { useToast } from "@/components/shared/toast-provider";
 import type { ThemeName, ContentType } from "@/lib/constants/theme";
@@ -100,6 +102,9 @@ export default function ShowcasePage() {
   const [basicModal, setBasicModal] = useState(false);
   const [confirmModal, setConfirmModal] = useState(false);
   const [formModal, setFormModal] = useState(false);
+
+  // Session 4 state — AppShell preview active page
+  const [previewPage, setPreviewPage] = useState<"home" | "create" | "history" | "folders" | "extension" | "settings">("home");
 
   return (
     <div className="min-h-screen bg-xn-bg text-xn-ink transition-colors duration-300">
@@ -635,6 +640,98 @@ export default function ShowcasePage() {
           </SubSection>
         </Section>
 
+        {/* ══════════════════════════════════════════════════════
+            SESSION 4 COMPONENTS
+            ══════════════════════════════════════════════════════ */}
+
+        {/* ── AppShell Preview ── */}
+        <Section title="AppShell (Sidebar + Topbar + Content)">
+          <SubSection title="Full Layout Preview">
+            <p className="text-sm text-xn-ink-muted mb-4">
+              This is how every in-app page looks. The sidebar and topbar stay
+              fixed while the content area scrolls. Click the nav items to see
+              the active state change.
+            </p>
+
+            {/* Constrained container simulating a viewport.
+                We can't use the actual AppShell here because it uses h-screen.
+                Instead we manually assemble the same flex layout inside a
+                fixed-height box. This is the same structure AppShell renders. */}
+            <div className="h-[500px] border border-xn-border rounded-xn-xl overflow-hidden flex bg-xn-bg">
+
+              {/* Sidebar — same component, works inside the constrained box */}
+              <Sidebar
+                activePage={previewPage}
+                onNavigate={(page) => setPreviewPage(page)}
+              />
+
+              {/* Main area — topbar + content */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+
+                {/* Topbar */}
+                <Topbar
+                  userInitials="MK"
+                  onSearchClick={() => toast.info("⌘K search modal coming soon!")}
+                />
+
+                {/* Content area — scrollable sample content */}
+                <main className="flex-1 overflow-y-auto px-8 py-6">
+                  <p className="eyebrow mb-2">
+                    {previewPage.toUpperCase()} PAGE
+                  </p>
+                  <h2 className="font-serif text-h2 mb-3">
+                    {previewPage === "home" && "Good morning, Mohan"}
+                    {previewPage === "create" && "Create New Content"}
+                    {previewPage === "history" && "Your History"}
+                    {previewPage === "folders" && "Your Folders"}
+                    {previewPage === "settings" && "Settings"}
+                    {previewPage === "extension" && "Browser Extension"}
+                  </h2>
+                  <p className="text-sm text-xn-ink-muted max-w-[500px] mb-6">
+                    This is the content area. Each page renders its own content here
+                    while the sidebar and topbar stay fixed. The content scrolls
+                    independently.
+                  </p>
+
+                  {/* Sample cards to show scrolling */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <div
+                        key={i}
+                        className="bg-xn-surface border border-xn-border rounded-xn-lg p-4"
+                      >
+                        <div className="h-20 bg-xn-bg-deep rounded-xn-md mb-3 flex items-center justify-center">
+                          <span className="text-xs text-xn-ink-soft">
+                            Content Card {i}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium">Sample Item {i}</p>
+                        <p className="text-xs text-xn-ink-muted mt-1">
+                          Placeholder content for scroll testing
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </main>
+              </div>
+            </div>
+          </SubSection>
+
+          <SubSection title="Individual Components">
+            <div className="flex gap-3">
+              <span className="font-mono text-micro text-xn-ink-soft bg-xn-surface-alt border border-xn-border rounded-xn-sm px-2 py-1">
+                Sidebar — 232px × full height
+              </span>
+              <span className="font-mono text-micro text-xn-ink-soft bg-xn-surface-alt border border-xn-border rounded-xn-sm px-2 py-1">
+                Topbar — full width × 56px
+              </span>
+              <span className="font-mono text-micro text-xn-ink-soft bg-xn-surface-alt border border-xn-border rounded-xn-sm px-2 py-1">
+                AppShell — wraps both + content
+              </span>
+            </div>
+          </SubSection>
+        </Section>
+
         {/* ── Combined: URL Input Card ── */}
         <Section title="Combined — URL Input Card">
           <div className="max-w-lg">
@@ -657,7 +754,7 @@ export default function ShowcasePage() {
         {/* ── Footer ── */}
         <div className="text-center text-xs text-xn-ink-soft py-8 border-t border-xn-border">
           <p>
-            XtractNote · Phase 3, Sessions 1–3 · Theme:{" "}
+            XtractNote · Phase 3, Sessions 1–4 · Theme:{" "}
             <span className="font-mono">{theme}</span>
           </p>
         </div>

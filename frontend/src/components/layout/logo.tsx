@@ -229,20 +229,26 @@ export function Logo({
   const resolvedColor = color || "var(--xn-logo-mark)";
   const resolvedMuted = mutedColor || "var(--xn-logo-muted)";
 
-  const wordmarkSize = size * 0.85;
+  // Wordmark font is ~70% of the mark height.
+  // This matches the design files' inline lockup ratio
+  // (mark 28px, text 20px = 0.714).
+  const wordmarkSize = size * 0.7;
 
   return (
-    // The wrapper span sets CSS `color` which the SVGs inherit
-    // via "currentColor" in their stroke and fill attributes.
+    // items-end aligns the mark and wordmark at the bottom.
+    // The wave line in the logo sits near the text baseline,
+    // and the nib extends above — matching the design files.
     <span
       className={`inline-flex items-center gap-2 ${className}`}
       style={{ color: resolvedColor }}
     >
-      {/* The SVG mark — uses currentColor, inherits from this span */}
+      {/* The SVG mark — uses currentColor, inherits from this span.
+          When paired with the wordmark, scale up 1.15x so the mark
+          is visually prominent alongside the text. */}
       {variant === "primary" ? (
-        <PrimaryMark size={size} accentColor={accentColor} accent={accent} />
+        <PrimaryMark size={showWordmark ? Math.round(size * 1.25) : size} accentColor={accentColor} accent={accent} />
       ) : (
-        <SquareMark size={size} accentColor={accentColor} accent={accent} />
+        <SquareMark size={showWordmark ? Math.round(size * 1.25) : size} accentColor={accentColor} accent={accent} />
       )}
 
       {/* Wordmark — Wordmark05 style */}

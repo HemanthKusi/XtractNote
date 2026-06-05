@@ -93,10 +93,12 @@ export function Toggle({
 
   // ── Track classes (the outer pill) ──
   const trackClasses = [
-    // Dimensions matching hi-fi: 32×18px, pill shape
+    // Dimensions — slightly larger than hi-fi for better visual balance
     "relative inline-flex",
-    "w-8 h-[18px]",
+    "w-9 h-5",
     "rounded-xn-pill",
+    // Reset browser button defaults that shift the thumb
+    "p-0 border-0",
     // Smooth color transition when toggling
     "transition-colors duration-150",
     // Cursor
@@ -109,12 +111,12 @@ export function Toggle({
   // ── Thumb classes (the sliding circle) ──
   const thumbClasses = [
     "absolute top-[2px]",
-    // 14px circle matching hi-fi
-    "w-3.5 h-3.5",
+    // 16px circle — properly centered in the 20px track
+    "w-4 h-4",
     "rounded-full",
     "bg-white",
-    // Subtle shadow on the thumb (from hi-fi's box-shadow)
-    "shadow-[0_1px_2px_rgba(0,0,0,0.2)]",
+    // Centered shadow (no vertical offset) to avoid visual shift
+    "shadow-[0_0.5px_2px_rgba(0,0,0,0.2)]",
     // Smooth slide transition
     "transition-[left] duration-150",
   ].join(" ");
@@ -138,10 +140,10 @@ export function Toggle({
       <span
         className={thumbClasses}
         style={{
-          // Slide position: 2px (off) → 16px (on)
-          // 16px = track width (32) - thumb size (14) - padding (2)
-          left: isOn ? 16 : 2,
-        }}
+            // Slide position: 2px (off) → 18px (on)
+            // 18px = track width (36) - thumb size (16) - padding (2)
+            left: isOn ? 18 : 2,
+          }}
       />
     </button>
   );

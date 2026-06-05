@@ -93,11 +93,13 @@ export function Toggle({
 
   // ── Track classes (the outer pill) ──
   const trackClasses = [
-    // Dimensions — slightly larger than hi-fi for better visual balance
+    // Pixel values — not rem — because our root font is 14px,
+    // which makes rem-based Tailwind classes smaller than expected.
+    // Track: 36×20px, thumb: 16px, gap: 2px all around.
     "relative inline-flex",
-    "w-9 h-5",
+    "w-[36px] h-[20px]",
     "rounded-xn-pill",
-    // Reset browser button defaults that shift the thumb
+    // Reset browser button defaults
     "p-0 border-0",
     // Smooth color transition when toggling
     "transition-colors duration-150",
@@ -111,11 +113,11 @@ export function Toggle({
   // ── Thumb classes (the sliding circle) ──
   const thumbClasses = [
     "absolute top-[2px]",
-    // 16px circle — properly centered in the 20px track
-    "w-4 h-4",
+    // 16px circle — pixel value, not rem
+    "w-[16px] h-[16px]",
     "rounded-full",
     "bg-white",
-    // Centered shadow (no vertical offset) to avoid visual shift
+    // Centered shadow
     "shadow-[0_0.5px_2px_rgba(0,0,0,0.2)]",
     // Smooth slide transition
     "transition-[left] duration-150",

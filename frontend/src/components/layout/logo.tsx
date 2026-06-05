@@ -243,7 +243,7 @@ export function Logo({
       style={{ color: resolvedColor }}
     >
       {/* The SVG mark — uses currentColor, inherits from this span.
-          When paired with the wordmark, scale up 1.15x so the mark
+          When paired with the wordmark, scale up 1.25x so the mark
           is visually prominent alongside the text. */}
       {variant === "primary" ? (
         <PrimaryMark size={showWordmark ? Math.round(size * 1.25) : size} accentColor={accentColor} accent={accent} />

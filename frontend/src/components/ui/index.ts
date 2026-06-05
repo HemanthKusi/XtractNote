@@ -4,16 +4,18 @@
 // Re-exports all base UI components from one path.
 //
 // Usage:
-//   import { Button, Input, Card, Chip, Avatar, Toggle, ProgressBar, Modal }
+//   import { Button, Card, Chip, Skeleton, EmptyState }
 //     from "@/components/ui";
 //
 // Components NOT in this barrel (imported from their own paths):
+//   import { useTheme } from "@/components/shared/theme-provider";
 //   import { useToast } from "@/components/shared/toast-provider";
-//   import { Logo } from "@/components/layout/logo";
+//   import { AppShell, Sidebar, Topbar, Logo } from "@/components/layout";
 //
 // Session 1: Button, Input, Card
 // Session 2: Chip, Avatar, Toggle, ProgressBar
 // Session 3: Modal
+// Session 5: VideoThumbnail, ContentTypeIcon, EmptyState, Skeleton
 // ─────────────────────────────────────────────────────────────
 
 // Session 1
@@ -29,3 +31,9 @@ export { ProgressBar, type ProgressBarSize } from "./progress-bar";
 
 // Session 3
 export { Modal, type ModalSize } from "./modal";
+
+// Session 5
+export { VideoThumbnail } from "./video-thumbnail";
+export { ContentTypeIcon, type ContentTypeIconSize } from "./content-type-icon";
+export { EmptyState, type EmptyStateSize } from "./empty-state";
+export { Skeleton, SkeletonText, SkeletonCard } from "./loading-skeleton";

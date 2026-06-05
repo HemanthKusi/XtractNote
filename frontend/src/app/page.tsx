@@ -20,6 +20,10 @@ import { Modal } from "@/components/ui/modal";
 import { Logo } from "@/components/layout/logo";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { VideoThumbnail } from "@/components/ui/video-thumbnail";
+import { ContentTypeIcon } from "@/components/ui/content-type-icon";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton, SkeletonText, SkeletonCard } from "@/components/ui/loading-skeleton";
 import { useTheme } from "@/components/shared/theme-provider";
 import { useToast } from "@/components/shared/toast-provider";
 import type { ThemeName, ContentType } from "@/lib/constants/theme";
@@ -732,6 +736,185 @@ export default function ShowcasePage() {
           </SubSection>
         </Section>
 
+        {/* ══════════════════════════════════════════════════════
+            SESSION 5 COMPONENTS
+            ══════════════════════════════════════════════════════ */}
+
+        {/* ── VideoThumbnail ── */}
+        <Section title="VideoThumbnail">
+          <SubSection title="With Real YouTube Video">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <VideoThumbnail videoId="dQw4w9WgXcQ" duration="3:32" />
+              <VideoThumbnail videoId="jNQXAC9IVRw" duration="0:19" />
+              <VideoThumbnail videoId="9bZkp7q19f0" duration="4:13" />
+            </div>
+          </SubSection>
+          <SubSection title="Fallback (No Image)">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <VideoThumbnail duration="12:42" />
+              <VideoThumbnail duration="1:03:20" label="lecture" />
+              <VideoThumbnail label="podcast" height={140} />
+            </div>
+          </SubSection>
+          <SubSection title="Broken Image URL">
+            <div className="max-w-xs">
+              <VideoThumbnail
+                src="https://broken.invalid/404.jpg"
+                duration="5:00"
+                label="error fallback"
+              />
+            </div>
+          </SubSection>
+        </Section>
+
+        {/* ── ContentTypeIcon ── */}
+        <Section title="ContentTypeIcon">
+          <SubSection title="All 7 Types">
+            <div className="flex flex-wrap gap-4">
+              {(["blog", "notes", "summary", "research", "flashcards", "quiz", "social"] as const).map(
+                (type) => (
+                  <div key={type} className="flex flex-col items-center gap-1.5">
+                    <ContentTypeIcon type={type} size="lg" />
+                    <span className="font-mono text-nano text-xn-ink-soft capitalize">
+                      {type}
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          </SubSection>
+          <SubSection title="Sizes">
+            <div className="flex items-center gap-6">
+              {(["sm", "md", "lg", "xl"] as const).map((s) => (
+                <div key={s} className="flex flex-col items-center gap-1.5">
+                  <ContentTypeIcon type="blog" size={s} />
+                  <span className="font-mono text-nano text-xn-ink-soft">{s}</span>
+                </div>
+              ))}
+            </div>
+          </SubSection>
+          <SubSection title="With Background">
+            <div className="flex flex-wrap gap-3">
+              {(["blog", "notes", "summary", "research", "flashcards", "quiz", "social"] as const).map(
+                (type) => (
+                  <ContentTypeIcon key={type} type={type} size="lg" withBackground />
+                )
+              )}
+            </div>
+          </SubSection>
+          <SubSection title="In Context (With Chip)">
+            <div className="flex flex-wrap gap-3">
+              {(["blog", "notes", "summary"] as const).map((type) => (
+                <div
+                  key={type}
+                  className="flex items-center gap-2 bg-xn-surface border border-xn-border rounded-xn-md px-3 py-2"
+                >
+                  <ContentTypeIcon type={type} size="sm" />
+                  <Chip contentType={type} />
+                </div>
+              ))}
+            </div>
+          </SubSection>
+        </Section>
+
+        {/* ── EmptyState ── */}
+        <Section title="EmptyState">
+          <SubSection title="Page Size (Full Page)">
+            <Card variant="flat">
+              <EmptyState
+                title="No content generated yet"
+                description="Start by pasting a YouTube URL to generate your first piece of content. You can create blog posts, study notes, summaries, and more."
+                action={
+                  <Button variant="accent" icon={<SparkIcon />}>
+                    Create Content
+                  </Button>
+                }
+              />
+            </Card>
+          </SubSection>
+          <SubSection title="Section Size (Inside a Panel)">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card variant="flat">
+                <EmptyState
+                  size="section"
+                  title="No folders yet"
+                  description="Create a folder to organize your content."
+                  action={
+                    <Button variant="primary" size="sm" icon={<PlusIcon />}>
+                      New Folder
+                    </Button>
+                  }
+                />
+              </Card>
+              <Card variant="flat">
+                <EmptyState
+                  size="section"
+                  title="No search results"
+                  description="Try a different search term or check your spelling."
+                />
+              </Card>
+            </div>
+          </SubSection>
+        </Section>
+
+        {/* ── LoadingSkeleton ── */}
+        <Section title="LoadingSkeleton">
+          <SubSection title="Base Skeleton">
+            <div className="max-w-md space-y-3">
+              <Skeleton width="100%" height={20} />
+              <Skeleton width="80%" height={16} />
+              <Skeleton width="60%" height={16} />
+              <div className="flex items-center gap-3 pt-2">
+                <Skeleton width={36} height={36} circle />
+                <div className="flex-1 space-y-2">
+                  <Skeleton width="50%" height={14} />
+                  <Skeleton width="30%" height={10} />
+                </div>
+              </div>
+            </div>
+          </SubSection>
+          <SubSection title="SkeletonText (Paragraph)">
+            <div className="max-w-md space-y-6">
+              <div>
+                <span className="font-mono text-nano text-xn-ink-soft mb-2 block">
+                  3 lines (default)
+                </span>
+                <SkeletonText lines={3} />
+              </div>
+              <div>
+                <span className="font-mono text-nano text-xn-ink-soft mb-2 block">
+                  5 lines
+                </span>
+                <SkeletonText lines={5} />
+              </div>
+            </div>
+          </SubSection>
+          <SubSection title="SkeletonCard">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <SkeletonCard />
+              <SkeletonCard thumbnailHeight={100} descriptionLines={1} />
+              <SkeletonCard showThumbnail={false} descriptionLines={4} />
+            </div>
+          </SubSection>
+          <SubSection title="Custom Layout (History Row)">
+            <div className="max-w-lg space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-4 bg-xn-surface border border-xn-border rounded-xn-lg p-3"
+                >
+                  <Skeleton width={80} height={50} rounded="var(--xn-radius-sm)" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton width="60%" height={14} rounded="var(--xn-radius-sm)" />
+                    <Skeleton width="35%" height={10} rounded="var(--xn-radius-sm)" />
+                  </div>
+                  <Skeleton width={60} height={22} rounded="var(--xn-radius-pill)" />
+                </div>
+              ))}
+            </div>
+          </SubSection>
+        </Section>
+
         {/* ── Combined: URL Input Card ── */}
         <Section title="Combined — URL Input Card">
           <div className="max-w-lg">
@@ -754,7 +937,7 @@ export default function ShowcasePage() {
         {/* ── Footer ── */}
         <div className="text-center text-xs text-xn-ink-soft py-8 border-t border-xn-border">
           <p>
-            XtractNote · Phase 3, Sessions 1–4 · Theme:{" "}
+            XtractNote · Phase 3, Sessions 1–5 · Theme:{" "}
             <span className="font-mono">{theme}</span>
           </p>
         </div>

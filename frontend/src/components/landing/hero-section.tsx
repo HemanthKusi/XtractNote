@@ -79,7 +79,7 @@ export function HeroSection() {
           <br />
           into{" "}
           <span className="italic">something</span>{" "}
-          <span className="editorial-highlight">useful</span>.
+          <span className="mark-yellow">useful</span>.
         </h1>
 
         {/* ── 3. Description ── */}
@@ -95,29 +95,33 @@ export function HeroSection() {
           flashcards, or social copy — yours to edit and keep.
         </p>
 
-        {/* ── 4. Hero input card ── */}
+        {/* ── 4. Hero input card ──
+            Card uses padding="none" because the default padding="md"
+            wraps children in an inner <div className="p-4"> that
+            blocks the flex layout. With padding="none", the inner
+            wrapper has no classes, so our own flex div works. */}
         <Card
           elevate="sm"
-          className="
-            mx-auto mt-8 flex max-w-[620px] items-center gap-1.5
-            p-1.5 text-left
-          "
+          padding="none"
+          className="mx-auto mt-8 max-w-[620px]"
         >
-          {/* Play icon */}
-          <span className="px-2 pl-3.5">
-            <PlayIcon />
-          </span>
+          <div className="flex items-center gap-1.5 p-1.5">
+            {/* Play icon */}
+            <span className="px-2 pl-3.5">
+              <PlayIcon />
+            </span>
 
-          {/* Placeholder text — this becomes a real input in Phase 6 */}
-          <span className="flex-1 py-3 px-1 text-base text-[var(--ink-soft)]">
-            Paste a YouTube link or search a topic…
-          </span>
+            {/* Placeholder text — this becomes a real input in Phase 6 */}
+            <span className="flex-1 py-3 px-1 text-base text-[var(--ink-soft)]">
+              Paste a YouTube link or search a topic…
+            </span>
 
-          {/* Generate button */}
-          <Button variant="primary" size="lg" className="gap-1">
-            Generate
-            <ArrowRightIcon />
-          </Button>
+            {/* Generate button */}
+            <Button variant="primary" size="lg" className="gap-1">
+              Generate
+              <ArrowRightIcon />
+            </Button>
+          </div>
         </Card>
 
         {/* ── "Try:" suggestions ── */}

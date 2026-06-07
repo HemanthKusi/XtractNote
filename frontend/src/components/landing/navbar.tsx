@@ -25,7 +25,7 @@ export function Navbar() {
       "
     >
       <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-6 py-5 md:px-12">
-        <Logo showWordmark size={26} />
+        <Logo showWordmark size={38} />
         <div className="flex-1" />
 
         {/* Nav links — hidden on mobile, shown on md+ */}
@@ -35,7 +35,7 @@ export function Navbar() {
               <a
                 key={link.href}
                 href={link.href}
-                className="text-sm text-[var(--ink-muted)] transition-colors duration-150 hover:text-[var(--ink)]"
+                className="text-md text-[var(--ink-muted)] transition-colors duration-150 hover:text-[var(--ink)]"
               >
                 {link.label}
               </a>
@@ -45,10 +45,10 @@ export function Navbar() {
 
         {/* CTA buttons */}
         <div className="flex items-center gap-3">
-          <Button variant="default" size="sm" className="hidden sm:inline-flex">
+          <Button variant="default" size="md" className="hidden sm:inline-flex">
             Sign in
           </Button>
-          <Button variant="primary" size="sm">
+          <Button variant="primary" size="md">
             Try free
           </Button>
         </div>

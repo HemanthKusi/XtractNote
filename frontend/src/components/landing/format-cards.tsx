@@ -111,7 +111,7 @@ export function FormatCards() {
                   placeholders align across cards. */}
               <div
                 className="
-                  mx-2 mt-3 flex h-[50px] items-center justify-center
+                  mx-2 mt-3 flex h-[50px] items-center justify-center px-3
                   rounded-[var(--radius-sm)]
                   bg-[var(--bg-deep)]
                   border border-[var(--border)]

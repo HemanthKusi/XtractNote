@@ -44,26 +44,38 @@ const PIPELINE_STEPS = [
           <div className="eyebrow">How it works</div>
   
           {/* ── Heading ── */}
-          <h2 className="mt-2 max-w-[520px] font-serif text-3xl leading-[1.15] tracking-tight sm:text-4xl">
+          <h2
+            className="
+              mt-3 max-w-[580px]
+              font-serif text-4xl leading-[1.15] tracking-tight
+              md:text-[42px]
+            "
+          >
             Five small agents, one good answer.
           </h2>
   
           {/* ── Description ── */}
-          <p className="mt-2.5 max-w-[480px] text-[15px] leading-relaxed text-[var(--ink-muted)]">
+          <p className="mt-3 max-w-[500px] text-base leading-relaxed text-[var(--ink-muted)] md:text-lg">
             Each agent does one job and hands off to the next. You only see
             five friendly steps; the work happens in the background.
           </p>
   
-          {/* ── Pipeline steps ── */}
-          <div className="relative mt-9 grid grid-cols-5">
+          {/* ── Pipeline steps ──
+              The grid creates 5 equal columns. A horizontal line
+              connects all circles. Each circle sits on top of the
+              line with z-index and a bg color that "covers" the
+              line behind it, creating the pipeline appearance. */}
+          <div className="relative mt-12 grid grid-cols-5">
   
             {/* Horizontal connecting line — sits behind the circles.
                 Positioned from 10% to 90% so the line starts and
                 ends at the center of the first and last circles.
-                top: 20px = half of the 40px circle height. */}
+                top: 20px = half of the 40px circle height.
+                Uses border-strong for better contrast against
+                the surface-alt background. */}
             <div
-              className="absolute left-[10%] right-[10%] h-px bg-[var(--border)]"
-              style={{ top: 20 }}
+              className="absolute left-[10%] right-[10%] bg-[var(--border-strong)]"
+              style={{ top: 19, height: 2 }}
             />
   
             {/* Individual steps */}
@@ -72,21 +84,22 @@ const PIPELINE_STEPS = [
                 key={step.number}
                 className="relative z-[1] flex flex-col items-center text-center"
               >
-                {/* Numbered circle */}
+                {/* Numbered circle — bg matches section bg so the
+                    connecting line appears to pass behind it */}
                 <div
                   className="
                     flex h-[40px] w-[40px] items-center justify-center
                     rounded-full
-                    border border-[var(--border)]
-                    bg-[var(--bg)]
-                    font-mono text-xs text-[var(--ink-muted)]
+                    border border-[var(--border-strong)]
+                    bg-[var(--surface-alt)]
+                    font-mono text-xs font-medium text-[var(--ink-muted)]
                   "
                 >
                   {step.number}
                 </div>
   
                 {/* Step label */}
-                <div className="mt-3 max-w-[140px] text-sm font-medium">
+                <div className="mt-3 max-w-[140px] text-[14px] font-medium leading-snug">
                   {step.label}
                 </div>
               </div>

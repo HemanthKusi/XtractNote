@@ -7,10 +7,9 @@ import type { ContentType } from "@/lib/constants/theme";
 //
 // A 6-column grid showcasing the content types XtractNote
 // can generate. Each card shows:
-//   1. Tinted icon (via ContentTypeIcon withBackground)
-//   2. Content type title
-//   3. Short feature description
-//   4. Image placeholder simulating sample output
+//   1. Icon + title on the same row
+//   2. Short feature description (fixed min-height for alignment)
+//   3. Smaller image placeholder at the bottom
 //
 // Responsive: 6 cols on xl, 3 on md, 2 on sm, 1 on mobile.
 //
@@ -86,29 +85,33 @@ export function FormatCards() {
             className="group"
           >
             <div className="p-5">
-              {/* Icon in tinted rounded square */}
-              <ContentTypeIcon
-                type={card.type}
-                size="lg"
-                withBackground
-              />
 
-              {/* Title */}
-              <h3 className="mt-3.5 text-[15px] font-semibold">
-                {card.title}
-              </h3>
+              {/* Icon + Title — same row */}
+              <div className="flex items-center gap-2.5">
+                <ContentTypeIcon
+                  type={card.type}
+                  size="lg"
+                  withBackground
+                />
+                <h3 className="text-[15px] font-semibold">
+                  {card.title}
+                </h3>
+              </div>
 
-              {/* Description — short feature list */}
-              <p className="mt-1 text-[13px] text-[var(--ink-muted)]">
+              {/* Description — min-h ensures all descriptions
+                  take the same vertical space (2 lines worth)
+                  so the rectangles below align across cards */}
+              <p className="mt-3 min-h-[38px] text-[13px] leading-[1.5] text-[var(--ink-muted)]">
                 {card.description}
               </p>
 
-              {/* Image placeholder — simulates sample output.
-                  In a real product this could be a screenshot
-                  or a mini preview of generated content. */}
+              {/* Image placeholder — reduced in both height and
+                  width (mx-2 adds side margins). Sits directly
+                  below the fixed-height description so all
+                  placeholders align across cards. */}
               <div
                 className="
-                  mt-3 flex h-[80px] items-center justify-center
+                  mx-2 mt-3 flex h-[50px] items-center justify-center
                   rounded-[var(--radius-sm)]
                   bg-[var(--bg-deep)]
                   border border-[var(--border)]

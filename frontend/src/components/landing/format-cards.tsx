@@ -5,19 +5,20 @@ import type { ContentType } from "@/lib/constants/theme";
 // ────────────────────────────────────────────────────────────
 // FormatCards
 //
-// A 5-column grid showcasing the content types XtractNote
+// A 6-column grid showcasing the content types XtractNote
 // can generate. Each card shows:
 //   1. Tinted icon (via ContentTypeIcon withBackground)
 //   2. Content type title
 //   3. Short feature description
 //   4. Image placeholder simulating sample output
 //
-// Responsive: 5 cols on xl, 3 on md, 2 on sm, 1 on mobile.
+// Responsive: 6 cols on xl, 3 on md, 2 on sm, 1 on mobile.
 //
 // Design reference: hifi-pages-a.jsx lines 78–96
+// (extended from 5 to 6 cards to include Research)
 // ────────────────────────────────────────────────────────────
 
-// ── Card data — the five content types shown on the landing page ──
+// ── Card data — the six content types shown on the landing page ──
 
 const FORMAT_CARDS: {
   type: ContentType;
@@ -44,6 +45,12 @@ const FORMAT_CARDS: {
     sampleLabel: "Vision Pro review",
   },
   {
+    type: "research",
+    title: "Research",
+    description: "Abstract · citations · findings",
+    sampleLabel: "LLM scaling laws",
+  },
+  {
     type: "flashcards",
     title: "Flashcards",
     description: "Q&A · spaced repetition",
@@ -68,7 +75,7 @@ export function FormatCards() {
           grid-cols-1
           sm:grid-cols-2
           md:grid-cols-3
-          xl:grid-cols-5
+          xl:grid-cols-6
         "
       >
         {FORMAT_CARDS.map((card) => (

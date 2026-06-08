@@ -19,7 +19,7 @@ import { HowItWorks } from "@/components/landing/how-it-works";
 // ────────────────────────────────────────────────────────────
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[var(--bg)]">
+    <div className="min-h-screen bg-xn-bg">
       <Navbar />
       <HeroSection />
       <FormatCards />

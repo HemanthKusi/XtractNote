@@ -4,6 +4,11 @@ import { useState } from "react";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 
+// ────────────────────────────────────────────────────────────
+// Navigation links — defined here so they're easy to update.
+// Each link has a label (displayed text) and an href (scroll
+// target on the landing page using anchor IDs).
+// ────────────────────────────────────────────────────────────
 const NAV_LINKS = [
   { label: "How it works", href: "#how-it-works" },
   { label: "Use cases", href: "#use-cases" },
@@ -12,6 +17,17 @@ const NAV_LINKS = [
   { label: "Pricing", href: "#pricing" },
 ];
 
+// ────────────────────────────────────────────────────────────
+// Navbar
+//
+// Sticky navigation bar for the public landing page.
+// Three zones:  Logo  ·  flex spacer  ·  nav links  ·  CTA buttons
+//
+// Responsive behavior:
+//   - Logo scales down on mobile (28) vs desktop (38)
+//   - Nav links collapse into hamburger on mobile
+//   - Sign in + Try free buttons stay visible at ALL sizes
+// ────────────────────────────────────────────────────────────
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -24,8 +40,21 @@ export function Navbar() {
         backdrop-blur-sm
       "
     >
-      <div className="mx-auto flex max-w-[1400px] items-center gap-6 px-6 py-5 md:px-12">
-        <Logo showWordmark size={38} />
+      {/* ── Desktop row ── */}
+      <div className="mx-auto flex max-w-[1400px] items-center gap-4 px-4 py-4 sm:gap-6 sm:px-6 md:px-12 md:py-5">
+
+        {/* Logo — two renders for responsive sizing.
+            Logo takes a numeric size prop, not a Tailwind class,
+            so we can't use responsive utilities on it directly.
+            Instead: show small logo on mobile, large on md+. */}
+        <div className="md:hidden">
+          <Logo showWordmark size={28} />
+        </div>
+        <div className="hidden md:block">
+          <Logo showWordmark size={38} />
+        </div>
+
+        {/* Spacer pushes links + buttons to the right */}
         <div className="flex-1" />
 
         {/* Nav links — hidden on mobile, shown on md+ */}
@@ -35,7 +64,7 @@ export function Navbar() {
               <a
                 key={link.href}
                 href={link.href}
-                className="text-md text-[var(--ink-muted)] transition-colors duration-150 hover:text-[var(--ink)]"
+                className="text-[15px] text-[var(--ink-muted)] transition-colors duration-150 hover:text-[var(--ink)]"
               >
                 {link.label}
               </a>
@@ -43,9 +72,9 @@ export function Navbar() {
           })}
         </div>
 
-        {/* CTA buttons */}
-        <div className="flex items-center gap-3">
-          <Button variant="default" size="md" className="hidden sm:inline-flex">
+        {/* CTA buttons — always visible at all screen sizes */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Button variant="default" size="md">
             Sign in
           </Button>
           <Button variant="primary" size="md">
@@ -53,7 +82,7 @@ export function Navbar() {
           </Button>
         </div>
 
-        {/* Hamburger toggle — mobile only */}
+        {/* Hamburger toggle — visible only on mobile (below md) */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="
@@ -91,9 +120,9 @@ export function Navbar() {
         </button>
       </div>
 
-      {/* Mobile dropdown */}
+      {/* ── Mobile dropdown — only nav links, no auth buttons ── */}
       {mobileMenuOpen && (
-        <div className="border-t border-[var(--border)] px-6 pb-4 pt-2 md:hidden">
+        <div className="border-t border-[var(--border)] px-4 pb-4 pt-2 sm:px-6 md:hidden">
           <div className="flex flex-col gap-1">
             {NAV_LINKS.map((link) => {
               return (
@@ -107,11 +136,6 @@ export function Navbar() {
                 </a>
               );
             })}
-            <a
-              className="mt-1 rounded-md px-3 py-2.5 text-sm font-medium text-[var(--ink)] hover:bg-[var(--surface-alt)] sm:hidden"
-            >
-              Sign in
-            </a>
           </div>
         </div>
       )}

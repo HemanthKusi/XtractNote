@@ -144,7 +144,15 @@ export function OutputPreview() {
           {/* Editor content area — sample blog post */}
           <div className="px-6 py-5 md:px-8 md:py-6">
             {/* From YouTube chip */}
-            <Chip variant="solid">From YouTube</Chip>
+            <span
+                className="inline-flex rounded-[var(--xn-radius-pill)] px-2.5 py-0.5 text-[11px] font-medium"
+                style={{
+                    backgroundColor: "var(--xn-accent-soft)",
+                    color: "var(--xn-accent)",
+                }}
+                >
+                From YouTube
+            </span>
 
             {/* Blog title */}
             <h3 className="mt-2 font-serif text-[26px] leading-[1.15] tracking-tight md:text-[30px]">

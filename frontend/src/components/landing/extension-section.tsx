@@ -37,7 +37,7 @@ export function ExtensionSection() {
   return (
     <section
       id="extension"
-      className="border-t border-[var(--border)] bg-[var(--xn-bg-deep)] px-6 py-16 md:px-12 md:py-[64px]"
+      className="border-t border-[var(--border)] px-6 py-16 md:px-12 md:py-[64px]"
     >
       <div
         className="
@@ -49,7 +49,15 @@ export function ExtensionSection() {
         {/* ── Left column: text + buttons ── */}
         <div>
           {/* Chrome extension chip */}
-          <Chip variant="outline">Chrome extension</Chip>
+          <span
+            className="inline-flex rounded-[var(--xn-radius-pill)] px-3 py-1 text-[12px] font-medium"
+            style={{
+                backgroundColor: "var(--xn-accent-soft)",
+                color: "var(--xn-accent)",
+            }}
+            >
+            Chrome Extension
+          </span>
 
           {/* Heading */}
           <h2 className="mt-3 font-serif text-4xl leading-[1.15] tracking-tight md:text-[42px]">

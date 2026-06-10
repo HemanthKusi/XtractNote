@@ -6,6 +6,8 @@ import { FormatCards } from "@/components/landing/format-cards";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { OutputPreview } from "@/components/landing/output-preview";
 import { ExtensionSection } from "@/components/landing/extension-section";
+import { CTASection } from "@/components/landing/cta-section";
+import { Footer } from "@/components/landing/footer";
 
 // ────────────────────────────────────────────────────────────
 // Landing Page
@@ -13,11 +15,13 @@ import { ExtensionSection } from "@/components/landing/extension-section";
 // The public marketing page at the root route (/).
 // Uses its own Navbar — NOT the AppShell.
 //
-// Sections are added incrementally across Phase 4 sessions:
-//   Session 1: Navbar + HeroSection              ✅ done
-//   Session 2: FormatCards + HowItWorks           ✅ done
-//   Session 3: OutputPreview + ExtensionSection    ✅ this session
-//   Session 4: CTASection + Footer
+// All sections built across Phase 4:
+//   Session 1: Navbar + HeroSection              ✅
+//   Session 2: FormatCards + HowItWorks           ✅
+//   Session 3: OutputPreview + ExtensionSection    ✅
+//   Session 4: CTASection + Footer                ✅
+//
+// Phase 4 complete. Next: mobile layout pass, then Phase 5.
 // ────────────────────────────────────────────────────────────
 export default function LandingPage() {
   return (
@@ -28,10 +32,8 @@ export default function LandingPage() {
       <HowItWorks />
       <OutputPreview />
       <ExtensionSection />
-
-      {/* ── Remaining sections (coming in Session 4) ── */}
-      {/* <CTASection /> */}
-      {/* <Footer /> */}
+      <CTASection />
+      <Footer />
     </div>
   );
 }

@@ -19,7 +19,7 @@ const SOCIALS = [
     label: "YouTube",
     href: "#",
     icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="#FF0000">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="#FF0000">
         <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.5 31.5 0 0 0 0 12a31.5 31.5 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1A31.5 31.5 0 0 0 24 12a31.5 31.5 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z" />
       </svg>
     ),
@@ -28,7 +28,7 @@ const SOCIALS = [
     label: "LinkedIn",
     href: "#",
     icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="#0A66C2">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="#0A66C2">
         <path d="M20.5 2h-17A1.5 1.5 0 0 0 2 3.5v17A1.5 1.5 0 0 0 3.5 22h17a1.5 1.5 0 0 0 1.5-1.5v-17A1.5 1.5 0 0 0 20.5 2ZM8 19H5v-9h3v9ZM6.5 8.5A1.75 1.75 0 1 1 8.3 6.8a1.75 1.75 0 0 1-1.8 1.7ZM20 19h-3v-4.7c0-1.1 0-2.5-1.5-2.5S14 13 14 14.2V19h-3v-9h2.9v1.2h0a3.2 3.2 0 0 1 2.9-1.6c3.1 0 3.7 2 3.7 4.7V19Z" />
       </svg>
     ),
@@ -37,7 +37,7 @@ const SOCIALS = [
     label: "GitHub",
     href: "#",
     icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2C6.5 2 2 6.5 2 12c0 4.4 2.9 8.2 6.8 9.5.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.4-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.8.8.1-.6.3-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10 10 0 0 0 22 12c0-5.5-4.5-10-10-10Z" />
       </svg>
     ),
@@ -90,26 +90,20 @@ export function Footer() {
 
             {/* Developer */}
             <div className="flex items-center gap-2">
-              <Avatar initials="HK" size="sm" />
-              <span className="text-[12px] text-[var(--ink-muted)]">Hemanth Kusi</span>
+              <Avatar initials="HK" size="md" />
+              <span className="text-[13px] text-[var(--ink-muted)]">Hemanth Kusi</span>
             </div>
 
             {/* Social links */}
-            <div className="mt-1 flex flex-wrap gap-2">
-              {SOCIALS.map((s) => (
+            <div className="mt-1 flex flex-wrap gap-4">
+            {SOCIALS.map((s) => (
                 <span
-                  key={s.label}
-                  title={s.label}
-                  className="
-                    inline-flex h-8 w-8 cursor-pointer items-center
-                    justify-center rounded-lg border border-[var(--border)]
-                    bg-[var(--xn-surface)] transition-colors
-                    hover:border-[var(--border-strong)]
-                  "
-                >
-                  {s.icon}
+                    key={s.label}
+                    title={s.label}
+                    className="inline-flex cursor-pointer items-center opacity-80 transition-opacity hover:opacity-100">
+                    {s.icon}
                 </span>
-              ))}
+            ))}
             </div>
           </div>
 

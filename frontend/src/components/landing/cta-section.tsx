@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 // ────────────────────────────────────────────────────────────
 export function CTASection() {
   return (
-    <section className="px-6 py-20 text-center md:px-12 md:py-[88px]">
+    <section className="border-t border-[var(--border)] px-6 py-20 text-center md:px-12 md:py-[88px]">
       <div className="mx-auto max-w-[700px]">
 
         {/* Eyebrow */}
@@ -26,23 +26,16 @@ export function CTASection() {
         </div>
 
         {/* Heading — "making" gets the accent underline */}
-        <h2
-          className="
-            mx-auto mt-2 max-w-[680px]
-            font-serif text-4xl leading-[1.1] tracking-tight
-            sm:text-5xl
-            md:text-[48px]
-          "
-        >
-          Stop &ldquo;I&rsquo;ll watch this later.&rdquo;
-          <br />
-          Start{" "}
-          <span className="underline-accent">making</span>{" "}
-          things.
+        <h2 className="mx-auto mt-4 max-w-[680px] font-serif text-4xl tracking-tight sm:text-5xl md:text-[48px]">
+            <span className="block">Stop <span className="underline-accent">&ldquo;I&rsquo;ll watch this later.&rdquo;</span></span>
+            <span className="mt-3 block">
+                Start{" "}
+                <span className="mark-yellow">making things</span>.
+            </span>
         </h2>
 
         {/* Buttons */}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Button variant="primary" size="lg">
             Try free — 10 generations
           </Button>
@@ -52,7 +45,7 @@ export function CTASection() {
         </div>
 
         {/* No-credit-card note */}
-        <div className="mt-3 font-mono text-[12px] text-[var(--ink-muted)]">
+        <div className="mt-4 font-mono text-[12px] text-[var(--ink-muted)]">
           No credit card · cancel anytime
         </div>
 

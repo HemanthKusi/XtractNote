@@ -71,8 +71,7 @@ export function FormatCards() {
       <div
         className="
           mx-auto grid max-w-[1200px] gap-4
-          grid-cols-1
-          sm:grid-cols-2
+          grid-cols-2
           md:grid-cols-3
           xl:grid-cols-6
         "
@@ -84,7 +83,7 @@ export function FormatCards() {
             interactive
             className="group"
           >
-            <div className="p-5">
+            <div className="p-3 md:p-5">
 
               {/* Icon + Title — same row */}
               <div className="flex items-center gap-2.5">
@@ -111,7 +110,7 @@ export function FormatCards() {
                   placeholders align across cards. */}
               <div
                 className="
-                  mx-2 mt-3 flex h-[50px] items-center justify-center px-3
+                  mx-2 mt-3 flex h-[35px] md:h-[50px] items-center justify-center px-3
                   rounded-[var(--radius-sm)]
                   bg-[var(--bg-deep)]
                   border border-[var(--border)]

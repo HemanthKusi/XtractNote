@@ -1,20 +1,11 @@
 // ─────────────────────────────────────────────────────────────
 // HowItWorks
 // ─────────────────────────────────────────────────────────────
-// Landing page section explaining the 5-step AI pipeline in
-// friendly, non-technical language.
+// Landing page section explaining the 5-step AI pipeline.
 //
-// Layout:
-//   - Alternate background band (surface-alt) with borders
-//   - Left-aligned text block: eyebrow, heading, description
-//   - 5 numbered circles connected by a horizontal line
-//
-// The five steps map to the LangGraph pipeline:
-//   01 Fetching the video    → Scout agent
-//   02 Reading the transcript → Reader agent
-//   03 Understanding the topic → Topic agent
-//   04 Drafting your content  → Router + Drafter agents
-//   05 Polishing & saving     → Polish + Save agents
+// Mobile: zigzag pipeline — circles alternate up/down with
+//         diagonal lines connecting right-edge to left-edge.
+// Desktop: horizontal pipeline with straight connecting line.
 //
 // Design reference: hifi-pages-a.jsx lines 98–128
 // ─────────────────────────────────────────────────────────────
@@ -40,10 +31,7 @@ const PIPELINE_STEPS = [
       >
         <div className="mx-auto max-w-[1100px]">
   
-          {/* ── Eyebrow label ──
-              Larger than the default .eyebrow utility (11px)
-              for better landing page visibility. Same styling
-              otherwise: mono, uppercase, accent color. */}
+          {/* ── Eyebrow label ── */}
           <div
             className="
               font-mono text-[13px] font-medium uppercase
@@ -70,45 +58,70 @@ const PIPELINE_STEPS = [
             five friendly steps; the work happens in the background.
           </p>
   
-          {/* ── Pipeline steps ──
-              The grid creates 5 equal columns. A horizontal line
-              connects all circles. Each circle sits on top of the
-              line with z-index and a matching bg that "covers" the
-              line behind it, creating the pipeline appearance. */}
-          <div className="relative mt-12 grid grid-cols-5">
+          {/* ── Pipeline — MOBILE: zigzag ──
+              Stretched with -mx-2 to use more horizontal space.
+              30px circles with 35px vertical offset between up/down.
+              Lines use 4% offset from circle centers (≈15px radius
+              on ~370px container) to connect at circle edges. */}
+          <div className="relative -mx-5 mt-8 md:hidden" style={{ height: 105 }}>
+            {/* SVG lines: right-edge → left-edge of next circle */}
+            <svg className="absolute inset-0" width="100%" height="100%" fill="none">
+              <line x1="14%" y1="15" x2="26%" y2="50" stroke="currentColor" strokeWidth="1" />
+              <line x1="34%" y1="50" x2="46%" y2="15" stroke="currentColor" strokeWidth="1" />
+              <line x1="54%" y1="15" x2="66%" y2="50" stroke="currentColor" strokeWidth="1" />
+              <line x1="74%" y1="50" x2="86%" y2="15" stroke="currentColor" strokeWidth="1" />
+            </svg>
   
-            {/* Horizontal connecting line — uses border-t-2 with
-                the same border-strong color as the circles so they
-                match visually. Inset 10% on each side so the line
-                starts/ends at the center of first/last circles.
-                top: 19px = just below center of 40px circle. */}
+            {/* Circles + labels */}
+            <div className="absolute inset-0 grid grid-cols-5" style={{ zIndex: 2 }}>
+              {PIPELINE_STEPS.map((step, i) => {
+                const isDown = i % 2 === 1;
+                return (
+                  <div
+                    key={step.number}
+                    className="flex flex-col items-center"
+                    style={{ paddingTop: isDown ? 35 : 0 }}
+                  >
+                    <div
+                      className="
+                        flex h-[34px] w-[34px] items-center justify-center
+                        rounded-full border border-[var(--border-strong)]
+                        bg-[var(--xn-surface-alt)]
+                        font-mono text-[10px] font-medium text-[var(--ink-muted)]
+                      "
+                    >
+                      {step.number}
+                    </div>
+                    <div className="mt-1 max-w-[65px] text-center text-[10px] font-medium leading-tight">
+                      {step.label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+  
+          {/* ── Pipeline — DESKTOP: horizontal with straight line ── */}
+          <div className="relative mt-12 hidden md:grid md:grid-cols-5">
             <div
               className="absolute left-[10%] right-[10%] border-t-2 border-[var(--border-strong)]"
               style={{ top: 19 }}
             />
-  
-            {/* Individual steps */}
             {PIPELINE_STEPS.map((step) => (
               <div
                 key={step.number}
                 className="relative z-[1] flex flex-col items-center text-center"
               >
-                {/* Numbered circle — bg uses --xn-surface-alt
-                    (the actual CSS variable) so it fills with the
-                    section background and covers the line behind it */}
                 <div
                   className="
                     flex h-[40px] w-[40px] items-center justify-center
-                    rounded-full
-                    border border-[var(--border-strong)]
+                    rounded-full border border-[var(--border-strong)]
                     bg-[var(--xn-surface-alt)]
                     font-mono text-xs font-medium text-[var(--ink-muted)]
                   "
                 >
                   {step.number}
                 </div>
-  
-                {/* Step label */}
                 <div className="mt-3 max-w-[140px] text-[14px] font-medium leading-snug">
                   {step.label}
                 </div>

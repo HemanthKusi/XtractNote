@@ -25,7 +25,7 @@ import { Footer } from "@/components/landing/footer";
 // ────────────────────────────────────────────────────────────
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-xn-bg">
+    <div className="min-h-screen overflow-x-clip bg-xn-bg">
       <Navbar />
       <HeroSection />
       <FormatCards />

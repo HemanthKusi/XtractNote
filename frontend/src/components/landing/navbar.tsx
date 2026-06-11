@@ -41,7 +41,7 @@ export function Navbar() {
       "
     >
       {/* ── Desktop row ── */}
-      <div className="mx-auto flex max-w-[1400px] items-center gap-4 px-4 py-4 sm:gap-6 sm:px-6 md:px-12 md:py-5">
+      <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-3 py-3 sm:gap-6 sm:px-6 md:px-12 md:py-5">
 
         {/* Logo — two renders for responsive sizing.
             Logo takes a numeric size prop, not a Tailwind class,

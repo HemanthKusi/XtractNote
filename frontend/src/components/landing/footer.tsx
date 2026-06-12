@@ -109,7 +109,7 @@ export function Footer() {
 
           {/* ── Link columns ── */}
           {Object.entries(FOOTER_LINKS).map(([heading, links]) => (
-            <div key={heading} className="flex flex-col gap-2.5">
+            <div key={heading} className="hidden sm:flex flex-col gap-2.5">
               <div className="text-[12.5px] font-semibold">{heading}</div>
               <div className="flex flex-col gap-1.5">
                 {links.map((link) => (

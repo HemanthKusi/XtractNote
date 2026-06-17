@@ -20,7 +20,7 @@ langchain-anthropic==0.3.2
 supabase==2.11.0
 
 # YouTube — transcript extraction (free, no API key needed)
-youtube-transcript-api==1.2.4
+youtube-transcript-api>=1.2,<2
 
 # HTTP client — for YouTube Data API calls
 httpx==0.28.1

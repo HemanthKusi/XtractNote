@@ -1,25 +1,23 @@
 """
 backend/app/api/youtube.py
 
-The YouTube metadata endpoint: POST /api/youtube/metadata
-
-Flow:
-  1. Receive a videoId from the frontend (already extracted there).
-  2. RE-VALIDATE it server-side (never trust the client).
-  3. Call the YouTube Data API v3 with our secret key.
-  4. Reshape the response into our VideoMeta contract and return it.
+YouTube endpoints:
+  - POST /api/youtube/metadata    -> video title, channel, thumbnail, duration
+  - POST /api/youtube/transcript  -> cleaned transcript text + language info
 
 The route prefix "/api/youtube" is added in main.py via include_router,
-so here we only declare the path relative to that ("/metadata").
+so here we only declare paths relative to that ("/metadata", "/transcript").
 """
 
 import re
 
 import httpx
 from fastapi import APIRouter, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services.transcript import TranscriptServiceError, fetch_transcript
 
 router = APIRouter()
 
@@ -58,6 +56,24 @@ class VideoMeta(BaseModel):
     durationSeconds: int | None = None
 
 
+class TranscriptRequest(BaseModel):
+    # Same camelCase contract as the metadata request.
+    videoId: str
+
+
+class TranscriptResponse(BaseModel):
+    # camelCase to mirror the frontend's Transcript type exactly.
+    # Note: we deliberately do NOT ship the per-line `segments` array yet.
+    # fullText is what the AI step needs; segments (with timestamps) are
+    # computed server-side and can be exposed later for timestamp features.
+    videoId: str
+    language: str          # human-readable, e.g. "English"
+    languageCode: str      # e.g. "en"
+    isGenerated: bool       # True = auto-captions, False = human-written
+    segmentCount: int
+    fullText: str
+
+
 # ── Helpers ──────────────────────────────────────────────────
 def _parse_iso8601_duration(value: str | None) -> int | None:
     """Convert 'PT1H24M8S' -> total seconds. Returns None if unparseable."""
@@ -80,7 +96,18 @@ def _best_thumbnail(thumbnails: dict, video_id: str) -> str:
     return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
 
 
-# ── Endpoint ─────────────────────────────────────────────────
+# Map each transcript error code to the HTTP status we return for it.
+# The codes themselves come from the service layer (File 1) and flow
+# straight through to the frontend's ERROR_MESSAGES map.
+_TRANSCRIPT_ERROR_STATUS = {
+    "no-captions": 422,        # video is fine, but there's no usable transcript
+    "video-not-found": 404,    # bad / private / removed video
+    "transcript-blocked": 502, # YouTube blocked our server's request
+    "transcript-failed": 502,  # any other upstream retrieval failure
+}
+
+
+# ── Metadata endpoint ────────────────────────────────────────
 @router.post("/metadata", response_model=VideoMeta)
 async def get_metadata(req: MetadataRequest) -> VideoMeta:
     video_id = req.videoId.strip()
@@ -146,4 +173,40 @@ async def get_metadata(req: MetadataRequest) -> VideoMeta:
         thumbnailUrl=_best_thumbnail(snippet.get("thumbnails", {}), video_id),
         url=f"https://www.youtube.com/watch?v={video_id}",
         durationSeconds=_parse_iso8601_duration(content_details.get("duration")),
+    )
+
+
+# ── Transcript endpoint ──────────────────────────────────────
+@router.post("/transcript", response_model=TranscriptResponse)
+async def get_transcript(req: TranscriptRequest) -> TranscriptResponse:
+    video_id = req.videoId.strip()
+
+    # 1. Re-validate the ID, same as metadata — never trust the client.
+    if not _VIDEO_ID_RE.match(video_id):
+        raise HTTPException(status_code=400, detail="Invalid video ID.")
+
+    # 2. fetch_transcript() is BLOCKING (the library uses `requests` under
+    #    the hood). Calling it directly inside an async route would freeze
+    #    the whole event loop while it waits on the network. run_in_threadpool
+    #    runs it on a worker thread so the server stays responsive.
+    try:
+        data = await run_in_threadpool(fetch_transcript, video_id)
+    except TranscriptServiceError as exc:
+        # 3. The service raised a known, typed error. Translate its `code`
+        #    into an HTTP status and pass the code through to the frontend
+        #    as structured detail so the UI can pick the right message.
+        status = _TRANSCRIPT_ERROR_STATUS.get(exc.code, 502)
+        raise HTTPException(
+            status_code=status,
+            detail={"code": exc.code, "message": str(exc)},
+        )
+
+    # 4. Success. Reshape the dataclass into our camelCase contract.
+    return TranscriptResponse(
+        videoId=data.video_id,
+        language=data.language,
+        languageCode=data.language_code,
+        isGenerated=data.is_generated,
+        segmentCount=data.segment_count,
+        fullText=data.full_text,
     )

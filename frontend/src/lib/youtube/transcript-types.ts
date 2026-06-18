@@ -36,15 +36,18 @@ export interface Transcript {
   /**
    * Every reason fetching a transcript can fail, as a closed union.
    *
+   * Named to parallel MetaFailReason in lib/api/youtube.ts, so both API
+   * clients return results with the same `reason` shape.
+   *
    * The first four come straight from the backend (it sends them as
    * `detail.code`). The last one is client-side only: the API client uses it
-   * whenever the request itself fails before we ever get a coded response
-   * (network down, server unreachable, unparseable body).
+   * whenever the request never reaches a coded response (network down, server
+   * unreachable, unparseable body).
    *
    * The /create page's ERROR_MESSAGES map must cover every member of this
    * union — TypeScript will flag it if one is ever missing.
    */
-  export type TranscriptErrorCode =
+  export type TranscriptFailReason =
     | "no-captions" // captions are off / none exist / transcript is empty
     | "video-not-found" // invalid, private, or removed video
     | "transcript-blocked" // YouTube blocked our server's request (try again)

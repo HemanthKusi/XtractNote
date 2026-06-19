@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     ai_provider: Literal["openai", "anthropic"] = "openai"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    openai_model: str = "gpt-4o"
+    anthropic_model: str = "claude-sonnet-4-6"
 
     # ── YouTube ──
     youtube_api_key: str = ""

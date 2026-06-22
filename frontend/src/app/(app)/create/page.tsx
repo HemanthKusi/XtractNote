@@ -3,14 +3,15 @@
 // ─────────────────────────────────────────────────────────────
 // app/(app)/create/page.tsx  →  route: /create
 //
-// The first interactive screen. The Phase 5 + 6 flow lives here:
+// The full create flow lives here:
 //   input -> extractVideoId -> fetchVideoMetadata -> VideoPreviewCard
-//         -> (Continue) -> fetchTranscript -> done / transcript-error
+//         -> (Continue) -> fetchTranscript
+//         -> (pick a type) -> generateContent -> OutputView
 //
 // It's a Client Component because it holds state and handles events.
 // This is also the ONE place that turns machine-readable failure
-// reasons (from extract, metadata, and transcript) into friendly,
-// human messages.
+// reasons (from extract, metadata, transcript, AND generation) into
+// friendly, human messages.
 // ─────────────────────────────────────────────────────────────
 
 import { useState } from "react";
@@ -21,24 +22,34 @@ import {
 } from "@/lib/youtube/extract-video-id";
 import { fetchVideoMetadata, type MetaFailReason } from "@/lib/api/youtube";
 import { fetchTranscript } from "@/lib/api/transcript";
+import { generateContent } from "@/lib/api/generate";
 import type { VideoMeta } from "@/lib/youtube/types";
 import type {
   Transcript,
   TranscriptFailReason,
 } from "@/lib/youtube/transcript-types";
+import type {
+  GeneratableContentType,
+  GeneratedContent,
+  GenerateFailReason,
+} from "@/lib/content/types";
 import { VideoPreviewCard } from "@/components/create/video-preview-card";
+import { ContentTypePicker } from "@/components/create/content-type-picker";
+import { OutputView } from "@/components/output/output-view";
 
-// ASSUMED APIs — adjust paths/props to match your Phase 3 components.
-// Button: children + onClick + variant + disabled.
-// Input:  value + onChange + placeholder + standard input attrs.
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 // ── Friendly copy for every failure reason ──────────────────
-// One map covering extract, metadata, AND transcript reasons.
+// One map covering extract, metadata, transcript, AND generate reasons.
 // Change wording here without touching any logic.
-// Union of every failure reason the three layers can produce.
-type FailReason = ExtractFailReason | MetaFailReason | TranscriptFailReason;
+// Note: "network" and "unknown" are shared across metadata and generate —
+// they appear once, not twice.
+type FailReason =
+  | ExtractFailReason
+  | MetaFailReason
+  | TranscriptFailReason
+  | GenerateFailReason;
 
 const ERROR_MESSAGES: Record<FailReason, string> = {
   // From extractVideoId
@@ -67,14 +78,25 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
     "We couldn't get the transcript for this video. Please try again.",
   "request-failed":
     "We couldn't reach the server. Check your connection and that the app is running.",
+  // From generateContent
+  "empty-transcript":
+    "There's no transcript text to work from. Try fetching the video again.",
+  "transcript-too-long":
+    "This video's transcript is too long to process in one pass. Try a shorter video for now.",
+  "unknown-content-type":
+    "That content type isn't available yet. Pick another format.",
+  "provider-misconfigured":
+    "The AI service isn't configured correctly on our end. Please try again shortly.",
+  "generation-failed":
+    "We couldn't generate the content this time. Please try again.",
 };
 
 // ── A small, explicit state machine ─────────────────────────
-// Phases for the metadata stage (idle/loading/ready/error) plus the
-// transcript stage (transcribing/transcript-error/done). Every
-// transcript-stage phase carries `meta`, so the video preview stays
-// on screen while we fetch — and a transcript error never throws the
-// loaded video away.
+// Metadata stage (idle/loading/ready/error) + transcript stage
+// (transcribing/transcript-error) + generation stage
+// (picking/generating/output). Every stage past metadata carries `meta`,
+// and every stage past transcript also carries `transcript`, so nothing
+// loaded is ever thrown away by a later error.
 type Status =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -82,11 +104,32 @@ type Status =
   | { phase: "error"; message: string }
   | { phase: "transcribing"; meta: VideoMeta }
   | { phase: "transcript-error"; meta: VideoMeta; message: string }
-  | { phase: "done"; meta: VideoMeta; transcript: Transcript };
+  | { phase: "picking"; meta: VideoMeta; transcript: Transcript }
+  | {
+      phase: "generating";
+      meta: VideoMeta;
+      transcript: Transcript;
+      contentType: GeneratableContentType;
+    }
+  | {
+      phase: "generate-error";
+      meta: VideoMeta;
+      transcript: Transcript;
+      message: string;
+    }
+  | {
+      phase: "output";
+      meta: VideoMeta;
+      transcript: Transcript;
+      result: GeneratedContent;
+    };
 
 export default function CreatePage() {
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>({ phase: "idle" });
+  // Transient UI choice in the picker — not a flow phase, so it lives apart.
+  const [selectedType, setSelectedType] =
+    useState<GeneratableContentType | null>(null);
 
   async function handleSubmit() {
     // Step 1 — extract the ID on the client (instant, no network).
@@ -110,6 +153,7 @@ export default function CreatePage() {
 
   function handleChange() {
     // Back to the input (keep the text so they can edit it).
+    setSelectedType(null);
     setStatus({ phase: "idle" });
   }
 
@@ -134,16 +178,46 @@ export default function CreatePage() {
       return;
     }
 
-    // Success — we have everything we need to generate content.
-    setStatus({ phase: "done", meta, transcript: result.data });
-    // TODO (next phase): navigate to content-type selection, passing
-    // meta + transcript along.
-    console.log(
-      "Transcript ready:",
-      result.data.segmentCount,
-      "lines,",
-      result.data.language
-    );
+    // Success — transcript ready; move to format selection.
+    setStatus({ phase: "picking", meta, transcript: result.data });
+  }
+
+  async function handleGenerate() {
+    // Valid from "picking" or "generate-error" (retry), and needs a selection.
+    const current = status;
+    const base =
+      current.phase === "picking" || current.phase === "generate-error"
+        ? current
+        : null;
+    if (!base || !selectedType) return;
+
+    const { meta, transcript } = base;
+    setStatus({ phase: "generating", meta, transcript, contentType: selectedType });
+
+    const result = await generateContent(transcript.fullText, selectedType);
+    if (!result.ok) {
+      setStatus({
+        phase: "generate-error",
+        meta,
+        transcript,
+        message: ERROR_MESSAGES[result.reason],
+      });
+      return;
+    }
+
+    setStatus({ phase: "output", meta, transcript, result: result.data });
+  }
+
+  function handleGenerateAnother() {
+    // Reuse the transcript — back to the picker, no re-fetch.
+    const current = status;
+    if (current.phase !== "output") return;
+    setSelectedType(null);
+    setStatus({
+      phase: "picking",
+      meta: current.meta,
+      transcript: current.transcript,
+    });
   }
 
   const isLoading = status.phase === "loading";
@@ -152,15 +226,26 @@ export default function CreatePage() {
     status.phase === "loading" ||
     status.phase === "error";
 
-  // The video preview is shown for every transcript-stage phase. Pulling
-  // meta out this way lets TypeScript narrow it to VideoMeta below.
+  // The video preview is shown for every stage past metadata.
   const meta =
     status.phase === "ready" ||
     status.phase === "transcribing" ||
     status.phase === "transcript-error" ||
-    status.phase === "done"
+    status.phase === "picking" ||
+    status.phase === "generating" ||
+    status.phase === "generate-error" ||
+    status.phase === "output"
       ? status.meta
       : null;
+
+  // Stages where the format picker / generation UI should appear.
+  const inGenerationStage =
+    status.phase === "picking" ||
+    status.phase === "generating" ||
+    status.phase === "generate-error" ||
+    status.phase === "output";
+
+  const isGenerating = status.phase === "generating";
 
   return (
     <div className="mx-auto max-w-content px-6 py-10">
@@ -186,16 +271,11 @@ export default function CreatePage() {
               disabled={isLoading}
               className="flex-1"
             />
-            <Button
-              variant="primary"
-              onClick={handleSubmit}
-              disabled={isLoading}
-            >
+            <Button variant="primary" onClick={handleSubmit} disabled={isLoading}>
               {isLoading ? "Fetching…" : "Fetch"}
             </Button>
           </div>
 
-          {/* Loading row */}
           {isLoading && (
             <div className="mt-3 flex items-center gap-2 text-sm text-xn-ink-muted">
               <Spinner />
@@ -203,9 +283,6 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* Error message — accent-colored attention treatment.
-              (Design system has no dedicated danger token yet; using
-              accent keeps this token-clean until the redesign adds one.) */}
           {status.phase === "error" && (
             <div className="mt-3 flex items-start gap-2 text-sm text-xn-accent">
               <AlertIcon />
@@ -215,7 +292,7 @@ export default function CreatePage() {
         </>
       )}
 
-      {/* Preview + transcript stage (shown once metadata loads) */}
+      {/* Preview + transcript/generation stages (shown once metadata loads) */}
       {meta && (
         <>
           <VideoPreviewCard
@@ -225,16 +302,15 @@ export default function CreatePage() {
                 <Button
                   variant="ghost"
                   onClick={handleChange}
-                  disabled={status.phase === "transcribing"}
+                  disabled={status.phase === "transcribing" || isGenerating}
                 >
                   Change
                 </Button>
-                {status.phase === "done" ? (
-                  // Next screen (content-type selection) is a later phase.
-                  <Button variant="primary" disabled>
-                    Continue
-                  </Button>
-                ) : (
+
+                {/* The right-hand action depends on the stage. Once we're past
+                    transcript fetch (generation stages), the preview's primary
+                    action is retired — the Generate button lives by the picker. */}
+                {!inGenerationStage && (
                   <Button
                     variant="primary"
                     onClick={handleContinue}
@@ -267,16 +343,71 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* Success row */}
-          {status.phase === "done" && (
-            <div className="mt-3 flex items-start gap-2 text-sm text-xn-ink-muted">
-              <CheckIcon />
-              <span>
-                Transcript ready — {status.transcript.segmentCount} lines ·{" "}
-                {status.transcript.language}
-                {status.transcript.isGenerated ? " (auto-generated)" : ""}.
-                Content type selection is next.
-              </span>
+          {/* ── Generation stage ── */}
+          {inGenerationStage && (
+            <div className="mt-8">
+              {/* Picker is hidden once output is shown, to keep focus on result */}
+              {status.phase !== "output" && (
+                <>
+                  <h2 className="mb-1 font-serif text-h3 text-xn-ink">
+                    Choose a format
+                  </h2>
+                  <p className="mb-4 text-sm text-xn-ink-muted">
+                    Transcript ready — {status.transcript.segmentCount} lines ·{" "}
+                    {status.transcript.language}
+                    {status.transcript.isGenerated ? " (auto-generated)" : ""}.
+                  </p>
+
+                  <ContentTypePicker
+                    selected={selectedType}
+                    onSelect={setSelectedType}
+                    disabled={isGenerating}
+                  />
+
+                  <div className="mt-5 flex items-center gap-3">
+                    <Button
+                      variant="primary"
+                      onClick={handleGenerate}
+                      disabled={!selectedType || isGenerating}
+                    >
+                      {isGenerating
+                        ? "Generating…"
+                        : status.phase === "generate-error"
+                          ? "Try again"
+                          : "Generate"}
+                    </Button>
+
+                    {isGenerating && (
+                      <div className="flex items-center gap-2 text-sm text-xn-ink-muted">
+                        <Spinner />
+                        <span>Working through the transcript…</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {status.phase === "generate-error" && (
+                    <div className="mt-3 flex items-start gap-2 text-sm text-xn-accent">
+                      <AlertIcon />
+                      <span>{status.message}</span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ── Output ── */}
+              {status.phase === "output" && (
+                <>
+                  <OutputView content={status.result} />
+                  <div className="mt-5 flex items-center gap-3">
+                    <Button variant="primary" onClick={handleGenerateAnother}>
+                      Generate another
+                    </Button>
+                    <Button variant="ghost" onClick={handleChange}>
+                      Start over
+                    </Button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </>
@@ -315,22 +446,6 @@ function AlertIcon() {
     >
       <circle cx="12" cy="12" r="9" />
       <path d="M12 8v5M12 16.5v.01" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className="mt-0.5 shrink-0"
-    >
-      <path d="M20 6 9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

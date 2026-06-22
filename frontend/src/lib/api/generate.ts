@@ -13,12 +13,12 @@
 // misconfigured / failed), so reading detail.code matters here too.
 // ─────────────────────────────────────────────────────────────
 
-import type {
-    ContentType,
+  import type {
+    GeneratableContentType,
     GeneratedContent,
     GenerateFailReason,
   } from "@/lib/content/types";
-  
+    
   // Same backend base URL the other clients use. NEXT_PUBLIC_ so it's
   // available in browser code; falls back to localhost in dev.
   const API_BASE_URL =
@@ -84,9 +84,9 @@ import type {
    * chosen content type. Returns a discriminated union — check `.ok` first.
    */
   export async function generateContent(
-    fullText: string,
-    contentType: ContentType
-  ): Promise<GenerateContentResult> {
+  fullText: string,
+  contentType: GeneratableContentType
+): Promise<GenerateContentResult> {
     try {
       const response = await fetch(`${API_BASE_URL}/api/generate`, {
         method: "POST",

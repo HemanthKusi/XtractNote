@@ -27,8 +27,8 @@
 // ─────────────────────────────────────────────────────────────
 
 import { type ReactNode } from "react";
-import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/components/layout/user-menu";
 
 // ── Icons ───────────────────────────────────────────────────
 
@@ -66,9 +66,6 @@ interface TopbarProps {
 // ── Component ───────────────────────────────────────────────
 
 export function Topbar({
-  userName,
-  userInitials = "MK",
-  userImage,
   onSearchClick,
   children,
 }: TopbarProps) {
@@ -137,12 +134,8 @@ export function Topbar({
           aria-label="Notifications"
         />
 
-        {/* User avatar */}
-        <Avatar
-          initials={userInitials}
-          src={userImage}
-          size="md"
-        />
+        {/* User menu (avatar + sign-out dropdown) */}
+        <UserMenu />
       </div>
     </div>
   );

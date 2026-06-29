@@ -78,7 +78,7 @@ export default function ResetPasswordPage() {
                 This password reset link is no longer valid. Please request a new one.
               </p>
               <div className="mt-6">
-                <Link href="/forgot-password">
+                <Link href={ROUTES.FORGOT_PASSWORD} className="font-medium text-xn-ink hover:text-xn-accent transition-colors">
                   <Button variant="primary" size="lg" fullWidth>Request a new link</Button>
                 </Link>
               </div>

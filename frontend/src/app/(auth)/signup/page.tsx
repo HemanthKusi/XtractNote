@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { Button, Input, Card } from "@/components/ui";
 import { Logo } from "@/components/layout";
+import { OtpVerify } from "@/components/auth/otp-verify";
 
 // Same inline Google "G" as the login page (lucide dropped brand marks).
 function GoogleIcon() {
@@ -106,7 +107,7 @@ function SignupForm() {
     }
   }
 
-  // ── "Check your inbox" state ──────────────────────────────
+  // ── "Check your inbox" state (link + 6-digit code) ────────
   if (awaitingConfirm) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-xn-bg px-4">
@@ -115,21 +116,34 @@ function SignupForm() {
             <Logo size={28} showWordmark />
           </div>
           <Card padding="lg">
-            <div className="text-center">
+            <div className="mb-5 text-center">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-xn-surface-alt">
                 <MailCheck className="h-6 w-6 text-xn-accent" />
               </div>
               <h1 className="text-xl font-semibold text-xn-ink">Check your inbox</h1>
               <p className="mt-2 text-sm text-xn-ink-muted">
-                We sent a confirmation link to <span className="font-medium text-xn-ink">{email}</span>.
-                Click it to activate your account, then sign in.
+                We sent a confirmation email to{" "}
+                <span className="font-medium text-xn-ink">{email}</span>. Enter the
+                6-digit code below, or click the link in the email.
               </p>
-              <div className="mt-6">
-                <Link href={ROUTES.LOGIN}>
-                  <Button variant="default" size="lg" fullWidth>Back to sign in</Button>
-                </Link>
-              </div>
             </div>
+
+            {/* Code path → on success, straight into the app */}
+            <OtpVerify
+              email={email}
+              type="signup"
+              resendRedirectTo={`${window.location.origin}/auth/callback?redirectTo=${encodeURIComponent(dest)}`}
+              onVerified={() => {
+                router.push(dest);
+                router.refresh();
+              }}
+            />
+
+            <p className="mt-5 text-center text-sm text-xn-ink-muted">
+              <Link href={ROUTES.LOGIN} className="font-medium text-xn-ink hover:text-xn-accent transition-colors">
+                Back to sign in
+              </Link>
+            </p>
           </Card>
         </div>
       </div>

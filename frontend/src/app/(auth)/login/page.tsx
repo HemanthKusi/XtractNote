@@ -163,7 +163,15 @@ function LoginForm() {
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="password" className="block text-sm font-medium text-xn-ink">Password</label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="block text-sm font-medium text-xn-ink">Password</label>
+                <Link
+                  href={ROUTES.FORGOT_PASSWORD}
+                  className="text-xs font-medium text-xn-ink-muted hover:text-xn-accent transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}

@@ -16,3 +16,8 @@ create table if not exists public.folders (
 
 -- Index for fast lookups by user
 create index if not exists idx_folders_user_id on public.folders(user_id);
+
+-- Keep updated_at current on changes
+create or replace trigger trg_folders_updated
+  before update on public.folders
+  for each row execute procedure public.touch_updated_at();

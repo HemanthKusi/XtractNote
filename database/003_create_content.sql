@@ -35,3 +35,8 @@ create index if not exists idx_content_user_id on public.generated_content(user_
 create index if not exists idx_content_folder_id on public.generated_content(folder_id);
 create index if not exists idx_content_type on public.generated_content(content_type);
 create index if not exists idx_content_created on public.generated_content(created_at desc);
+
+-- Keep updated_at current on changes
+create or replace trigger trg_content_updated
+  before update on public.generated_content
+  for each row execute procedure public.touch_updated_at();

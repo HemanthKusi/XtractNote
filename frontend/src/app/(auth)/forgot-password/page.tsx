@@ -7,12 +7,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { Mail, MailCheck } from "lucide-react";
 
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { Button, Input, Card } from "@/components/ui";
 import { Logo } from "@/components/layout";
+import { OtpVerify } from "@/components/auth/otp-verify";
 
 export default function ForgotPasswordPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -45,7 +48,7 @@ export default function ForgotPasswordPage() {
     setLoading(false);
   }
 
-  // ── Success state ──
+  // ── Success state (link + 6-digit code) ──
   if (sent) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-xn-bg px-4">
@@ -54,21 +57,31 @@ export default function ForgotPasswordPage() {
             <Logo size={28} showWordmark />
           </div>
           <Card padding="lg">
-            <div className="text-center">
+            <div className="mb-5 text-center">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-xn-surface-alt">
                 <MailCheck className="h-6 w-6 text-xn-accent" />
               </div>
               <h1 className="text-xl font-semibold text-xn-ink">Check your inbox</h1>
               <p className="mt-2 text-sm text-xn-ink-muted">
-                If an account exists for <span className="font-medium text-xn-ink">{email}</span>,
-                we&apos;ve sent a link to reset your password.
+                If an account exists for{" "}
+                <span className="font-medium text-xn-ink">{email}</span>, we sent a
+                reset code. Enter it below, or click the link in the email.
               </p>
-              <div className="mt-6">
-                <Link href={ROUTES.LOGIN}>
-                  <Button variant="default" size="lg" fullWidth>Back to sign in</Button>
-                </Link>
-              </div>
             </div>
+
+            {/* Code path → on success, go set a new password */}
+            <OtpVerify
+              email={email}
+              type="recovery"
+              resendRedirectTo={`${window.location.origin}/auth/callback?redirectTo=${encodeURIComponent(ROUTES.RESET_PASSWORD)}`}
+              onVerified={() => router.push(ROUTES.RESET_PASSWORD)}
+            />
+
+            <p className="mt-5 text-center text-sm text-xn-ink-muted">
+              <Link href={ROUTES.LOGIN} className="font-medium text-xn-ink hover:text-xn-accent transition-colors">
+                Back to sign in
+              </Link>
+            </p>
           </Card>
         </div>
       </div>

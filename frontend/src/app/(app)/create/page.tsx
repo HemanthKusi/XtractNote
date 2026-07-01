@@ -23,6 +23,7 @@ import {
 import { fetchVideoMetadata, type MetaFailReason } from "@/lib/api/youtube";
 import { fetchTranscript } from "@/lib/api/transcript";
 import { generateContent } from "@/lib/api/generate";
+import { saveGeneratedContent, type SaveFailReason } from "@/lib/api/content";
 import type { VideoMeta } from "@/lib/youtube/types";
 import type {
   Transcript,
@@ -49,7 +50,8 @@ type FailReason =
   | ExtractFailReason
   | MetaFailReason
   | TranscriptFailReason
-  | GenerateFailReason;
+  | GenerateFailReason
+  | SaveFailReason;
 
 const ERROR_MESSAGES: Record<FailReason, string> = {
   // From extractVideoId
@@ -89,6 +91,12 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
     "The AI service isn't configured correctly on our end. Please try again shortly.",
   "generation-failed":
     "We couldn't generate the content this time. Please try again.",
+  // From saveGeneratedContent
+  "not-authenticated":
+    "Please sign in again to save this — your session may have expired.",
+  "insert-failed":
+    "We couldn't save this just now. Please try again.",
+  // Note: "network" is already defined above (shared with metadata) — not repeated.
 };
 
 // ── A small, explicit state machine ─────────────────────────
@@ -130,6 +138,12 @@ export default function CreatePage() {
   // Transient UI choice in the picker — not a flow phase, so it lives apart.
   const [selectedType, setSelectedType] =
     useState<GeneratableContentType | null>(null);
+
+
+  // Save state for the output stage. Transient UI, so it lives apart from the
+  // flow machine (like selectedType). Reset whenever a new result appears.
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveError, setSaveError] = useState("");
 
   async function handleSubmit() {
     // Step 1 — extract the ID on the client (instant, no network).
@@ -205,7 +219,28 @@ export default function CreatePage() {
       return;
     }
 
+    setSaveState("idle");
+    setSaveError("");
     setStatus({ phase: "output", meta, transcript, result: result.data });
+  }
+
+  async function handleSave() {
+    const current = status;
+    if (current.phase !== "output") return;
+    // Guard: don't double-save the same result.
+    if (saveState === "saving" || saveState === "saved") return;
+
+    setSaveState("saving");
+    setSaveError("");
+
+    const result = await saveGeneratedContent(current.meta, current.result);
+    if (!result.ok) {
+      setSaveState("idle");
+      setSaveError(ERROR_MESSAGES[result.reason]);
+      return;
+    }
+
+    setSaveState("saved");
   }
 
   function handleGenerateAnother() {
@@ -399,13 +434,31 @@ export default function CreatePage() {
                 <>
                   <OutputView content={status.result} />
                   <div className="mt-5 flex items-center gap-3">
-                    <Button variant="primary" onClick={handleGenerateAnother}>
+                    <Button
+                      variant="primary"
+                      onClick={handleSave}
+                      disabled={saveState === "saving" || saveState === "saved"}
+                    >
+                      {saveState === "saving"
+                        ? "Saving…"
+                        : saveState === "saved"
+                          ? "Saved ✓"
+                          : "Save"}
+                    </Button>
+                    <Button variant="ghost" onClick={handleGenerateAnother}>
                       Generate another
                     </Button>
                     <Button variant="ghost" onClick={handleChange}>
                       Start over
                     </Button>
                   </div>
+
+                  {saveError && (
+                    <div className="mt-3 flex items-start gap-2 text-sm text-xn-accent">
+                      <AlertIcon />
+                      <span>{saveError}</span>
+                    </div>
+                  )}
                 </>
               )}
             </div>

@@ -40,6 +40,7 @@ import { OutputView } from "@/components/output/output-view";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/shared/toast-provider";
 
 // ── Friendly copy for every failure reason ──────────────────
 // One map covering extract, metadata, transcript, AND generate reasons.
@@ -132,8 +133,9 @@ type Status =
       result: GeneratedContent;
     };
 
-export default function CreatePage() {
-  const [input, setInput] = useState("");
+  export default function CreatePage() {
+      const toast = useToast();
+      const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>({ phase: "idle" });
   // Transient UI choice in the picker — not a flow phase, so it lives apart.
   const [selectedType, setSelectedType] =
@@ -237,10 +239,12 @@ export default function CreatePage() {
     if (!result.ok) {
       setSaveState("idle");
       setSaveError(ERROR_MESSAGES[result.reason]);
+      toast.error(ERROR_MESSAGES[result.reason]);
       return;
     }
 
     setSaveState("saved");
+    toast.success("Saved to your library");
   }
 
   function handleGenerateAnother() {

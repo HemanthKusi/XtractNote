@@ -207,7 +207,7 @@ function ToastNotification({
   // ── Auto-dismiss timer ──
   // Start a timer when the toast appears. When it expires,
   // call onDismiss to remove it from the list.
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     timerRef.current = setTimeout(onDismiss, toast.duration);

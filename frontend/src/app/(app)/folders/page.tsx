@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { CreateFolderModal } from "@/components/folders/create-folder-modal";
 import { AppShell } from "@/components/layout";
 import { FolderCard } from "@/components/folders/folder-card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -75,14 +76,7 @@ export default function FoldersPage() {
             </p>
           </div>
 
-          <Button
-            variant="primary"
-            onClick={() => {
-              // File 22 replaces this with: setCreateOpen(true)
-              setCreateOpen(true);
-              toast.info("The create-folder form arrives in the next step.");
-            }}
-          >
+          <Button variant="primary" onClick={() => setCreateOpen(true)}>
             New folder
           </Button>
         </header>
@@ -121,13 +115,7 @@ export default function FoldersPage() {
             title="No folders yet"
             description="Create a folder to group related saved content together."
             action={
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setCreateOpen(true);
-                  toast.info("The create-folder form arrives in the next step.");
-                }}
-              >
+              <Button variant="primary" onClick={() => setCreateOpen(true)}>
                 Create your first folder
               </Button>
             }
@@ -144,15 +132,11 @@ export default function FoldersPage() {
         )}
       </div>
 
-      {/*
-        File 22 mounts the modal here, e.g.:
-
-        <CreateFolderModal
-          open={createOpen}
-          onClose={() => setCreateOpen(false)}
-          onCreated={handleCreated}
-        />
-      */}
+      <CreateFolderModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleCreated}
+      />
     </AppShell>
   );
 }

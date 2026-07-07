@@ -57,6 +57,7 @@ export function CreateFolderModal({ open, onClose, onCreated }: CreateFolderModa
       return;
     }
 
+    setSaving(false);
     toast.success("Folder created");
     onCreated(result.data);
     onClose();

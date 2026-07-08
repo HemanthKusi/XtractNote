@@ -38,11 +38,17 @@ export function MoveToFolderModal({ item, onClose, onMoved }: MoveToFolderModalP
 
   const open = item !== null;
 
-  // On open: load folders and preselect the item's current folder.
+  // Key the effect on the item's id (+ open state), not the object reference,
+  // so reopening the same item — even the same object — re-initializes state.
+  // item?.id changes on every open/close transition (id → undefined → id).
   useEffect(() => {
-    currentItemRef.current = item;   // ← track the item this modal is currently for
-    if (!item) return;
+    if (!item) {
+      // Truly closed: clear the ref so a stale in-flight move can't match.
+      currentItemRef.current = null;
+      return;
+    }
 
+    currentItemRef.current = item;
     setSelected(item.folderId ?? NONE);
     setSaving(false);
     setFoldersState({ phase: "loading" });
@@ -58,7 +64,7 @@ export function MoveToFolderModal({ item, onClose, onMoved }: MoveToFolderModalP
     return () => {
       cancelled = true;
     };
-  }, [item]);
+  }, [item?.id]);
 
   async function handleConfirm() {
     // Snapshot the item this confirm acts on — prop `item` may change while

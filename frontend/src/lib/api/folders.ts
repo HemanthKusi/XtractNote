@@ -153,13 +153,19 @@ export async function moveToFolder(
         if (!folder) return { ok: false, reason: "folder-not-found" };
       }
   
-      const { error } = await supabase
-        .from("generated_content")
-        .update({ folder_id: folderId })
-        .eq("id", contentId);
-  
-      if (error) return { ok: false, reason: "move-failed" };
-  
+      // .select().single() forces the update to return the affected row.
+      // A zero-row update (missing id, or RLS filtering out content that isn't
+      // the user's) is NOT an error in Supabase — it just returns no rows. So we
+      // require exactly one row back; no row → the move didn't happen → reject.
+      const { data: updated, error } = await supabase
+      .from("generated_content")
+      .update({ folder_id: folderId })
+      .eq("id", contentId)
+      .select("id")
+      .single();
+
+      if (error || !updated) return { ok: false, reason: "move-failed" };
+
       return { ok: true };
     } catch {
       return { ok: false, reason: "network" };

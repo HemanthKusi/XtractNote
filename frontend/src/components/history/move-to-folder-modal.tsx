@@ -79,7 +79,10 @@ export function MoveToFolderModal({ item, onClose, onMoved }: MoveToFolderModalP
 
     // If the modal moved on to a different item while we awaited, this result
     // is stale — don't close/toast/report over the newer context.
-    if (currentItemRef.current?.id !== target.id) return;
+    if (currentItemRef.current?.id !== target.id) {
+      setSaving(false);
+      return;
+    }
 
     if (!result.ok) {
       setSaving(false);
@@ -87,6 +90,7 @@ export function MoveToFolderModal({ item, onClose, onMoved }: MoveToFolderModalP
       return;
     }
 
+    setSaving(false);
     toast.success(targetFolderId ? "Moved to folder" : "Removed from folder");
     onMoved(target.id, targetFolderId);
     onClose();

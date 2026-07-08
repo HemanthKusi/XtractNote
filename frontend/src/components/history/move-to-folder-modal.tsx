@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -34,11 +34,13 @@ export function MoveToFolderModal({ item, onClose, onMoved }: MoveToFolderModalP
   const [foldersState, setFoldersState] = useState<FoldersState>({ phase: "loading" });
   const [selected, setSelected] = useState<string>(NONE);
   const [saving, setSaving] = useState(false);
+  const currentItemRef = useRef<HistoryItem | null>(null);
 
   const open = item !== null;
 
   // On open: load folders and preselect the item's current folder.
   useEffect(() => {
+    currentItemRef.current = item;   // ← track the item this modal is currently for
     if (!item) return;
 
     setSelected(item.folderId ?? NONE);
@@ -59,18 +61,25 @@ export function MoveToFolderModal({ item, onClose, onMoved }: MoveToFolderModalP
   }, [item]);
 
   async function handleConfirm() {
-    if (!item) return;
+    // Snapshot the item this confirm acts on — prop `item` may change while
+    // the async move is pending; we must not act on a newer item afterward.
+    const target = item;
+    if (!target) return;
 
     const targetFolderId = selected === NONE ? null : selected;
 
     // No-op guard: selection unchanged from current folder.
-    if (targetFolderId === (item.folderId ?? null)) {
+    if (targetFolderId === (target.folderId ?? null)) {
       onClose();
       return;
     }
 
     setSaving(true);
-    const result = await moveToFolder(item.id, targetFolderId);
+    const result = await moveToFolder(target.id, targetFolderId);
+
+    // If the modal moved on to a different item while we awaited, this result
+    // is stale — don't close/toast/report over the newer context.
+    if (currentItemRef.current?.id !== target.id) return;
 
     if (!result.ok) {
       setSaving(false);
@@ -79,7 +88,7 @@ export function MoveToFolderModal({ item, onClose, onMoved }: MoveToFolderModalP
     }
 
     toast.success(targetFolderId ? "Moved to folder" : "Removed from folder");
-    onMoved(item.id, targetFolderId);
+    onMoved(target.id, targetFolderId);
     onClose();
   }
 

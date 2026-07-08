@@ -7,15 +7,16 @@ import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
 
 // What the History list actually needs from each saved row.
 export interface HistoryItem {
-  id: string;
-  contentType: ContentType;
-  title: string;
-  channel: string;
-  thumbnail: string;
-  wordCount: number;
-  createdAt: string; // ISO timestamp
-  markdown: string;  // pulled out of content_body → free "open" later
-}
+    id: string;
+    contentType: ContentType;
+    title: string;
+    channel: string;
+    thumbnail: string;
+    wordCount: number;
+    createdAt: string;      // ISO timestamp
+    markdown: string;       // pulled out of content_body → free "open" later
+    folderId: string | null; // which folder it's in (null = none)
+  }
 
 export type HistoryFailReason = "not-authenticated" | "fetch-failed" | "network";
 
@@ -25,7 +26,7 @@ export type HistoryResult =
 
 // The columns the list needs (lighter than select("*")).
 const COLUMNS =
-  "id, content_type, content_title, video_title, video_channel, video_thumbnail, word_count, created_at, content_body";
+  "id, content_type, content_title, video_title, video_channel, video_thumbnail, word_count, created_at, content_body, folder_id";
 
 // Valid ContentType keys, taken from the single source of truth.
 const VALID_TYPES = Object.keys(contentTypeColors) as ContentType[];
@@ -40,16 +41,17 @@ function toContentType(value: unknown): ContentType {
 
 // Minimal shape of the row we selected (loose, as it comes from the DB).
 interface RawRow {
-  id: string;
-  content_type: string;
-  content_title: string | null;
-  video_title: string | null;
-  video_channel: string | null;
-  video_thumbnail: string | null;
-  word_count: number | null;
-  created_at: string;
-  content_body: { markdown?: string } | null;
-}
+    id: string;
+    content_type: string;
+    content_title: string | null;
+    video_title: string | null;
+    video_channel: string | null;
+    video_thumbnail: string | null;
+    word_count: number | null;
+    created_at: string;
+    content_body: { markdown?: string } | null;
+    folder_id: string | null;
+  }
 
 function mapRow(row: RawRow): HistoryItem {
   return {
@@ -62,6 +64,7 @@ function mapRow(row: RawRow): HistoryItem {
     wordCount: row.word_count ?? 0,
     createdAt: row.created_at,
     markdown: row.content_body?.markdown ?? "",
+    folderId: row.folder_id,
   };
 }
 

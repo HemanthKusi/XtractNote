@@ -28,9 +28,9 @@ export type CreateFolderResult =
   | { ok: true; data: Folder }
   | { ok: false; reason: FolderFailReason };
 
-export type MoveResult =
+  export type MoveResult =
   | { ok: true }
-  | { ok: false; reason: "not-authenticated" | "move-failed" | "network" };
+  | { ok: false; reason: "not-authenticated" | "folder-not-found" | "move-failed" | "network" };
 
 // Columns + the embedded related count. "generated_content(count)" tells
 // Supabase to count related content rows (via folder_id FK) per folder,
@@ -122,7 +122,9 @@ export async function createFolder(input: {
 
 /**
  * Move a saved content item into a folder — or out of it (folderId = null).
- * RLS ensures the user can only move their own content.
+ * RLS ensures the user can only move their own content; we also verify the
+ * target folder belongs to the user (RLS on folders makes a foreign folder
+ * un-selectable, so an empty lookup means "not yours / doesn't exist").
  */
 export async function moveToFolder(
     contentId: string,
@@ -137,6 +139,20 @@ export async function moveToFolder(
     if (userError || !user) return { ok: false, reason: "not-authenticated" };
   
     try {
+      // If filing into a folder (not clearing), verify the folder is the user's.
+      // The folders SELECT policy only returns the user's own rows, so a folder
+      // that isn't theirs (or doesn't exist) comes back as no row → reject.
+      if (folderId !== null) {
+        const { data: folder, error: folderError } = await supabase
+          .from("folders")
+          .select("id")
+          .eq("id", folderId)
+          .maybeSingle();
+  
+        if (folderError) return { ok: false, reason: "move-failed" };
+        if (!folder) return { ok: false, reason: "folder-not-found" };
+      }
+  
       const { error } = await supabase
         .from("generated_content")
         .update({ folder_id: folderId })

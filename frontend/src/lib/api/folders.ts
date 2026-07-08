@@ -28,6 +28,10 @@ export type CreateFolderResult =
   | { ok: true; data: Folder }
   | { ok: false; reason: FolderFailReason };
 
+export type MoveResult =
+  | { ok: true }
+  | { ok: false; reason: "not-authenticated" | "move-failed" | "network" };
+
 // Columns + the embedded related count. "generated_content(count)" tells
 // Supabase to count related content rows (via folder_id FK) per folder,
 // in the same query, under RLS.
@@ -115,3 +119,33 @@ export async function createFolder(input: {
     return { ok: false, reason: "network" };
   }
 }
+
+/**
+ * Move a saved content item into a folder — or out of it (folderId = null).
+ * RLS ensures the user can only move their own content.
+ */
+export async function moveToFolder(
+    contentId: string,
+    folderId: string | null,
+  ): Promise<MoveResult> {
+    const supabase = createClient();
+  
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+  
+    try {
+      const { error } = await supabase
+        .from("generated_content")
+        .update({ folder_id: folderId })
+        .eq("id", contentId);
+  
+      if (error) return { ok: false, reason: "move-failed" };
+  
+      return { ok: true };
+    } catch {
+      return { ok: false, reason: "network" };
+    }
+  }

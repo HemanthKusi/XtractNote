@@ -12,6 +12,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/loading-skeleton";
 import { Button } from "@/components/ui/button";
 import { fetchHistory, type HistoryItem, type HistoryFailReason } from "@/lib/api/history";
+import { fetchFolders, type Folder } from "@/lib/api/folders";
+import { MoveToFolderModal } from "@/components/history/move-to-folder-modal";
 import { useToast } from "@/components/shared/toast-provider";
 import { ROUTES } from "@/lib/constants/routes";
 
@@ -25,30 +27,57 @@ const ERROR_MESSAGES: Record<HistoryFailReason, string> = {
 type State =
   | { phase: "loading" }
   | { phase: "error"; message: string }
-  | { phase: "loaded"; items: HistoryItem[] };
+  | { phase: "loaded"; items: HistoryItem[]; folders: Folder[] };
 
-export default function HistoryPage() {
-  const [state, setState] = useState<State>({ phase: "loading" });
-  const toast = useToast();
-
-  const load = useCallback(async () => {
-    setState({ phase: "loading" });
-    const result = await fetchHistory();
-    if (!result.ok) {
-      setState({ phase: "error", message: ERROR_MESSAGES[result.reason] });
-      return;
-    }
-    setState({ phase: "loaded", items: result.data });
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Placeholder until the /output/[id] detail page exists (Phase 9).
-  const handleOpen = () => {
-    toast.info("Opening saved items comes in the next phase.");
-  };
+  export default function HistoryPage() {
+    const [state, setState] = useState<State>({ phase: "loading" });
+    const [movingItem, setMovingItem] = useState<HistoryItem | null>(null);
+    const toast = useToast();
+  
+    const load = useCallback(async () => {
+      setState({ phase: "loading" });
+      // Fetch history + folders together. History is required; folders enhance
+      // (resolve labels) — if only folders fail, we still show history.
+      const [historyResult, foldersResult] = await Promise.all([
+        fetchHistory(),
+        fetchFolders(),
+      ]);
+  
+      if (!historyResult.ok) {
+        setState({ phase: "error", message: ERROR_MESSAGES[historyResult.reason] });
+        return;
+      }
+  
+      setState({
+        phase: "loaded",
+        items: historyResult.data,
+        folders: foldersResult.ok ? foldersResult.data : [],
+      });
+    }, []);
+  
+    useEffect(() => {
+      load();
+    }, [load]);
+  
+    // Placeholder until the /output/[id] detail page exists (Phase 9).
+    const handleOpen = () => {
+      toast.info("Opening saved items comes in the next phase.");
+    };
+  
+    // After a successful move, patch that item's folderId in local state so its
+    // chip updates immediately — no refetch.
+    const handleMoved = (itemId: string, folderId: string | null) => {
+      setState((prev) =>
+        prev.phase === "loaded"
+          ? {
+              ...prev,
+              items: prev.items.map((it) =>
+                it.id === itemId ? { ...it, folderId } : it,
+              ),
+            }
+          : prev,
+      );
+    };
 
   return (
     <AppShell activePage="history">
@@ -101,13 +130,59 @@ export default function HistoryPage() {
 
         {/* ── List ── */}
         {state.phase === "loaded" && state.items.length > 0 && (
-          <div className="space-y-3">
-            {state.items.map((item) => (
-              <HistoryCard key={item.id} item={item} onOpen={handleOpen} />
-            ))}
-          </div>
+          <HistoryList
+            items={state.items}
+            folders={state.folders}
+            onOpen={handleOpen}
+            onMove={setMovingItem}
+          />
         )}
       </div>
+
+      {/* Move-to-folder picker (open when movingItem is set) */}
+      <MoveToFolderModal
+        item={movingItem}
+        onClose={() => setMovingItem(null)}
+        onMoved={handleMoved}
+      />
     </AppShell>
+  );
+}
+
+// ── List with folder-label resolution ──────────────────────
+// Builds an O(1) folderId → label map once, then renders each card with its
+// resolved folder (or null).
+function HistoryList({
+  items,
+  folders,
+  onOpen,
+  onMove,
+}: {
+  items: HistoryItem[];
+  folders: Folder[];
+  onOpen: (id: string) => void;
+  onMove: (item: HistoryItem) => void;
+}) {
+  const folderById = new Map(folders.map((f) => [f.id, f]));
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => {
+        const folder = item.folderId ? folderById.get(item.folderId) : null;
+        const folderLabel = folder
+          ? { name: folder.name, emoji: folder.emoji, color: folder.color }
+          : null;
+
+        return (
+          <HistoryCard
+            key={item.id}
+            item={item}
+            onOpen={onOpen}
+            folderLabel={folderLabel}
+            onMove={onMove}
+          />
+        );
+      })}
+    </div>
   );
 }

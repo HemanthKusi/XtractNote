@@ -70,30 +70,42 @@ function mapRow(row: RawRow): HistoryItem {
 
 /** Fetch the signed-in user's saved content, newest first. */
 export async function fetchHistory(): Promise<HistoryResult> {
-  const supabase = createClient();
-
-  // Confirm there's a user (RLS also enforces this at the DB).
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { ok: false, reason: "not-authenticated" };
+    return runHistoryQuery(); // no folder filter → all content
   }
-
-  try {
-    const { data, error } = await supabase
-      .from("generated_content")
-      .select(COLUMNS)
-      .order("created_at", { ascending: false });
-
-    if (error || !data) {
-      return { ok: false, reason: "fetch-failed" };
+  
+  /** Fetch the saved content inside one folder, newest first. */
+  export async function fetchFolderContents(folderId: string): Promise<HistoryResult> {
+    return runHistoryQuery(folderId);
+  }
+  
+  /**
+   * Shared reader for history-shaped queries. With no folderId, returns all of
+   * the user's content; with one, filters to that folder. Same columns, same
+   * HistoryItem mapping, so callers (history page + folder detail) reuse
+   * HistoryCard unchanged. RLS scopes results to the user either way.
+   */
+  async function runHistoryQuery(folderId?: string): Promise<HistoryResult> {
+    const supabase = createClient();
+  
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+  
+    try {
+      let query = supabase
+        .from("generated_content")
+        .select(COLUMNS)
+        .order("created_at", { ascending: false });
+  
+      if (folderId) query = query.eq("folder_id", folderId);
+  
+      const { data, error } = await query;
+      if (error || !data) return { ok: false, reason: "fetch-failed" };
+  
+      return { ok: true, data: (data as unknown as RawRow[]).map(mapRow) };
+    } catch {
+      return { ok: false, reason: "network" };
     }
-
-    return { ok: true, data: (data as unknown as RawRow[]).map(mapRow) };
-  } catch {
-    return { ok: false, reason: "network" };
   }
-}

@@ -28,9 +28,13 @@ export type CreateFolderResult =
   | { ok: true; data: Folder }
   | { ok: false; reason: FolderFailReason };
 
-  export type MoveResult =
+export type MoveResult =
   | { ok: true }
   | { ok: false; reason: "not-authenticated" | "folder-not-found" | "move-failed" | "network" };
+
+export type SingleFolderResult =
+  | { ok: true; data: Folder }
+  | { ok: false; reason: "not-authenticated" | "folder-not-found" | "network" };
 
 // Columns + the embedded related count. "generated_content(count)" tells
 // Supabase to count related content rows (via folder_id FK) per folder,
@@ -167,6 +171,33 @@ export async function moveToFolder(
       if (error || !updated) return { ok: false, reason: "move-failed" };
 
       return { ok: true };
+    } catch {
+      return { ok: false, reason: "network" };
+    }
+  }
+
+/** Fetch one folder (with its live item count) by id, for the current user. */
+export async function fetchFolder(folderId: string): Promise<SingleFolderResult> {
+    const supabase = createClient();
+  
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+  
+    try {
+      const { data, error } = await supabase
+        .from("folders")
+        .select(SELECT) // same columns + generated_content(count) as fetchFolders
+        .eq("id", folderId)
+        .maybeSingle();
+  
+      if (error) return { ok: false, reason: "network" };
+      // No row = not the user's folder (RLS) or doesn't exist.
+      if (!data) return { ok: false, reason: "folder-not-found" };
+  
+      return { ok: true, data: mapFolder(data as unknown as RawFolderRow) };
     } catch {
       return { ok: false, reason: "network" };
     }

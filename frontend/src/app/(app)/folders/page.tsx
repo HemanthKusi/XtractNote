@@ -14,6 +14,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/loading-skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/shared/toast-provider";
+import { useRouter } from "next/navigation";
+import { ROUTES } from "@/lib/constants/routes";
 import {
   fetchFolders,
   type Folder,
@@ -60,9 +62,10 @@ export default function FoldersPage() {
     );
   }, []);
 
-  // Placeholder until the folder detail page exists (8.5c).
-  const handleOpen = () => {
-    toast.info("Opening a folder comes in the next step.");
+  const router = useRouter();
+
+  const handleOpen = (id: string) => {
+    router.push(ROUTES.folder(id));
   };
 
   return (

@@ -32,14 +32,25 @@ function formatRelativeDate(iso: string): string {
   });
 }
 
-interface HistoryCardProps {
-  item: HistoryItem;
-  /** Called with the item id when the card is clicked. */
-  onOpen?: (id: string) => void;
-}
-
-export function HistoryCard({ item, onOpen }: HistoryCardProps) {
-  const meta = contentTypeColors[item.contentType];
+/** The display info for the folder an item is in (resolved by the page). */
+interface FolderLabel {
+    name: string;
+    emoji: string;
+    color: string;
+  }
+  
+  interface HistoryCardProps {
+    item: HistoryItem;
+    /** Called with the item id when the card is clicked. */
+    onOpen?: (id: string) => void;
+    /** The folder this item is in (page resolves it from folderId); null = none. */
+    folderLabel?: FolderLabel | null;
+    /** Called with the full item when the Move button is clicked. */
+    onMove?: (item: HistoryItem) => void;
+  }
+  
+  export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardProps) {
+    const meta = contentTypeColors[item.contentType];
 
   return (
     <Card
@@ -86,8 +97,49 @@ export function HistoryCard({ item, onOpen }: HistoryCardProps) {
               </>
             )}
           </div>
+
+          {/* Folder label + Move action */}
+          <div className="mt-2 flex items-center gap-2">
+            {folderLabel && (
+              <span
+                className="inline-flex items-center gap-1 rounded-xn-pill px-2 py-0.5 text-xs font-medium"
+                style={{ backgroundColor: `${folderLabel.color}1A`, color: "var(--xn-ink-muted)" }}
+              >
+                <span aria-hidden>{folderLabel.emoji}</span>
+                <span className="max-w-[140px] truncate">{folderLabel.name}</span>
+              </span>
+            )}
+
+            {onMove && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation(); // don't also trigger the card's onOpen
+                  onMove(item);
+                }}
+                className="inline-flex items-center gap-1 rounded-xn-md px-2 py-0.5 text-xs font-medium text-xn-ink-soft hover:bg-xn-surface-alt hover:text-xn-ink transition-colors"
+              >
+                <MoveIcon />
+                {folderLabel ? "Move" : "Add to folder"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </Card>
+  );
+}
+
+// Small folder/move icon.
+function MoveIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.4a1 1 0 0 1 .7.3l.9.9h5A1.5 1.5 0 0 1 14 5.7V11a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11V4.5Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

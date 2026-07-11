@@ -40,7 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
 import { OutputView } from "@/components/output/output-view";
-import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
+import { contentTypeColors } from "@/lib/constants/theme";
 import {
   fetchContentById,
   type ContentDetail,
@@ -370,7 +370,7 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
   const viewContent = {
     contentType: detail.contentType,
     content: detail.markdown,
-  } satisfies GeneratedContent;
+  };
 
   const formatChip = (
     <div className="flex items-center gap-2.5">

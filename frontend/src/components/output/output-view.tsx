@@ -6,8 +6,7 @@ import type { Components } from "react-markdown";
 
 import { Card } from "@/components/ui/card";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
-import { contentTypeColors } from "@/lib/constants/theme";
-import type { GeneratedContent } from "@/lib/content/types";
+import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
 
 // ─────────────────────────────────────────────────────────────
 // OutputView
@@ -137,9 +136,9 @@ const markdownComponents: Components = {
 };
 
 interface OutputViewProps {
-  /** The generated content to display (contentType + Markdown body). */
-  content: GeneratedContent;
-  className?: string;
+    /** Content to display — any content type + Markdown body. */
+    content: { contentType: ContentType; content: string };
+    className?: string;
 }
 
 export function OutputView({ content, className = "" }: OutputViewProps) {

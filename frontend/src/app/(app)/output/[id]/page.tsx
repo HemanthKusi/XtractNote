@@ -4,11 +4,14 @@
 // detail page) and hands it to SavedContentEditor, which owns all loading,
 // state, and the view/edit/copy/export/delete lifecycle.
 //
-// Lives in the (app) group, so it inherits AppShell + proxy auth protection.
+// Wraps content in AppShell (sidebar + topbar), matching every other page in
+// the (app) group — the group itself provides no layout, so each page wraps
+// its own.
 
 "use client";
 
 import { use } from "react";
+import { AppShell } from "@/components/layout/app-shell";
 import { SavedContentEditor } from "@/components/output/saved-content-editor";
 
 interface OutputPageProps {
@@ -17,5 +20,9 @@ interface OutputPageProps {
 
 export default function OutputPage({ params }: OutputPageProps) {
   const { id } = use(params);
-  return <SavedContentEditor id={id} />;
+  return (
+    <AppShell>
+      <SavedContentEditor id={id} />
+    </AppShell>
+  );
 }

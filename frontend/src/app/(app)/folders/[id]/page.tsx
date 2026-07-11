@@ -6,6 +6,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/layout";
 import { HistoryCard } from "@/components/history/history-card";
@@ -13,7 +14,6 @@ import { MoveToFolderModal } from "@/components/history/move-to-folder-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/loading-skeleton";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/shared/toast-provider";
 import { ROUTES } from "@/lib/constants/routes";
 import { fetchFolderContents, type HistoryItem } from "@/lib/api/history";
 import { fetchFolder, type Folder } from "@/lib/api/folders";
@@ -31,7 +31,7 @@ export default function FolderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const toast = useToast();
+  const router = useRouter();
 
   const [state, setState] = useState<State>({ phase: "loading" });
   const [movingItem, setMovingItem] = useState<HistoryItem | null>(null);
@@ -68,8 +68,9 @@ export default function FolderDetailPage({
     load();
   }, [load]);
 
-  const handleOpen = () => {
-    toast.info("Opening saved items comes in the next phase.");
+  // Open a saved item in the editor at /output/[id].
+  const handleOpen = (itemId: string) => {
+    router.push(`/output/${itemId}`);
   };
 
   // Moving an item to a different folder (or None) removes it from this view.

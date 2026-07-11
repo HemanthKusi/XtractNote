@@ -5,6 +5,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/layout";
 import { HistoryCard } from "@/components/history/history-card";
@@ -14,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { fetchHistory, type HistoryItem, type HistoryFailReason } from "@/lib/api/history";
 import { fetchFolders, type Folder } from "@/lib/api/folders";
 import { MoveToFolderModal } from "@/components/history/move-to-folder-modal";
-import { useToast } from "@/components/shared/toast-provider";
 import { ROUTES } from "@/lib/constants/routes";
 
 // Friendly copy for each fetch failure.
@@ -32,7 +32,7 @@ type State =
   export default function HistoryPage() {
     const [state, setState] = useState<State>({ phase: "loading" });
     const [movingItem, setMovingItem] = useState<HistoryItem | null>(null);
-    const toast = useToast();
+    const router = useRouter();
   
     const load = useCallback(async () => {
       setState({ phase: "loading" });
@@ -59,9 +59,9 @@ type State =
       load();
     }, [load]);
   
-    // Placeholder until the /output/[id] detail page exists (Phase 9).
-    const handleOpen = () => {
-      toast.info("Opening saved items comes in the next phase.");
+    // Open a saved item in the editor at /output/[id].
+    const handleOpen = (id: string) => {
+      router.push(`/output/${id}`);
     };
   
     // After a successful move, patch that item's folderId in local state so its

@@ -61,8 +61,8 @@ type State =
   
     // Open a saved item in the editor at /output/[id].
     const handleOpen = (id: string) => {
-      router.push(`/output/${id}`);
-    };
+        router.push(ROUTES.output(id));
+      };
   
     // After a successful move, patch that item's folderId in local state so its
     // chip updates immediately — no refetch.

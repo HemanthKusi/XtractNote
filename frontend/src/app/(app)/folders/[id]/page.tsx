@@ -68,9 +68,12 @@ export default function FolderDetailPage({
     load();
   }, [load]);
 
-  // Open a saved item in the editor at /output/[id].
+  // Open a saved item in the editor; ?from= lets the editor's Back link return
+  // to this folder (encodeURIComponent so the path survives as one param).
   const handleOpen = (itemId: string) => {
-    router.push(`/output/${itemId}`);
+    router.push(
+      `${ROUTES.output(itemId)}?from=${encodeURIComponent(ROUTES.folder(id))}`,
+    );
   };
 
   // Moving an item to a different folder (or None) removes it from this view.

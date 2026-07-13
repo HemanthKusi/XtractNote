@@ -12,12 +12,16 @@
 //   export → download the body as a .md file
 //   delete → confirm via Modal, then route back to /history
 //
-// Data logic lives here (not in the route) so the route file stays a thin
-// shell. Reads/writes go through lib/api under RLS.
+// Feedback split (Phase 9.1): successes surface as toasts (Saved / Deleted);
+// errors stay inline (save-error banner, delete-error in modal) so they don't
+// auto-dismiss while you still need to act on them. Copy stays an inline
+// button-state flip — instant and local, no toast needed.
 //
-// NOTE (reviewer): feedback is intentionally inline (no toast dependency),
-// and loading/not-found are built inline rather than via LoadingSkeleton /
-// EmptyState — both to avoid guessing component APIs. Easy to swap later.
+// Loading uses the shared Skeleton; not-found + error use the shared
+// EmptyState, so these screens match the rest of the app.
+//
+// Back navigation is origin-aware via optional backHref/backLabel props
+// (default: History). The route computes them from a ?from= param.
 // ─────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from "react";
@@ -38,8 +42,11 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { Skeleton } from "@/components/ui/loading-skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
 import { OutputView } from "@/components/output/output-view";
+import { useToast } from "@/components/shared/toast-provider";
 import { contentTypeColors } from "@/lib/constants/theme";
 import {
   fetchContentById,
@@ -80,6 +87,17 @@ const DELETE_ERROR: Record<DeleteFailReason, string> = {
   network: "Network problem — nothing was deleted.",
 };
 
+// Decreasing widths for the loading skeleton "paragraph" lines (className-only,
+// so we don't depend on Skeleton forwarding an inline style prop).
+const LOADING_WIDTHS = [
+  "w-[90%]",
+  "w-[82%]",
+  "w-[74%]",
+  "w-[66%]",
+  "w-[58%]",
+  "w-[48%]",
+];
+
 // ── Small helpers ───────────────────────────────────────────
 
 // Title → safe filename for the .md export. Falls back to "untitled".
@@ -116,10 +134,19 @@ type Mode = "view" | "edit";
 interface SavedContentEditorProps {
   /** The generated_content row id, from the /output/[id] route param. */
   id: string;
+  /** Where the "Back" link points. Defaults to History. */
+  backHref?: string;
+  /** Label for the "Back" link. Defaults to "Back to History". */
+  backLabel?: string;
 }
 
-export function SavedContentEditor({ id }: SavedContentEditorProps) {
+export function SavedContentEditor({
+  id,
+  backHref = "/history",
+  backLabel = "Back to History",
+}: SavedContentEditorProps) {
   const router = useRouter();
+  const toast = useToast();
 
   // ── Load state ──
   const [status, setStatus] = useState<LoadStatus>("loading");
@@ -133,7 +160,6 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
   const [bodyDraft, setBodyDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [justSaved, setJustSaved] = useState(false);
 
   // ── Transient action state ──
   const [copied, setCopied] = useState(false);
@@ -143,9 +169,8 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
-  // Timers we may need to clear on unmount (avoids setState-after-unmount).
+  // Copy "Copied ✓" reset timer — cleared on unmount.
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load the item ──
   // Keyed on id + reloadKey. The ignore flag drops a stale result if the id
@@ -178,11 +203,10 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
     };
   }, [id, reloadKey]);
 
-  // Clear pending timers when the component goes away.
+  // Clear the copy timer when the component goes away.
   useEffect(() => {
     return () => {
       if (copyTimer.current) clearTimeout(copyTimer.current);
-      if (savedTimer.current) clearTimeout(savedTimer.current);
     };
   }, []);
 
@@ -236,9 +260,7 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
       updatedAt: res.data.updatedAt,
     });
     setMode("view");
-    setJustSaved(true);
-    if (savedTimer.current) clearTimeout(savedTimer.current);
-    savedTimer.current = setTimeout(() => setJustSaved(false), 2000);
+    toast.success("Changes saved");
   }
 
   async function handleCopy() {
@@ -290,8 +312,10 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
       return;
     }
 
-    // Success → leave the page. Keep `deleting` true so the modal stays in its
-    // busy state through the navigation (no flicker back to the confirm view).
+    // Success → toast, then leave. ToastProvider sits above the router outlet,
+    // so the toast survives the navigation and shows on /history. Keep
+    // `deleting` true so the modal holds its busy state through the push.
+    toast.success("Content deleted");
     router.push("/history");
   }
 
@@ -299,16 +323,12 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
   if (status === "loading") {
     return (
       <div className="mx-auto w-full max-w-3xl px-4 py-8">
-        <div className="mb-6 h-4 w-28 animate-pulse rounded bg-xn-surface-alt" />
-        <div className="mb-3 h-8 w-2/3 animate-pulse rounded bg-xn-surface-alt" />
-        <div className="mb-8 h-4 w-1/2 animate-pulse rounded bg-xn-surface-alt" />
+        <Skeleton className="mb-6 h-4 w-28 rounded" />
+        <Skeleton className="mb-3 h-8 w-2/3 rounded" />
+        <Skeleton className="mb-8 h-4 w-1/2 rounded" />
         <div className="space-y-3 rounded-xn-xl border border-xn-border bg-xn-surface p-6">
-          {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="h-4 animate-pulse rounded bg-xn-surface-alt"
-              style={{ width: `${90 - i * 7}%` }}
-            />
+          {LOADING_WIDTHS.map((w, i) => (
+            <Skeleton key={i} className={`h-4 rounded ${w}`} />
           ))}
         </div>
       </div>
@@ -318,24 +338,22 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
   // ── Render: not found ──
   if (status === "not-found") {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 py-20 text-center">
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-xn-surface-alt text-xn-ink-soft">
-          <AlertCircle className="h-6 w-6" />
-        </div>
-        <h1 className="mb-1.5 text-h3 font-semibold text-xn-ink">
-          Content not found
-        </h1>
-        <p className="mb-6 max-w-sm text-sm text-xn-ink-muted">
-          This item may have been deleted, or the link is incorrect.
-        </p>
-        <Link href="/history">
-          <Button variant="primary">
-            <span className="inline-flex items-center gap-1.5">
-              <ArrowLeft className="h-4 w-4" />
-              Back to History
-            </span>
-          </Button>
-        </Link>
+      <div className="mx-auto w-full max-w-3xl px-4 py-8">
+        <EmptyState
+          icon={<AlertCircle />}
+          title="Content not found"
+          description="This item may have been deleted, or the link is incorrect."
+          action={
+            <Link href={backHref}>
+              <Button variant="primary">
+                <span className="inline-flex items-center gap-1.5">
+                  <ArrowLeft className="h-4 w-4" />
+                  {backLabel}
+                </span>
+              </Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -343,22 +361,25 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
   // ── Render: load error ──
   if (status === "error") {
     return (
-      <div className="mx-auto flex w-full max-w-3xl flex-col items-center px-4 py-20 text-center">
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-xn-surface-alt text-xn-ink-soft">
-          <AlertCircle className="h-6 w-6" />
-        </div>
-        <h1 className="mb-1.5 text-h3 font-semibold text-xn-ink">
-          Something went wrong
-        </h1>
-        <p className="mb-6 max-w-sm text-sm text-xn-ink-muted">{loadError}</p>
-        <div className="flex items-center gap-2">
-          <Button variant="primary" onClick={() => setReloadKey((k) => k + 1)}>
-            Try again
-          </Button>
-          <Link href="/history">
-            <Button variant="ghost">Back to History</Button>
-          </Link>
-        </div>
+      <div className="mx-auto w-full max-w-3xl px-4 py-8">
+        <EmptyState
+          icon={<AlertCircle />}
+          title="Something went wrong"
+          description={loadError}
+          action={
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                variant="primary"
+                onClick={() => setReloadKey((k) => k + 1)}
+              >
+                Try again
+              </Button>
+              <Link href={backHref}>
+                <Button variant="ghost">{backLabel}</Button>
+              </Link>
+            </div>
+          }
+        />
       </div>
     );
   }
@@ -385,11 +406,11 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
     <div className="mx-auto w-full max-w-3xl px-4 py-8">
       {/* ── Back link ── */}
       <Link
-        href="/history"
+        href={backHref}
         className="mb-5 inline-flex items-center gap-1.5 text-sm text-xn-ink-soft transition-colors hover:text-xn-ink"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to History
+        {backLabel}
       </Link>
 
       {/* ── Document header: title + source + actions ── */}
@@ -489,7 +510,7 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
           </div>
         </div>
 
-        {/* Meta line: word count · edited · transient "Saved" */}
+        {/* Meta line: word count · edited */}
         <div className="mt-3 flex items-center gap-2 text-xs text-xn-ink-soft">
           <span>{detail.wordCount.toLocaleString()} words</span>
           {detail.updatedAt && (
@@ -498,16 +519,9 @@ export function SavedContentEditor({ id }: SavedContentEditorProps) {
               <span>Edited {timeAgo(detail.updatedAt)}</span>
             </>
           )}
-          {justSaved && (
-            <span className="inline-flex items-center gap-1 text-xn-accent">
-              <span aria-hidden>·</span>
-              <Check className="h-3.5 w-3.5" />
-              Saved
-            </span>
-          )}
         </div>
 
-        {/* Save error banner */}
+        {/* Save error banner (inline + persistent by design) */}
         {saveError && (
           <div className="mt-3 flex items-center gap-2 rounded-xn-md border border-xn-border bg-xn-surface-alt px-3 py-2 text-sm text-xn-ink">
             <AlertCircle className="h-4 w-4 shrink-0 text-xn-ink-soft" />

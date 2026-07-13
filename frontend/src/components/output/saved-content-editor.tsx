@@ -89,14 +89,7 @@ const DELETE_ERROR: Record<DeleteFailReason, string> = {
 
 // Decreasing widths for the loading skeleton "paragraph" lines (className-only,
 // so we don't depend on Skeleton forwarding an inline style prop).
-const LOADING_WIDTHS = [
-  "w-[90%]",
-  "w-[82%]",
-  "w-[74%]",
-  "w-[66%]",
-  "w-[58%]",
-  "w-[48%]",
-];
+const LOADING_WIDTHS = ["90%", "82%", "74%", "66%", "58%", "48%"];
 
 // ── Small helpers ───────────────────────────────────────────
 
@@ -323,12 +316,12 @@ export function SavedContentEditor({
   if (status === "loading") {
     return (
       <div className="mx-auto w-full max-w-3xl px-4 py-8">
-        <Skeleton className="mb-6 h-4 w-28 rounded" />
-        <Skeleton className="mb-3 h-8 w-2/3 rounded" />
-        <Skeleton className="mb-8 h-4 w-1/2 rounded" />
+        <Skeleton height={16} width={112} className="mb-6 rounded" />
+        <Skeleton height={32} width="66%" className="mb-3 rounded" />
+        <Skeleton height={16} width="50%" className="mb-8 rounded" />
         <div className="space-y-3 rounded-xn-xl border border-xn-border bg-xn-surface p-6">
           {LOADING_WIDTHS.map((w, i) => (
-            <Skeleton key={i} className={`h-4 rounded ${w}`} />
+            <Skeleton key={i} height={16} width={w} className="rounded" />
           ))}
         </div>
       </div>

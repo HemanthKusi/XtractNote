@@ -4,9 +4,14 @@ backend/app/api/youtube.py
 YouTube endpoints:
   - POST /api/youtube/metadata    -> video title, channel, thumbnail, duration
   - POST /api/youtube/transcript  -> cleaned transcript text + language info
+  - POST /api/youtube/search      -> relevance-ordered topic-search results
 
 The route prefix "/api/youtube" is added in main.py via include_router,
-so here we only declare paths relative to that ("/metadata", "/transcript").
+so here we only declare paths relative to that ("/metadata", etc.).
+
+Parsing helpers (duration, thumbnail) and the videos.list URL now live in
+app/utils/youtube.py, shared with the search service to avoid a circular
+import (this module imports the search service to wire its route).
 """
 
 import re
@@ -17,25 +22,20 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services.search import SearchServiceError, search_videos
 from app.services.transcript import TranscriptServiceError, fetch_transcript
+from app.utils.youtube import (
+    YOUTUBE_VIDEOS_URL,
+    best_thumbnail,
+    parse_iso8601_duration,
+)
 
 router = APIRouter()
 
 # ── Constants ────────────────────────────────────────────────
-# A YouTube video ID is exactly 11 chars from this set.
+# A YouTube video ID is exactly 11 chars from this set. Used for request
+# validation (not parsing), so it stays local to the api layer.
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
-
-# YouTube Data API "videos.list" endpoint.
-_YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/videos"
-
-# Thumbnail sizes the API may return, best first.
-_THUMB_PRIORITY = ["maxres", "standard", "high", "medium", "default"]
-
-# ISO 8601 duration like "PT1H2M10S" (YouTube's format). T is optional so
-# odd cases like "P0D" (some live streams) parse to 0 instead of crashing.
-_DURATION_RE = re.compile(
-    r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?"
-)
 
 
 # ── Request / Response shapes ────────────────────────────────
@@ -74,36 +74,49 @@ class TranscriptResponse(BaseModel):
     fullText: str
 
 
-# ── Helpers ──────────────────────────────────────────────────
-def _parse_iso8601_duration(value: str | None) -> int | None:
-    """Convert 'PT1H24M8S' -> total seconds. Returns None if unparseable."""
-    if not value:
-        return None
-    match = _DURATION_RE.fullmatch(value)
-    if not match:
-        return None
-    days, hours, minutes, seconds = (int(g) if g else 0 for g in match.groups())
-    return days * 86400 + hours * 3600 + minutes * 60 + seconds
+class SearchRequest(BaseModel):
+    # The raw topic string the user typed. maxResults is here so the fetch
+    # size is a contract knob we can raise later (e.g. 30 -> 100) without
+    # touching the service; the service clamps it to YouTube's 1..50 range.
+    query: str
+    maxResults: int = 30
 
 
-def _best_thumbnail(thumbnails: dict, video_id: str) -> str:
-    """Pick the highest-resolution thumbnail the API returned."""
-    for key in _THUMB_PRIORITY:
-        item = thumbnails.get(key)
-        if item and item.get("url"):
-            return item["url"]
-    # Fallback: YouTube's CDN always has hqdefault for a valid ID.
-    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+class SearchResultItem(BaseModel):
+    # camelCase mirror of the service's SearchResultVideo dataclass. All
+    # fields RAW — the frontend formats views ("1.4M"), dates, duration.
+    videoId: str
+    title: str
+    channel: str
+    channelUrl: str | None = None
+    thumbnailUrl: str
+    url: str
+    description: str
+    publishedAt: str | None = None
+    durationSeconds: int | None = None
+    viewCount: int | None = None
 
 
-# Map each transcript error code to the HTTP status we return for it.
-# The codes themselves come from the service layer (File 1) and flow
-# straight through to the frontend's ERROR_MESSAGES map.
+class SearchResponse(BaseModel):
+    # An envelope (not a bare array) so we can add nextPageToken /
+    # totalResults later for server-side paging without breaking the
+    # frontend contract. For now the frontend just reads `.results`.
+    results: list[SearchResultItem]
+
+
+# ── Error-code -> HTTP status maps ───────────────────────────
+# The codes come from the service layer and flow straight through to the
+# frontend's ERROR_MESSAGES map as structured `detail`.
 _TRANSCRIPT_ERROR_STATUS = {
     "no-captions": 422,        # video is fine, but there's no usable transcript
     "video-not-found": 404,    # bad / private / removed video
     "transcript-blocked": 502, # YouTube blocked our server's request
     "transcript-failed": 502,  # any other upstream retrieval failure
+}
+
+_SEARCH_ERROR_STATUS = {
+    "quota-exceeded": 429,     # daily YouTube quota / rate limit hit
+    "search-failed": 502,      # bad key, upstream 5xx, unreadable body, network
 }
 
 
@@ -126,7 +139,7 @@ async def get_metadata(req: MetadataRequest) -> VideoMeta:
             detail="Server is missing YOUTUBE_API_KEY.",
         )
 
-    # 3. Call the YouTube Data API.
+    # 3. Call the YouTube Data API (videos.list).
     params = {
         "part": "snippet,contentDetails",
         "id": video_id,
@@ -134,7 +147,7 @@ async def get_metadata(req: MetadataRequest) -> VideoMeta:
     }
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(_YOUTUBE_API_URL, params=params)
+            response = await client.get(YOUTUBE_VIDEOS_URL, params=params)
     except httpx.RequestError:
         # Network problem reaching Google.
         raise HTTPException(status_code=502, detail="Could not reach YouTube.")
@@ -170,9 +183,9 @@ async def get_metadata(req: MetadataRequest) -> VideoMeta:
         title=snippet.get("title", "Untitled video"),
         channel=snippet.get("channelTitle", "Unknown channel"),
         channelUrl=channel_url,
-        thumbnailUrl=_best_thumbnail(snippet.get("thumbnails", {}), video_id),
+        thumbnailUrl=best_thumbnail(snippet.get("thumbnails", {}), video_id),
         url=f"https://www.youtube.com/watch?v={video_id}",
-        durationSeconds=_parse_iso8601_duration(content_details.get("duration")),
+        durationSeconds=parse_iso8601_duration(content_details.get("duration")),
     )
 
 
@@ -209,4 +222,58 @@ async def get_transcript(req: TranscriptRequest) -> TranscriptResponse:
         isGenerated=data.is_generated,
         segmentCount=data.segment_count,
         fullText=data.full_text,
+    )
+
+
+# ── Search endpoint ──────────────────────────────────────────
+@router.post("/search", response_model=SearchResponse)
+async def search(req: SearchRequest) -> SearchResponse:
+    query = req.query.strip()
+
+    # 1. A blank query never reaches a paid API call. The frontend only
+    #    routes non-URL, non-empty text here, but we don't trust the client.
+    if not query:
+        raise HTTPException(status_code=400, detail="Search query is required.")
+
+    # 2. Same missing-key guard as metadata — a server misconfig, not the
+    #    user's fault.
+    api_key = settings.youtube_api_key
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Server is missing YOUTUBE_API_KEY.",
+        )
+
+    # 3. Run the search service. It's already async (httpx), so we await it
+    #    directly — no threadpool needed (unlike the blocking transcript lib).
+    try:
+        results = await search_videos(query, api_key, max_results=req.maxResults)
+    except SearchServiceError as exc:
+        # Same pattern as transcript: map the typed .code to an HTTP status
+        # and pass structured detail through so the UI can message it.
+        status = _SEARCH_ERROR_STATUS.get(exc.code, 502)
+        raise HTTPException(
+            status_code=status,
+            detail={"code": exc.code, "message": str(exc)},
+        )
+
+    # 4. Reshape each snake_case dataclass into the camelCase response model.
+    #    An empty `results` list is a valid success — the frontend shows its
+    #    "No videos matched…" empty state, no error involved.
+    return SearchResponse(
+        results=[
+            SearchResultItem(
+                videoId=r.video_id,
+                title=r.title,
+                channel=r.channel,
+                channelUrl=r.channel_url,
+                thumbnailUrl=r.thumbnail_url,
+                url=r.url,
+                description=r.description,
+                publishedAt=r.published_at,
+                durationSeconds=r.duration_seconds,
+                viewCount=r.view_count,
+            )
+            for r in results
+        ]
     )

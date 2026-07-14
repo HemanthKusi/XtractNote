@@ -173,7 +173,14 @@ async def _search(
     if response.status_code != 200:
         raise _classify_error(response)
 
-    items = response.json().get("items", [])
+    # A 200 with an unreadable body is still a failure for us. Turn it into a
+    # typed SearchServiceError (-> "search-failed") so the route/UI show
+    # friendly copy instead of an uncaught JSONDecodeError becoming a 500.
+    try:
+        items = response.json().get("items", [])
+    except (ValueError, AttributeError) as exc:
+        raise SearchServiceError("YouTube returned an unreadable response.") from exc
+
     parsed: list[dict] = []
     for item in items:
         row = _parse_search_item(item)
@@ -208,8 +215,16 @@ async def _enrich(
     if response.status_code != 200:
         return {}
 
+    # A 200 with a malformed body must still degrade to {}, per the contract
+    # above — otherwise a JSONDecodeError here would kill the whole search,
+    # which is the exact failure this best-effort call exists to prevent.
+    try:
+        items = response.json().get("items", [])
+    except (ValueError, AttributeError):
+        return {}
+
     lookup: dict[str, tuple[int | None, int | None]] = {}
-    for item in response.json().get("items", []):
+    for item in items:
         video_id = item.get("id")
         if not video_id:
             continue

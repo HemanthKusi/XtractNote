@@ -23,6 +23,7 @@ import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton, SkeletonText, SkeletonCard } from "@/components/ui/loading-skeleton";
+import { SearchResults } from "@/components/create/search-results";
 import { useTheme } from "@/components/shared/theme-provider";
 import { useToast } from "@/components/shared/toast-provider";
 import type { ThemeName, ContentType } from "@/lib/constants/theme";
@@ -88,6 +89,20 @@ function SubSection({ title, children }: { title: string; children: React.ReactN
     </div>
   );
 }
+
+const FAKE_RESULTS = Array.from({ length: 23 }).map((_, i) => ({
+  videoId: `vid${i}`,
+  title: `Sample video ${i + 1}: a reasonably long title that will clamp to two lines eventually`,
+  channel: "Sample Channel",
+  channelUrl: null,
+  thumbnailUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+  url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  description:
+    "A short description snippet that shows how the two-line clamp behaves in the card body.",
+  publishedAt: new Date(Date.now() - i * 5e9).toISOString(),
+  durationSeconds: 200 + i * 37,
+  viewCount: 1234 * (i + 1) * 97,
+}));
 
 // ── Main Page ──
 
@@ -933,6 +948,15 @@ export default function ShowcasePage() {
             </Card>
           </div>
         </Section>
+
+        {/* ── Search Results (TEMP — remove before committing File 8) ── */}
+          <Section title="Search Results (temp test)">
+            <SearchResults
+              results={FAKE_RESULTS}
+              query="sample"
+              onUse={(id) => alert(id)}
+            />
+          </Section>
 
         {/* ── Footer ── */}
         <div className="text-center text-xs text-xn-ink-soft py-8 border-t border-xn-border">

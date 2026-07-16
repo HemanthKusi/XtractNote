@@ -4,14 +4,17 @@
 // app/(app)/create/page.tsx  →  route: /create
 //
 // The full create flow lives here:
-//   input -> extractVideoId -> fetchVideoMetadata -> VideoPreviewCard
+//   input -> extractVideoId
+//         -> (looks like a URL)  -> fetchVideoMetadata -> VideoPreviewCard
+//         -> (not a URL, a topic)-> searchVideos -> SearchResults
+//                                -> (Use this video) -> fetchVideoMetadata -> …
 //         -> (Continue) -> fetchTranscript
 //         -> (pick a type) -> generateContent -> OutputView
 //
 // It's a Client Component because it holds state and handles events.
 // This is also the ONE place that turns machine-readable failure
-// reasons (from extract, metadata, transcript, AND generation) into
-// friendly, human messages.
+// reasons (from extract, metadata, transcript, search, AND generation)
+// into friendly, human messages.
 // ─────────────────────────────────────────────────────────────
 
 import { useState } from "react";
@@ -24,11 +27,16 @@ import { fetchVideoMetadata, type MetaFailReason } from "@/lib/api/youtube";
 import { fetchTranscript } from "@/lib/api/transcript";
 import { generateContent } from "@/lib/api/generate";
 import { saveGeneratedContent, type SaveFailReason } from "@/lib/api/content";
+import { searchVideos } from "@/lib/api/search";
 import type { VideoMeta } from "@/lib/youtube/types";
 import type {
   Transcript,
   TranscriptFailReason,
 } from "@/lib/youtube/transcript-types";
+import type {
+  SearchResultVideo,
+  SearchFailReason,
+} from "@/lib/youtube/search-types";
 import type {
   GeneratableContentType,
   GeneratedContent,
@@ -36,6 +44,7 @@ import type {
 } from "@/lib/content/types";
 import { VideoPreviewCard } from "@/components/create/video-preview-card";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
+import { SearchResults } from "@/components/create/search-results";
 import { OutputView } from "@/components/output/output-view";
 
 import { Button } from "@/components/ui/button";
@@ -43,20 +52,22 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/shared/toast-provider";
 
 // ── Friendly copy for every failure reason ──────────────────
-// One map covering extract, metadata, transcript, AND generate reasons.
-// Change wording here without touching any logic.
-// Note: "network" and "unknown" are shared across metadata and generate —
-// they appear once, not twice.
+// One map covering extract, metadata, transcript, search, AND generate
+// reasons. Change wording here without touching any logic.
+// Note: "network"/"unknown" are shared across metadata and generate, and
+// "request-failed" is shared between transcript and search — each appears
+// once, not twice.
 type FailReason =
   | ExtractFailReason
   | MetaFailReason
   | TranscriptFailReason
+  | SearchFailReason
   | GenerateFailReason
   | SaveFailReason;
 
 const ERROR_MESSAGES: Record<FailReason, string> = {
   // From extractVideoId
-  empty: "Paste a YouTube link to get started.",
+  empty: "Paste a YouTube link or search a topic to get started.",
   "not-youtube":
     "That doesn't look like a YouTube link. Try a youtube.com or youtu.be URL.",
   "no-id": "We couldn't find a video in that link. Double-check it and try again.",
@@ -81,6 +92,11 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
     "We couldn't get the transcript for this video. Please try again.",
   "request-failed":
     "We couldn't reach the server. Check your connection and that the app is running.",
+  // From searchVideos
+  "quota-exceeded":
+    "We've hit today's YouTube search limit. Please try again later, or paste a video link instead.",
+  "search-failed":
+    "We couldn't run that search just now. Please try again in a moment.",
   // From generateContent
   "empty-transcript":
     "There's no transcript text to work from. Try fetching the video again.",
@@ -101,7 +117,8 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
 };
 
 // ── A small, explicit state machine ─────────────────────────
-// Metadata stage (idle/loading/ready/error) + transcript stage
+// Metadata stage (idle/loading/ready/error) + topic-search stage
+// (searching/search-results/search-error) + transcript stage
 // (transcribing/transcript-error) + generation stage
 // (picking/generating/output). Every stage past metadata carries `meta`,
 // and every stage past transcript also carries `transcript`, so nothing
@@ -111,8 +128,14 @@ type Status =
   | { phase: "loading" }
   | { phase: "ready"; meta: VideoMeta }
   | { phase: "error"; message: string }
+  // Topic search
+  | { phase: "searching"; query: string }
+  | { phase: "search-results"; query: string; results: SearchResultVideo[] }
+  | { phase: "search-error"; query: string; message: string }
+  // Transcript
   | { phase: "transcribing"; meta: VideoMeta }
   | { phase: "transcript-error"; meta: VideoMeta; message: string }
+  // Generation
   | { phase: "picking"; meta: VideoMeta; transcript: Transcript }
   | {
       phase: "generating";
@@ -133,14 +156,13 @@ type Status =
       result: GeneratedContent;
     };
 
-  export default function CreatePage() {
-      const toast = useToast();
-      const [input, setInput] = useState("");
+export default function CreatePage() {
+  const toast = useToast();
+  const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>({ phase: "idle" });
   // Transient UI choice in the picker — not a flow phase, so it lives apart.
   const [selectedType, setSelectedType] =
     useState<GeneratableContentType | null>(null);
-
 
   // Save state for the output stage. Transient UI, so it lives apart from the
   // flow machine (like selectedType). Reset whenever a new result appears.
@@ -150,25 +172,60 @@ type Status =
   async function handleSubmit() {
     // Step 1 — extract the ID on the client (instant, no network).
     const extracted = extractVideoId(input);
-    if (!extracted.ok) {
+
+    // Step 1a — it's a real YouTube video URL: the original flow, unchanged.
+    if (extracted.ok) {
+      setStatus({ phase: "loading" });
+      const result = await fetchVideoMetadata(extracted.videoId);
+      if (!result.ok) {
+        setStatus({ phase: "error", message: ERROR_MESSAGES[result.reason] });
+        return;
+      }
+      setStatus({ phase: "ready", meta: result.data });
+      return;
+    }
+
+    // Step 1b — not a video URL. Only "not-youtube" means "this is a topic to
+    // search for". The other reasons are genuine bad input (empty, or a
+    // YouTube URL we couldn't read a video ID from) — surface them as errors,
+    // exactly as before.
+    if (extracted.reason !== "not-youtube") {
       setStatus({ phase: "error", message: ERROR_MESSAGES[extracted.reason] });
       return;
     }
 
-    // Step 2 — fetch metadata from the backend (shows loading).
+    // Step 2 — topic search.
+    const query = input.trim();
+    setStatus({ phase: "searching", query });
+    const result = await searchVideos(query);
+    if (!result.ok) {
+      setStatus({
+        phase: "search-error",
+        query,
+        message: ERROR_MESSAGES[result.reason],
+      });
+      return;
+    }
+    // Success — may be an empty array; SearchResults shows its empty state.
+    setStatus({ phase: "search-results", query, results: result.data });
+  }
+
+  // A search result was picked — feed its videoId into the SAME metadata step
+  // the URL path uses, so it lands in the identical preview → transcript →
+  // generate flow.
+  async function handleUseSearchResult(videoId: string) {
     setStatus({ phase: "loading" });
-    const result = await fetchVideoMetadata(extracted.videoId);
+    const result = await fetchVideoMetadata(videoId);
     if (!result.ok) {
       setStatus({ phase: "error", message: ERROR_MESSAGES[result.reason] });
       return;
     }
-
-    // Step 3 — metadata loaded; show the preview.
     setStatus({ phase: "ready", meta: result.data });
   }
 
   function handleChange() {
-    // Back to the input (keep the text so they can edit it).
+    // Back to the input (keep the text so they can edit it). Also serves as
+    // "Edit search" from the results/empty state.
     setSelectedType(null);
     setStatus({ phase: "idle" });
   }
@@ -260,10 +317,18 @@ type Status =
   }
 
   const isLoading = status.phase === "loading";
+  const isSearching = status.phase === "searching";
+  const isBusy = isLoading || isSearching;
+
+  // The input bar stays visible through the metadata-loading and topic-search
+  // phases (so the query stays editable), and hides once a video is loaded.
   const showInput =
     status.phase === "idle" ||
     status.phase === "loading" ||
-    status.phase === "error";
+    status.phase === "error" ||
+    status.phase === "searching" ||
+    status.phase === "search-results" ||
+    status.phase === "search-error";
 
   // The video preview is shown for every stage past metadata.
   const meta =
@@ -292,7 +357,8 @@ type Status =
       <header className="mb-6">
         <h1 className="font-serif text-h2 text-xn-ink">Create</h1>
         <p className="mt-1 text-body text-xn-ink-muted">
-          Paste a YouTube link to turn it into something you can keep.
+          Paste a YouTube link or search a topic to turn it into something you
+          can keep.
         </p>
       </header>
 
@@ -306,12 +372,12 @@ type Status =
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleSubmit();
               }}
-              placeholder="https://www.youtube.com/watch?v=…"
-              disabled={isLoading}
+              placeholder="Paste a YouTube link or search a topic…"
+              disabled={isBusy}
               className="flex-1"
             />
-            <Button variant="primary" onClick={handleSubmit} disabled={isLoading}>
-              {isLoading ? "Fetching…" : "Fetch"}
+            <Button variant="primary" onClick={handleSubmit} disabled={isBusy}>
+              {isLoading ? "Fetching…" : isSearching ? "Searching…" : "Go"}
             </Button>
           </div>
 
@@ -329,6 +395,35 @@ type Status =
             </div>
           )}
         </>
+      )}
+
+      {/* ── Topic search: skeletons while searching, cards/empty when done ── */}
+      {(status.phase === "searching" || status.phase === "search-results") && (
+        <div className="mt-6">
+          <SearchResults
+            key={status.query}
+            query={status.query}
+            loading={status.phase === "searching"}
+            results={status.phase === "search-results" ? status.results : []}
+            onUse={handleUseSearchResult}
+            onEditSearch={handleChange}
+          />
+        </div>
+      )}
+
+      {/* Topic search error (input stays above so they can edit + retry) */}
+      {status.phase === "search-error" && (
+        <div className="mt-4">
+          <div className="flex items-start gap-2 text-sm text-xn-accent">
+            <AlertIcon />
+            <span>{status.message}</span>
+          </div>
+          <div className="mt-3">
+            <Button variant="primary" onClick={handleSubmit}>
+              Try again
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Preview + transcript/generation stages (shown once metadata loads) */}

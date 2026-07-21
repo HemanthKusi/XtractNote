@@ -11,7 +11,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import type { VideoMeta } from "@/lib/youtube/types";
-import type { ContentBody, GeneratedContent } from "@/lib/content/types";
+import type { ContentBody, ContentType, GeneratedContent } from "@/lib/content/types";
 import { getSocialPlatformLabel } from "@/lib/content/types";
 
 // Discriminated-union result, same pattern as the other lib/api helpers.
@@ -21,10 +21,13 @@ export type SaveResult =
   | { ok: true; data: { id: string } }
   | { ok: false; reason: SaveFailReason };
 
-// Update adds "not-found" — the id is missing or RLS filtered it (not yours).
+// Update adds "not-found" — the id is missing or RLS filtered it (not yours) —
+// and "wrong-body-type", which means the call itself was invalid: this helper
+// only writes prose bodies, so it refuses structured content outright.
 export type UpdateFailReason =
   | "not-authenticated"
   | "not-found"
+  | "wrong-body-type"
   | "update-failed"
   | "network";
 
@@ -157,6 +160,16 @@ export async function saveGeneratedContent(
 }
 
 /**
+ * Content types whose bodies are structured JSON rather than markdown.
+ *
+ * Local to this file on purpose: lib/content/types.ts defines the body shapes
+ * but has no "which content types are structured" export, and adding one for a
+ * single consumer would be premature. Promote it there if a second consumer
+ * appears.
+ */
+const STRUCTURED_TYPES: readonly ContentType[] = ["flashcards", "quiz"];
+
+/**
  * Update one saved item's title + body for the signed-in user.
  *
  * RLS scopes the write to the owner; .select("id, ...").single() forces a
@@ -165,19 +178,31 @@ export async function saveGeneratedContent(
  * from the new body; updated_at is left to the touch_updated_at trigger and
  * read back so the editor can show "last edited" without a refetch.
  *
- * PRECONDITION — prose types only. This writes content_body as { markdown },
- * so calling it on a flashcards or quiz row would overwrite the structured
- * body and lose the cards/questions. The editor hides Edit for structured
- * types (they open read-only), which is what keeps this safe. If per-card
- * editing arrives later, this helper needs a body-aware patch shape.
+ * PROSE ONLY — enforced, not assumed. This writes content_body as { markdown },
+ * which would overwrite a flashcards/quiz body and lose every card or question.
+ * The caller passes the row's contentType and structured types are rejected
+ * with "wrong-body-type" before any write. The editor also hides Edit for those
+ * types, but the guard here means a future caller (regenerate, a bulk action)
+ * cannot destroy a body by not knowing the rule.
  *
- * @param id    The row id to update.
- * @param patch The edited fields (raw title + markdown body).
+ * The type is a parameter rather than a pre-read: the editor already holds it
+ * from fetchContentById, so the guard costs no extra round trip.
+ *
+ * @param id          The row id to update.
+ * @param contentType The row's content type, used to reject structured bodies.
+ * @param patch       The edited fields (raw title + markdown body).
  */
 export async function updateContent(
   id: string,
+  contentType: ContentType,
   patch: { contentTitle: string; markdown: string },
 ): Promise<UpdateResult> {
+  // Refuse before authenticating or writing — this is a caller error, and
+  // there is no correct way to apply a markdown patch to a structured body.
+  if (STRUCTURED_TYPES.includes(contentType)) {
+    return { ok: false, reason: "wrong-body-type" };
+  }
+
   const supabase = createClient();
 
   const {

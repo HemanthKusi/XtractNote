@@ -27,6 +27,9 @@ import { SearchResults } from "@/components/create/search-results";
 import { useTheme } from "@/components/shared/theme-provider";
 import { useToast } from "@/components/shared/toast-provider";
 import type { ThemeName, ContentType } from "@/lib/constants/theme";
+import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
+import { FlashcardsView } from "@/components/output/flashcards-view";
+import type { SocialPlatform } from "@/lib/content/types";
 
 // ── Inline SVG Icons (temporary — replaced by Lucide in Session 3+) ──
 
@@ -123,6 +126,8 @@ export default function ShowcasePage() {
 
   // Session 4 state — AppShell preview active page
   const [previewPage, setPreviewPage] = useState<"home" | "create" | "history" | "folders" | "extension" | "settings">("home");
+
+  const [demoPlatform, setDemoPlatform] = useState<SocialPlatform | null>(null);
 
   return (
     <div className="min-h-screen bg-xn-bg text-xn-ink transition-colors duration-300">
@@ -957,6 +962,73 @@ export default function ShowcasePage() {
               onUse={(id) => alert(id)}
             />
           </Section>
+
+        {/* ── Phase 11: Social platform picker ───────────────────── */}
+          <section className="mt-12">
+            <h2 className="mb-1 text-[18px] font-semibold text-xn-ink">
+              SocialPlatformPicker
+            </h2>
+            <p className="mb-4 text-[13px] text-xn-ink-muted">
+              Step two of the social flow. Controlled — the parent owns the choice.
+              Selected: <span className="font-mono">{demoPlatform ?? "none"}</span>
+            </p>
+
+            <div className="max-w-[420px]">
+              <SocialPlatformPicker
+                visible
+                selected={demoPlatform}
+                onSelect={setDemoPlatform}
+              />
+            </div>
+
+            <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Disabled state</p>
+            <div className="max-w-[420px]">
+              <SocialPlatformPicker
+                visible
+                selected="linkedin"
+                onSelect={() => {}}
+                disabled
+              />
+            </div>
+          </section>
+
+        {/* ── Phase 11: Flashcards view ──────────────────────────── */}
+          <section className="mt-12">
+            <h2 className="mb-1 text-[18px] font-semibold text-xn-ink">
+              FlashcardsView
+            </h2>
+            <p className="mb-4 text-[13px] text-xn-ink-muted">
+              Static renderer for structured flashcard bodies. Renders bare — in the app
+              it sits inside OutputView&apos;s Card, so it looks plainer here.
+            </p>
+
+            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+              <FlashcardsView
+                body={{
+                  kind: "flashcards",
+                  cards: [
+                    {
+                      front: "What is photosynthesis?",
+                      back: "The process by which plants convert light energy into chemical energy stored as glucose.",
+                    },
+                    {
+                      front: "Which pigment absorbs light during photosynthesis?",
+                      back: "Chlorophyll, found in the chloroplasts of plant cells.",
+                    },
+                    {
+                      front: "What is the byproduct of photosynthesis?",
+                      back: "Oxygen, released into the atmosphere through the stomata.",
+                    },
+                  ],
+                }}
+              />
+            </div>
+
+            <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
+            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+              <FlashcardsView body={{ kind: "flashcards", cards: [] }} />
+            </div>
+          </section>
 
         {/* ── Footer ── */}
         <div className="text-center text-xs text-xn-ink-soft py-8 border-t border-xn-border">

@@ -38,7 +38,9 @@ export function FlashcardsView({ body, className = "" }: FlashcardsViewProps) {
   // and a blank area with no explanation is worse than a sentence.
   if (cards.length === 0) {
     return (
-      <p className="text-[14px] text-xn-ink-muted">No flashcards to display.</p>
+      <div className={className}>
+        <p className="text-[14px] text-xn-ink-muted">No flashcards to display.</p>
+      </div>
     );
   }
 

@@ -6,24 +6,33 @@ import { Card } from "@/components/ui/card";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
 import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
 import {
+  getSocialPlatformLabel,
   isGeneratable,
   type GeneratableContentType,
+  type SocialPlatform,
 } from "@/lib/content/types";
 
 // ─────────────────────────────────────────────────────────────
 // ContentTypePicker
 //
 // The format-selection grid for the create flow. Shows all 7 content
-// types: the generatable ones (summary, blog, notes) are live and
-// selectable; the rest render as dimmed "Coming soon" cards.
+// types. Availability is read from isGeneratable() (backed by
+// GENERATABLE_TYPES), so a card flips live the moment its type is added
+// there — no edit needed here. As of Phase 11 all seven are generatable,
+// so no card renders as "Coming soon"; the branch is kept because
+// GeneratableContentType narrows again if a format is added to the theme
+// registry before its generation path exists.
 //
 // Controlled component — it owns no state. The parent passes the current
 // `selected` value and an `onSelect` callback; the parent decides what a
 // selection does (e.g. enable a Generate button). Disable all interaction
 // via `disabled` while a generation is in flight.
 //
-// Availability is read from isGeneratable() (backed by GENERATABLE_TYPES),
-// so a card flips live the moment its type is added there — no edit here.
+// SOCIAL IS A TWO-STEP CHOICE. Every other type is terminal: pick it and
+// you can generate. Social needs a platform as well, so its card carries a
+// hint ("Choose a platform" / the chosen platform's label) to signal the
+// extra step before the user clicks. The platform itself is owned by the
+// parent and passed in — the picker stays stateless.
 // ─────────────────────────────────────────────────────────────
 
 // Short, picker-specific descriptions (one line each). Display copy, kept
@@ -38,9 +47,8 @@ const DESCRIPTIONS: Record<ContentType, string> = {
   social: "Posts for X, LinkedIn & more",
 };
 
-// Display order: generatable types first, then coming-soon. This is purely
-// presentational — enabled-ness still comes from isGeneratable(), so the two
-// can't disagree.
+// Display order. This is purely presentational — enabled-ness still comes
+// from isGeneratable(), so the two can't disagree.
 const DISPLAY_ORDER: ContentType[] = [
   "summary",
   "blog",
@@ -56,6 +64,12 @@ interface ContentTypePickerProps {
   selected: GeneratableContentType | null;
   /** Called with the chosen type when a live card is activated. */
   onSelect: (type: GeneratableContentType) => void;
+  /**
+   * The chosen social platform, when social is selected. Displayed on the
+   * social card so the current choice is visible without opening the
+   * platform picker. Ignored for every other type.
+   */
+  selectedPlatform?: SocialPlatform | null;
   /** Disable all interaction (e.g. while a generation is running). */
   disabled?: boolean;
   className?: string;
@@ -64,6 +78,7 @@ interface ContentTypePickerProps {
 export function ContentTypePicker({
   selected,
   onSelect,
+  selectedPlatform = null,
   disabled = false,
   className = "",
 }: ContentTypePickerProps) {
@@ -79,6 +94,16 @@ export function ContentTypePicker({
         // generatable subset inside the handlers below.
         const live = !disabled && isGeneratable(type);
         const isSelected = selected === type;
+
+        // Social carries a second step (platform choice). Show the chosen
+        // platform once there is one, otherwise prompt for it — so the card
+        // says what will happen before it is clicked.
+        const isSocial = type === "social";
+        const socialHint = isSocial
+          ? selectedPlatform
+            ? getSocialPlatformLabel(selectedPlatform)
+            : "Choose a platform"
+          : null;
 
         // Activating a live card. The isGeneratable guard both gates the call
         // and narrows the type so onSelect receives a GeneratableContentType.
@@ -141,6 +166,26 @@ export function ContentTypePicker({
               <p className="mt-2 text-[13px] leading-[1.5] text-xn-ink-muted">
                 {DESCRIPTIONS[type]}
               </p>
+
+              {/*
+                Social's second-step hint. Tinted with the type's identity
+                color when a platform is chosen so it reads as a settled
+                value; muted while it is still a prompt.
+              */}
+              {socialHint && (
+                <p
+                  className="mt-2 text-[12px] font-medium"
+                  style={
+                    selectedPlatform
+                      ? { color: meta.color }
+                      : undefined
+                  }
+                >
+                  <span className={selectedPlatform ? "" : "text-xn-ink-soft"}>
+                    {socialHint}
+                  </span>
+                </p>
+              )}
             </div>
           </Card>
         );

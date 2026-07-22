@@ -30,6 +30,7 @@ import type { ThemeName, ContentType } from "@/lib/constants/theme";
 import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
 import { FlashcardsView } from "@/components/output/flashcards-view";
 import type { SocialPlatform } from "@/lib/content/types";
+import { QuizView } from "@/components/output/quiz-view";
 
 // ── Inline SVG Icons (temporary — replaced by Lucide in Session 3+) ──
 
@@ -1027,6 +1028,48 @@ export default function ShowcasePage() {
             <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
             <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
               <FlashcardsView body={{ kind: "flashcards", cards: [] }} />
+            </div>
+          </section>
+
+          {/* ── Phase 11: Quiz view ────────────────────────────────── */}
+          <section className="mt-12">
+            <h2 className="mb-1 text-[18px] font-semibold text-xn-ink">QuizView</h2>
+            <p className="mb-4 text-[13px] text-xn-ink-muted">
+              Static renderer for structured quiz bodies. Renders bare — sits inside
+              OutputView&apos;s Card in the app.
+            </p>
+
+            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+              <QuizView
+                body={{
+                  kind: "quiz",
+                  questions: [
+                    {
+                      question: "What does chlorophyll do in photosynthesis?",
+                      options: [
+                        "Stores glucose for later use",
+                        "Absorbs light energy",
+                        "Releases carbon dioxide",
+                        "Transports water to the roots",
+                      ],
+                      answerIndex: 1,
+                      explanation:
+                        "Chlorophyll is the pigment that captures light energy to power the reaction.",
+                    },
+                    {
+                      question: "What is the main byproduct of photosynthesis?",
+                      options: ["Nitrogen", "Carbon dioxide", "Oxygen", "Methane"],
+                      answerIndex: 2,
+                      explanation: null,
+                    },
+                  ],
+                }}
+              />
+            </div>
+
+            <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
+            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+              <QuizView body={{ kind: "quiz", questions: [] }} />
             </div>
           </section>
 

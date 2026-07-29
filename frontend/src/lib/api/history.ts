@@ -2,9 +2,17 @@
 // Browser-side read of the signed-in user's saved content, newest first.
 // Maps raw generated_content rows into a tidy HistoryItem shape for the UI.
 // Also provides a single-item detail read (fetchContentById) for the editor.
+//
+// As of Phase 11, content_body can be one of three shapes (prose { markdown },
+// flashcards { kind, cards }, quiz { kind, questions }). The read path parses
+// the raw jsonb into a validated ContentBody and exposes it as `body`. It ALSO
+// keeps `markdown` (empty for structured types) so the History list, cards, and
+// the prose editor path — all of which read `.markdown` — keep working
+// unchanged. New structured consumers read `body`.
 
 import { createClient } from "@/lib/supabase/client";
 import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
+import type { ContentBody } from "@/lib/content/types";
 
 // What the History list actually needs from each saved row.
 export interface HistoryItem {
@@ -15,7 +23,8 @@ export interface HistoryItem {
   thumbnail: string;
   wordCount: number;
   createdAt: string;      // ISO timestamp
-  markdown: string;       // pulled out of content_body → free "open" later
+  markdown: string;       // prose body text; "" for structured types
+  body: ContentBody;      // the full validated body (prose or structured)
   folderId: string | null; // which folder it's in (null = none)
 }
 
@@ -30,7 +39,8 @@ export interface ContentDetail {
   channel: string;
   thumbnail: string;
   videoUrl: string;        // "watch source" link
-  markdown: string;        // editable body
+  markdown: string;        // prose body text; "" for structured types
+  body: ContentBody;       // the full validated body (prose or structured)
   wordCount: number;
   folderId: string | null;
   createdAt: string;       // ISO timestamp
@@ -63,7 +73,8 @@ const COLUMNS =
 const DETAIL_COLUMNS =
   "id, content_type, content_title, video_title, video_channel, video_thumbnail, video_url, word_count, folder_id, created_at, updated_at, content_body";
 
-// Valid ContentType keys, taken from the single source of truth.
+// Valid ContentType keys, taken from the single source of truth. Already
+// covers all seven types since it reads the token registry.
 const VALID_TYPES = Object.keys(contentTypeColors) as ContentType[];
 
 // A DB row is typed loosely (content_type is just string, content_body jsonb),
@@ -74,7 +85,45 @@ function toContentType(value: unknown): ContentType {
     : "summary"; // safe fallback — never crash the icon/label lookup
 }
 
+/**
+ * Parse raw content_body jsonb into a validated ContentBody.
+ *
+ * The read-side twin of parseBody in lib/api/generate.ts — same three-shape
+ * check, so a corrupted or hand-edited row can't reach a renderer as the wrong
+ * shape. Anything unrecognized falls back to an empty prose body, which every
+ * renderer handles gracefully.
+ *
+ * NOTE: this and generate.ts#parseBody are the pair to unify into a shared
+ * lib/content parser. Kept separate for now (two consumers, slightly different
+ * concerns); extract when a third appears.
+ */
+function toContentBody(raw: unknown): ContentBody {
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as Record<string, unknown>;
+
+    if (obj.kind === "flashcards" && Array.isArray(obj.cards)) {
+      return obj as unknown as ContentBody;
+    }
+    if (obj.kind === "quiz" && Array.isArray(obj.questions)) {
+      return obj as unknown as ContentBody;
+    }
+    if (obj.kind === undefined && typeof obj.markdown === "string") {
+      return obj as unknown as ContentBody;
+    }
+  }
+  // Unrecognized / null / legacy-empty → safe empty prose body.
+  return { markdown: "" };
+}
+
+// The prose text of a body, for the `markdown` convenience field. Structured
+// bodies have no prose, so they yield "".
+function bodyMarkdown(body: ContentBody): string {
+  return body.kind === undefined ? body.markdown : "";
+}
+
 // Minimal shape of the row the list selected (loose, as it comes from the DB).
+// content_body is `unknown` because it is genuinely one of three shapes now;
+// toContentBody is what narrows it.
 interface RawRow {
   id: string;
   content_type: string;
@@ -84,7 +133,7 @@ interface RawRow {
   video_thumbnail: string | null;
   word_count: number | null;
   created_at: string;
-  content_body: { markdown?: string } | null;
+  content_body: unknown;
   folder_id: string | null;
 }
 
@@ -95,6 +144,7 @@ interface RawDetailRow extends RawRow {
 }
 
 function mapRow(row: RawRow): HistoryItem {
+  const body = toContentBody(row.content_body);
   return {
     id: row.id,
     contentType: toContentType(row.content_type),
@@ -104,12 +154,14 @@ function mapRow(row: RawRow): HistoryItem {
     thumbnail: row.video_thumbnail || "",
     wordCount: row.word_count ?? 0,
     createdAt: row.created_at,
-    markdown: row.content_body?.markdown ?? "",
+    markdown: bodyMarkdown(body),
+    body,
     folderId: row.folder_id,
   };
 }
 
 function mapDetail(row: RawDetailRow): ContentDetail {
+  const body = toContentBody(row.content_body);
   return {
     id: row.id,
     contentType: toContentType(row.content_type),
@@ -120,7 +172,8 @@ function mapDetail(row: RawDetailRow): ContentDetail {
     channel: row.video_channel ?? "",
     thumbnail: row.video_thumbnail ?? "",
     videoUrl: row.video_url ?? "",
-    markdown: row.content_body?.markdown ?? "",
+    markdown: bodyMarkdown(body),
+    body,
     wordCount: row.word_count ?? 0,
     folderId: row.folder_id,
     createdAt: row.created_at,

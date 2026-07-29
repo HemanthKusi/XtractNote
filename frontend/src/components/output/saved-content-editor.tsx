@@ -6,11 +6,18 @@
 // The interactive surface behind /output/[id]. Loads ONE saved item by id,
 // then owns its full lifecycle:
 //
-//   view   → rendered markdown (reuses OutputView, one renderer for the app)
-//   edit   → editable title + raw-markdown textarea
+//   view   → rendered content (reuses OutputView, one renderer for the app)
+//   edit   → editable title + raw-markdown textarea (PROSE TYPES ONLY)
 //   copy   → copy the body to the clipboard
-//   export → download the body as a .md file
+//   export → download the body as a file
 //   delete → confirm via Modal, then route back to /history
+//
+// STRUCTURED TYPES ARE READ-ONLY (Phase 11). Flashcards and quiz have no
+// markdown to edit, so Edit is hidden for them and they open straight to the
+// rendered view. Copy/Export serialize the structured body to readable plain
+// text (see bodyToPlainText) so those actions stay meaningful. The "structured"
+// test is keyed on contentType — the SAME criterion updateContent's guard uses —
+// so the UI and the persistence guard can never disagree about what's editable.
 //
 // Feedback split (Phase 9.1): successes surface as toasts (Saved / Deleted);
 // errors stay inline (save-error banner, delete-error in modal) so they don't
@@ -47,7 +54,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
 import { OutputView } from "@/components/output/output-view";
 import { useToast } from "@/components/shared/toast-provider";
-import { contentTypeColors } from "@/lib/constants/theme";
+import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
+import type { ContentBody } from "@/lib/content/types";
 import {
   fetchContentById,
   type ContentDetail,
@@ -59,6 +67,12 @@ import {
   type UpdateFailReason,
   type DeleteFailReason,
 } from "@/lib/api/content";
+
+// Content types whose bodies are structured JSON rather than markdown, and so
+// open read-only. Kept in lockstep with the same list in lib/api/content.ts —
+// this is the second consumer, so both are candidates to promote into a shared
+// export in lib/content/types.ts.
+const STRUCTURED_TYPES: readonly ContentType[] = ["flashcards", "quiz"];
 
 // ── Copy maps ───────────────────────────────────────────────
 // One place for every failure-reason → human sentence. "not-found" during a
@@ -76,6 +90,9 @@ const LOAD_ERROR: Record<
 const SAVE_ERROR: Record<UpdateFailReason, string> = {
   "not-authenticated": "Your session expired. Please sign in again.",
   "not-found": "This content no longer exists — it may have been deleted.",
+  // Should never surface: Edit is hidden for structured types, so this path
+  // isn't reachable from the UI. Present because UpdateFailReason requires it.
+  "wrong-body-type": "This content type can't be edited as text.",
   "update-failed": "Couldn't save your changes. Please try again.",
   network: "Network problem — your changes weren't saved.",
 };
@@ -93,7 +110,7 @@ const LOADING_WIDTHS = ["90%", "82%", "74%", "66%", "58%", "48%"];
 
 // ── Small helpers ───────────────────────────────────────────
 
-// Title → safe filename for the .md export. Falls back to "untitled".
+// Title → safe filename for the export. Falls back to "untitled".
 function slugify(title: string): string {
   const slug = title
     .trim()
@@ -104,6 +121,39 @@ function slugify(title: string): string {
     .slice(0, 60)
     .replace(/^-|-$/g, "");
   return slug || "untitled";
+}
+
+/**
+ * Serialize any content body to readable plain text, for Copy and Export.
+ *
+ * Prose returns its markdown unchanged. Structured bodies are rendered to a
+ * scannable text form — the read-only counterpart to how the static renderers
+ * present the data — so Copy/Export stay meaningful for all seven types rather
+ * than yielding an empty string for flashcards and quiz.
+ */
+function bodyToPlainText(body: ContentBody): string {
+  if (body.kind === "flashcards") {
+    return body.cards
+      .map((card, i) => `${i + 1}. Q: ${card.front}\n   A: ${card.back}`)
+      .join("\n\n");
+  }
+  if (body.kind === "quiz") {
+    return body.questions
+      .map((q, i) => {
+        const options = q.options
+          .map((opt, oi) => {
+            const letter = String.fromCharCode(65 + oi);
+            const mark = oi === q.answerIndex ? "  (correct)" : "";
+            return `   ${letter}. ${opt}${mark}`;
+          })
+          .join("\n");
+        const why = q.explanation ? `\n   Why: ${q.explanation}` : "";
+        return `${i + 1}. ${q.question}\n${options}${why}`;
+      })
+      .join("\n\n");
+  }
+  // Prose.
+  return body.markdown;
 }
 
 // Compact relative time for "Edited …". Defensive against bad timestamps.
@@ -204,7 +254,17 @@ export function SavedContentEditor({
   }, []);
 
   // ── Derived ──
-  const effectiveBody = mode === "edit" ? bodyDraft : detail?.markdown ?? "";
+  // Structured items are read-only. Keyed on contentType to match
+  // updateContent's guard exactly, so the UI and the guard agree.
+  const isStructured = detail
+    ? STRUCTURED_TYPES.includes(detail.contentType)
+    : false;
+
+  // Copy/Export operate on this. In view mode it's the serialized body (prose
+  // markdown, or structured rendered to text); in edit mode it's the raw draft
+  // being edited (prose only — structured never enters edit mode).
+  const effectiveBody =
+    mode === "edit" ? bodyDraft : detail ? bodyToPlainText(detail.body) : "";
   const effectiveTitle =
     mode === "edit" ? titleDraft : detail?.contentTitle ?? "";
   const isDirty =
@@ -214,7 +274,10 @@ export function SavedContentEditor({
 
   // ── Actions ──
   function enterEdit() {
-    if (!detail) return;
+    // Guard as well as hide: structured bodies have no markdown to edit, and
+    // saving one would overwrite the cards/questions. The Edit button is
+    // hidden for them; this stops any other path reaching edit mode.
+    if (!detail || isStructured) return;
     setTitleDraft(detail.contentTitle);
     setBodyDraft(detail.markdown);
     setSaveError("");
@@ -231,7 +294,10 @@ export function SavedContentEditor({
     setSaving(true);
     setSaveError("");
 
-    const res = await updateContent(detail.id, {
+    // Pass the row's contentType so updateContent can enforce its prose-only
+    // guard. This path is only reachable for prose (Edit is hidden otherwise),
+    // but the guard is the backstop.
+    const res = await updateContent(detail.id, detail.contentType, {
       contentTitle: titleDraft,
       markdown: bodyDraft,
     });
@@ -245,10 +311,12 @@ export function SavedContentEditor({
 
     // Reflect the saved values locally — no refetch. Title/body are trimmed to
     // match what updateContent persisted; count + updated_at come back fresh.
+    // The body stays a prose { markdown } since only prose reaches here.
     setDetail({
       ...detail,
       contentTitle: titleDraft.trim(),
       markdown: bodyDraft.trim(),
+      body: { markdown: bodyDraft.trim() },
       wordCount: res.data.wordCount,
       updatedAt: res.data.updatedAt,
     });
@@ -269,13 +337,17 @@ export function SavedContentEditor({
   }
 
   function handleExport() {
+    // Structured bodies serialize to plain text, not markdown, so they get a
+    // .txt extension; prose keeps .md.
+    const ext = isStructured ? "txt" : "md";
+    const mime = isStructured ? "text/plain" : "text/markdown";
     const blob = new Blob([effectiveBody], {
-      type: "text/markdown;charset=utf-8",
+      type: `${mime};charset=utf-8`,
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${slugify(effectiveTitle)}.md`;
+    a.download = `${slugify(effectiveTitle)}.${ext}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -381,9 +453,10 @@ export function SavedContentEditor({
   if (!detail) return null;
 
   const typeMeta = contentTypeColors[detail.contentType];
+  // Pass the full body union to OutputView, which dispatches on its kind.
   const viewContent = {
     contentType: detail.contentType,
-    content: detail.markdown,
+    content: detail.body,
   };
 
   const formatChip = (
@@ -470,12 +543,16 @@ export function SavedContentEditor({
 
             {mode === "view" ? (
               <>
-                <Button variant="primary" onClick={enterEdit}>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </span>
-                </Button>
+                {/* Edit is prose-only. Structured types (flashcards, quiz) have
+                    no markdown to edit, so the button is hidden for them. */}
+                {!isStructured && (
+                  <Button variant="primary" onClick={enterEdit}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Pencil className="h-4 w-4" />
+                      Edit
+                    </span>
+                  </Button>
+                )}
                 <Button variant="ghost" onClick={openDelete}>
                   <span className="inline-flex items-center gap-1.5">
                     <Trash2 className="h-4 w-4" />
@@ -523,7 +600,8 @@ export function SavedContentEditor({
         )}
       </div>
 
-      {/* ── Body: view reuses OutputView; edit is a raw-markdown textarea ── */}
+      {/* ── Body: view reuses OutputView; edit is a raw-markdown textarea
+             (prose only — structured types never enter edit mode) ── */}
       {mode === "view" ? (
         <OutputView content={viewContent} />
       ) : (

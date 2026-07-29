@@ -7,18 +7,29 @@ import type { Components } from "react-markdown";
 import { Card } from "@/components/ui/card";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
 import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
+import type { ContentBody, MarkdownBody } from "@/lib/content/types";
+import { FlashcardsView } from "@/components/output/flashcards-view";
+import { QuizView } from "@/components/output/quiz-view";
 
 // ─────────────────────────────────────────────────────────────
 // OutputView
 //
-// Read-only viewer for AI-generated Markdown. Renders the content inside a
-// Card with a small format-identity header. Each Markdown element maps to a
-// styled component using --xn- tokens + editorial serif headings.
+// Read-only viewer for AI-generated content. Owns the Card, the small
+// format-identity header, and the max-width container; then DISPATCHES on the
+// body's `kind` to the right inner renderer:
+//
+//   - prose (no kind) -> MarkdownView (below)
+//   - flashcards      -> FlashcardsView
+//   - quiz            -> QuizView
+//
+// The inner renderers deliberately produce BARE content — no Card of their
+// own — because the Card lives here. That is the container contract they were
+// built against.
 //
 // react-markdown renders NO raw HTML by default, so model output can't inject
 // scripts — safe without extra sanitization.
 //
-// Read-only by design (Phase 7). Copy / edit / regenerate / export are Phase 9.
+// Read-only by design. Copy / edit / regenerate / export live elsewhere.
 // ─────────────────────────────────────────────────────────────
 
 // Every component uses an explicit `return` for an unambiguous body.
@@ -135,15 +146,54 @@ const markdownComponents: Components = {
   },
 };
 
+/**
+ * The prose renderer. This is the markdown path OutputView used to BE, now
+ * extracted so it can sit as a peer of the structured renderers rather than
+ * being hardcoded into the dispatcher. Renders bare, like its peers.
+ */
+function MarkdownView({ body }: { body: MarkdownBody }) {
+  const markdown = body.markdown.trim();
+
+  if (!markdown) {
+    return <p className="text-[14px] text-xn-ink-muted">No content to display.</p>;
+  }
+
+  return (
+    <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {markdown}
+    </Markdown>
+  );
+}
+
+/**
+ * Pick the inner renderer for a body. Exhaustive by construction: the default
+ * branch assigns the narrowed value to a MarkdownBody, so adding a new `kind`
+ * to ContentBody without a branch here fails to compile rather than silently
+ * falling through to the markdown renderer.
+ */
+function renderBody(body: ContentBody) {
+  switch (body.kind) {
+    case "flashcards":
+      return <FlashcardsView body={body} />;
+    case "quiz":
+      return <QuizView body={body} />;
+    default: {
+      // If this assignment ever errors, a body shape was added without a
+      // renderer above — handle it, don't let it reach here.
+      const prose: MarkdownBody = body;
+      return <MarkdownView body={prose} />;
+    }
+  }
+}
+
 interface OutputViewProps {
-    /** Content to display — any content type + Markdown body. */
-    content: { contentType: ContentType; content: string };
-    className?: string;
+  /** Content to display — any content type + its body union. */
+  content: { contentType: ContentType; content: ContentBody };
+  className?: string;
 }
 
 export function OutputView({ content, className = "" }: OutputViewProps) {
   const meta = contentTypeColors[content.contentType];
-  const body = content.content.trim();
 
   return (
     <Card
@@ -159,15 +209,7 @@ export function OutputView({ content, className = "" }: OutputViewProps) {
         </div>
       }
     >
-      <div className="max-w-[680px]">
-        {body ? (
-          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {body}
-          </Markdown>
-        ) : (
-          <p className="text-[14px] text-xn-ink-muted">No content to display.</p>
-        )}
-      </div>
+      <div className="max-w-[680px]">{renderBody(content.content)}</div>
     </Card>
   );
 }

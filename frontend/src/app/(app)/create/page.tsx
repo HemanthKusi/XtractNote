@@ -9,12 +9,18 @@
 //         -> (not a URL, a topic)-> searchVideos -> SearchResults
 //                                -> (Use this video) -> fetchVideoMetadata -> …
 //         -> (Continue) -> fetchTranscript
-//         -> (pick a type) -> generateContent -> OutputView
+//         -> (pick a type) -> [if social: pick a platform] -> generateContent
+//                          -> OutputView
 //
 // It's a Client Component because it holds state and handles events.
 // This is also the ONE place that turns machine-readable failure
 // reasons (from extract, metadata, transcript, search, AND generation)
 // into friendly, human messages.
+//
+// Social is a two-step choice: picking "Social" reveals a platform
+// sub-picker, and Generate stays disabled until a platform is chosen. The
+// platform travels with the generate call (and is stored in the saved row's
+// metadata by saveGeneratedContent).
 // ─────────────────────────────────────────────────────────────
 
 import { useState } from "react";
@@ -41,9 +47,11 @@ import type {
   GeneratableContentType,
   GeneratedContent,
   GenerateFailReason,
+  SocialPlatform,
 } from "@/lib/content/types";
 import { VideoPreviewCard } from "@/components/create/video-preview-card";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
+import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
 import { SearchResults } from "@/components/create/search-results";
 import { OutputView } from "@/components/output/output-view";
 
@@ -108,6 +116,10 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
     "The AI service isn't configured correctly on our end. Please try again shortly.",
   "generation-failed":
     "We couldn't generate the content this time. Please try again.",
+  // The model returned unusable structured data. This is the retryable case —
+  // a fresh attempt usually succeeds — so the copy says exactly that.
+  "invalid-structured-output":
+    "The AI returned an unexpected format this time. Please try generating again.",
   // From saveGeneratedContent
   "not-authenticated":
     "Please sign in again to save this — your session may have expired.",
@@ -123,6 +135,10 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
 // (picking/generating/output). Every stage past metadata carries `meta`,
 // and every stage past transcript also carries `transcript`, so nothing
 // loaded is ever thrown away by a later error.
+//
+// The chosen content type and social platform are NOT phases — they're
+// transient picker state (selectedType / selectedPlatform below), the same
+// way selectedType always has been.
 type Status =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -160,9 +176,13 @@ export default function CreatePage() {
   const toast = useToast();
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>({ phase: "idle" });
-  // Transient UI choice in the picker — not a flow phase, so it lives apart.
+  // Transient UI choices in the picker — not flow phases, so they live apart.
   const [selectedType, setSelectedType] =
     useState<GeneratableContentType | null>(null);
+  // The chosen social platform. Only meaningful when selectedType === "social";
+  // cleared whenever a non-social type is chosen (see handleSelectType).
+  const [selectedPlatform, setSelectedPlatform] =
+    useState<SocialPlatform | null>(null);
 
   // Save state for the output stage. Transient UI, so it lives apart from the
   // flow machine (like selectedType). Reset whenever a new result appears.
@@ -227,7 +247,16 @@ export default function CreatePage() {
     // Back to the input (keep the text so they can edit it). Also serves as
     // "Edit search" from the results/empty state.
     setSelectedType(null);
+    setSelectedPlatform(null);
     setStatus({ phase: "idle" });
+  }
+
+  // Choosing a format. Clears the platform when the type isn't social, so a
+  // stale platform can never linger behind another type (and so never gets
+  // sent to the generator).
+  function handleSelectType(type: GeneratableContentType) {
+    setSelectedType(type);
+    if (type !== "social") setSelectedPlatform(null);
   }
 
   async function handleContinue() {
@@ -263,11 +292,23 @@ export default function CreatePage() {
         ? current
         : null;
     if (!base || !selectedType) return;
+    // Social requires a platform. The Generate button is disabled without one,
+    // but guard here too so no other path can generate social without it.
+    if (selectedType === "social" && !selectedPlatform) return;
 
     const { meta, transcript } = base;
     setStatus({ phase: "generating", meta, transcript, contentType: selectedType });
 
-    const result = await generateContent(transcript.fullText, selectedType);
+    // Only send a platform for social — computed explicitly so a leftover
+    // value can't ride along with another type.
+    const platform =
+      selectedType === "social" ? selectedPlatform ?? undefined : undefined;
+
+    const result = await generateContent(
+      transcript.fullText,
+      selectedType,
+      platform,
+    );
     if (!result.ok) {
       setStatus({
         phase: "generate-error",
@@ -309,6 +350,7 @@ export default function CreatePage() {
     const current = status;
     if (current.phase !== "output") return;
     setSelectedType(null);
+    setSelectedPlatform(null);
     setStatus({
       phase: "picking",
       meta: current.meta,
@@ -350,6 +392,9 @@ export default function CreatePage() {
     status.phase === "output";
 
   const isGenerating = status.phase === "generating";
+
+  // Social is picked but no platform chosen yet — Generate stays disabled.
+  const needsPlatform = selectedType === "social" && !selectedPlatform;
 
   return (
     <div className="mx-auto max-w-content px-6 py-10">
@@ -494,15 +539,26 @@ export default function CreatePage() {
 
                   <ContentTypePicker
                     selected={selectedType}
-                    onSelect={setSelectedType}
+                    onSelect={handleSelectType}
+                    selectedPlatform={selectedPlatform}
                     disabled={isGenerating}
+                  />
+
+                  {/* Social's second step. Renders nothing unless social is the
+                      chosen type (the component returns null when not visible). */}
+                  <SocialPlatformPicker
+                    visible={selectedType === "social"}
+                    selected={selectedPlatform}
+                    onSelect={setSelectedPlatform}
+                    disabled={isGenerating}
+                    className="mt-5"
                   />
 
                   <div className="mt-5 flex items-center gap-3">
                     <Button
                       variant="primary"
                       onClick={handleGenerate}
-                      disabled={!selectedType || isGenerating}
+                      disabled={!selectedType || needsPlatform || isGenerating}
                     >
                       {isGenerating
                         ? "Generating…"

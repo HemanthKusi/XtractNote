@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+      "target": "ES2022",
+      "useDefineForClassFields": true,
+      "lib": ["ES2022", "DOM", "DOM.Iterable"],
+      "module": "ESNext",
+      "moduleResolution": "bundler",
+      "jsx": "react-jsx",
+  
+      // Vite does the actual compiling; tsc is only a type-checker here.
+      "noEmit": true,
+  
+      "strict": true,
+      "esModuleInterop": true,
+      "allowSyntheticDefaultImports": true,
+      "resolveJsonModule": true,
+      "skipLibCheck": true,
+      "isolatedModules": true,
+  
+      // Pulls in the `chrome.*` global types from @types/chrome.
+      "types": ["chrome"]
+    },
+    "include": ["src", "vite.config.ts", "manifest.config.ts"]
+  }

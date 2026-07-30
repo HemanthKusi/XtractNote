@@ -65,7 +65,7 @@ export type DetectReason = "no-active-tab" | "not-youtube";
 
 /** Result of inspecting the active tab. */
 export type ActiveVideo =
-  | { ok: true; videoId: string; url: string }
+  | { ok: true; videoId: string; url: string; title?: string }
   | { ok: false; reason: DetectReason };
 
 /**
@@ -93,5 +93,5 @@ export async function detectActiveTabVideo(): Promise<ActiveVideo> {
     return { ok: false, reason: "not-youtube" };
   }
 
-  return { ok: true, videoId, url };
+  return { ok: true, videoId, url, title: tab.title };
 }

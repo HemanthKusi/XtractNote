@@ -29,6 +29,10 @@ export default function App() {
     } catch (err) {
       console.error("Failed to open XtractNote:", err);
       setError("Couldn't open XtractNote. Please try again.");
+    } finally {
+      // Always clear busy: if the popup didn't close, the buttons re-enable
+      // instead of stranding. If it did close, this is a harmless no-op on a
+      // dismounting popup.
       setBusy(false);
     }
   }

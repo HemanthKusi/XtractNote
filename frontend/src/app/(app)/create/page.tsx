@@ -23,7 +23,7 @@
 // metadata by saveGeneratedContent).
 // ─────────────────────────────────────────────────────────────
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   extractVideoId,
@@ -43,11 +43,13 @@ import type {
   SearchResultVideo,
   SearchFailReason,
 } from "@/lib/youtube/search-types";
-import type {
-  GeneratableContentType,
-  GeneratedContent,
-  GenerateFailReason,
-  SocialPlatform,
+import {
+  isGeneratable,
+  type ContentType,
+  type GeneratableContentType,
+  type GeneratedContent,
+  type GenerateFailReason,
+  type SocialPlatform,
 } from "@/lib/content/types";
 import { VideoPreviewCard } from "@/components/create/video-preview-card";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
@@ -189,9 +191,12 @@ export default function CreatePage() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState("");
 
-  async function handleSubmit() {
+  // Core submit logic, taking the raw text as an argument so callers that just
+  // set `input` (e.g. the prefill effect) can pass the value directly without
+  // waiting for the async state update to land.
+  async function startFromInput(rawInput: string) {
     // Step 1 — extract the ID on the client (instant, no network).
-    const extracted = extractVideoId(input);
+    const extracted = extractVideoId(rawInput);
 
     // Step 1a — it's a real YouTube video URL: the original flow, unchanged.
     if (extracted.ok) {
@@ -215,7 +220,7 @@ export default function CreatePage() {
     }
 
     // Step 2 — topic search.
-    const query = input.trim();
+    const query = rawInput.trim();
     setStatus({ phase: "searching", query });
     const result = await searchVideos(query);
     if (!result.ok) {
@@ -229,6 +234,46 @@ export default function CreatePage() {
     // Success — may be an empty array; SearchResults shows its empty state.
     setStatus({ phase: "search-results", query, results: result.data });
   }
+
+  // Thin wrapper so existing callers (Go button, Enter key) stay unchanged.
+  function handleSubmit() {
+    void startFromInput(input);
+  }
+
+  // ── Prefill from URL params (extension deep-link) ─────────────
+  // The extension opens /create?v=<canonical watch url>&action=<type>.
+  // Read once on mount: seed the input and auto-load the video (v), and
+  // preselect the format (action) if it's a valid generatable type. We stop at
+  // the loaded preview — never auto-generate, since that would spend an AI call
+  // on page load, possibly on a video with no captions.
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (prefilledRef.current) return; // guard StrictMode's double-invoke
+    prefilledRef.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("v");
+    // Treat the raw param as a possible ContentType, then let isGeneratable do
+    // the real runtime check. Casting here — not on setSelectedType — is what
+    // lets the guard narrow `action` to GeneratableContentType for the setter.
+    const action = params.get("action") as ContentType | null;
+
+    // Preselect the format if it's a real generatable type; unknown/missing is
+    // ignored, not an error.
+    if (action && isGeneratable(action)) {
+      setSelectedType(action);
+    }
+
+    // Auto-load the video. Seed the input for consistency (though it's hidden
+    // once the preview loads) and run the same submit path a manual paste uses.
+    if (v) {
+      setInput(v);
+      void startFromInput(v);
+    }
+    // Mount-only: reads window.location once. startFromInput is stable enough
+    // for this one-shot use; we intentionally don't want it re-running.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // A search result was picked — feed its videoId into the SAME metadata step
   // the URL path uses, so it lands in the identical preview → transcript →

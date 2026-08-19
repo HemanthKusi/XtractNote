@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Chip } from "@/components/ui/chip";
 
 // ────────────────────────────────────────────────────────────
 // CheckIcon — small SVG checkmark for the feature list.

@@ -272,7 +272,6 @@ export default function CreatePage() {
     }
     // Mount-only: reads window.location once. startFromInput is stable enough
     // for this one-shot use; we intentionally don't want it re-running.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // A search result was picked — feed its videoId into the SAME metadata step

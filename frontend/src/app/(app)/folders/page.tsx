@@ -37,7 +37,7 @@ type State =
 export default function FoldersPage() {
   const [state, setState] = useState<State>({ phase: "loading" });
   const [createOpen, setCreateOpen] = useState(false);
-  const toast = useToast();
+  const _toast = useToast();
 
   const load = useCallback(async () => {
     setState({ phase: "loading" });

@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Chip } from "@/components/ui/chip";
 import { Logo } from "@/components/layout/logo";
 
 // ────────────────────────────────────────────────────────────
@@ -66,7 +65,7 @@ export function ExtensionSection() {
 
           {/* Description */}
           <p className="mt-3 max-w-[420px] text-[15px] leading-relaxed text-[var(--ink-muted)]">
-            Drop the extension in. While you're watching, hit the
+            Drop the extension in. While you&rsquo;re watching, hit the
             button — blog, notes, summarize, or save for later.
             Picks up your default folder.
           </p>

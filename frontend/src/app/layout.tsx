@@ -63,16 +63,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      data-theme="paper"
+      data-theme="light"
       className={`${dmSans.variable} ${jetbrainsMono.variable} ${caveat.variable}`}
       suppressHydrationWarning
     >
       <body>
-        {/* Theme loads instantly from localStorage (synchronous read in ThemeProvider).
-            Dev console shows a hydration warning because server renders "paper" while
-            client may render "dark" — this is cosmetic and users never see it.
-            Properly fixed in Phase 8 when Supabase Auth stores theme in a cookie,
-            letting the server render the correct theme from the start. */}
+        {/* The theme is read from localStorage synchronously in ThemeProvider, so
+            it is correct on first paint and never flashes. The server cannot see
+            localStorage, so it renders light while a client holding dark renders
+            dark, and React reports a hydration mismatch in development. It is
+            dev-only and cosmetic. The real fix is to keep the preference in a
+            cookie the server can read; still outstanding. */}
         <ThemeProvider>
           <ToastProvider>
             {children}

@@ -26,7 +26,7 @@ import { Skeleton, SkeletonText, SkeletonCard } from "@/components/ui/loading-sk
 import { SearchResults } from "@/components/create/search-results";
 import { useTheme } from "@/components/shared/theme-provider";
 import { useToast } from "@/components/shared/toast-provider";
-import type { ThemeName, ContentType } from "@/lib/constants/theme";
+import { THEMES, type ThemeName, type ContentType } from "@/lib/constants/theme";
 import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
 import { FlashcardsView } from "@/components/output/flashcards-view";
 import type { SocialPlatform } from "@/lib/content/types";
@@ -113,7 +113,7 @@ const FAKE_RESULTS = Array.from({ length: 23 }).map((_, i) => ({
 export default function ShowcasePage() {
   const { theme, setTheme } = useTheme();
   const toast = useToast();
-  const themeOptions: ThemeName[] = ["paper", "clean", "dark"];
+  const themeOptions: ThemeName[] = [...THEMES];
 
   // Session 2 state
   const [toggleA, setToggleA] = useState(false);

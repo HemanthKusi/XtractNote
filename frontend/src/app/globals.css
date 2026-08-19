@@ -20,8 +20,10 @@
    faint green bias so the greys read chosen rather than default.
    ───────────────────────────────────────────────────────────── */
 
-/* Instrument Serif — must be first because CSS requires @import before all other rules */
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+/* All three families are self-hosted through next/font in layout.tsx.
+   There is deliberately no @import here: the serif used to be fetched
+   from an external origin on every first paint, which is what made the
+   "@import must come first" rule necessary in this file. */
 
 /* Load Tailwind's three layers */
 @tailwind base;

@@ -122,7 +122,7 @@ const config: Config = {
       // longer restates the family.
       fontFamily: {
         sans:  ["var(--font-dm-sans)", "system-ui", "sans-serif"],
-        serif: ["Instrument Serif", "Georgia", "serif"],
+        serif: ["var(--font-instrument-serif)", "Georgia", "serif"],
         mono:  ["var(--font-jetbrains-mono)", "ui-monospace", "Menlo", "monospace"],
       },
 

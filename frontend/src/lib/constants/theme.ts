@@ -1,161 +1,128 @@
 // ─────────────────────────────────────────────────────────────
-// XtractNote Design Tokens
+// XtractNote — TypeScript-side design tokens
 // ─────────────────────────────────────────────────────────────
-// Single source of truth for all colors, fonts, and spacing.
-// These values come directly from the hi-fi designs (hifi-core.jsx).
+// The token layer lives in globals.css as CSS variables, and
+// tailwind.config.ts maps those variables to utility classes.
+// Components should reach for the utilities first — bg-xn-surface,
+// text-xn-ink-muted — and come here only when a value has to be
+// handed to TypeScript, which in practice means an inline style.
 //
-// CSS variables are set in globals.css. Tailwind reads them via
-// tailwind.config.ts. Components use Tailwind classes like
-// `bg-xn-surface` or `text-xn-ink-muted`.
-//
-// This file is for TypeScript code that needs color values directly
-// (e.g., charts, dynamic styles, content-type icons).
+// Everything below therefore refers to the variables rather than
+// restating their values. A literal here would be a second source of
+// truth that could not follow the theme, which is exactly what this
+// file used to be.
 // ─────────────────────────────────────────────────────────────
 
-// ── Theme Palettes ──────────────────────────────────────────
-// Each theme defines the same set of tokens with different values.
-// "paper" is warm cream (Notability/Readwise feel).
-// "clean" is crisp white (more neutral).
-// "dark" is warm dark (not pure black — warm undertones).
+// ── Themes ──────────────────────────────────────────────────
+// Two, not three. The warm "paper" and near-white "clean" themes
+// were retired along with the warm surface family; both now resolve
+// to the single light theme. The database constrains the stored
+// preference to these same two values.
 
-export const themes = {
-    paper: {
-      bg: '#fbf8f1',
-      bgDeep: '#f3edde',
-      surface: '#ffffff',
-      surfaceAlt: '#fbf8f1',
-      ink: '#1c1813',
-      inkMuted: '#6b6055',
-      inkSoft: '#8e8478',
-      inkFaint: 'rgba(28,24,19,0.10)',
-      border: '#ece5d4',
-      borderStrong: '#dccfb1',
-      shadow: '0 1px 2px rgba(28,24,19,0.04), 0 4px 16px rgba(28,24,19,0.05)',
-      shadowLg: '0 4px 12px rgba(28,24,19,0.06), 0 12px 40px rgba(28,24,19,0.10)',
-    },
-    clean: {
-      bg: '#f6f6f4',
-      bgDeep: '#eeeeea',
-      surface: '#ffffff',
-      surfaceAlt: '#fafaf8',
-      ink: '#161614',
-      inkMuted: '#5e5d57',
-      inkSoft: '#86847d',
-      inkFaint: 'rgba(22,22,20,0.10)',
-      border: '#e6e5e0',
-      borderStrong: '#d4d3cc',
-      shadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04)',
-      shadowLg: '0 4px 12px rgba(0,0,0,0.05), 0 12px 40px rgba(0,0,0,0.08)',
-    },
-    dark: {
-      bg: '#15130f',
-      bgDeep: '#100e0b',
-      surface: '#1d1a15',
-      surfaceAlt: '#22201a',
-      ink: '#f1ece0',
-      inkMuted: '#a59e8e',
-      inkSoft: '#7d776b',
-      inkFaint: 'rgba(241,236,224,0.10)',
-      border: '#2d2922',
-      borderStrong: '#3b362d',
-      shadow: '0 1px 2px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3)',
-      shadowLg: '0 4px 12px rgba(0,0,0,0.5), 0 12px 40px rgba(0,0,0,0.5)',
-    },
-  } as const;
-  
-  // This creates a type that can only be "paper" | "clean" | "dark".
-  // TypeScript will catch any typo if you accidentally write "drak".
-  export type ThemeName = keyof typeof themes;
-  
-  // ── Accent Color ────────────────────────────────────────────
-  // The terracotta accent is the default. Others are available
-  // for future user preference settings.
-  
-  export const accent = {
-    terracotta: '#c54f2a',
-    forest: '#3f7a4f',
-    indigo: '#4a5cb8',
-    plum: '#8a3a6e',
-  } as const;
-  
-  export const defaultAccent = accent.terracotta;
-  
-  // ── Highlight ───────────────────────────────────────────────
-  // The yellow highlighter mark (like Notability's marker pen).
-  
-  export const highlight = '#fbe28f';
-  
-  // ── Content Type Colors ─────────────────────────────────────
-  // Each of the 7 content types has its own identity color.
-  // `color` is the main color, `bg` is a light tint for chips
-  // and badges, `border` is for chip/card borders.
-  
-  export const contentTypeColors = {
-    blog:       { color: '#3B7AE8', bg: '#EEF4FF', border: '#C6DBFC', label: 'Blog Post' },
-    notes:      { color: '#48903A', bg: '#F0F7EC', border: '#C8E2B8', label: 'Study Notes' },
-    summary:    { color: '#D4880C', bg: '#FEF4E8', border: '#F5DDB5', label: 'Summary' },
-    research:   { color: '#7E4CC5', bg: '#F5F0FF', border: '#DDD0F5', label: 'Research' },
-    flashcards: { color: '#E06030', bg: '#FEF0E8', border: '#F5D0B5', label: 'Flashcards' },
-    quiz:       { color: '#D44060', bg: '#FEECEF', border: '#F9C3CC', label: 'Quiz' },
-    social:     { color: '#1C8C86', bg: '#EDFAF9', border: '#B8E8E5', label: 'Social Pack' },
-  } as const;
-  
-  export type ContentType = keyof typeof contentTypeColors;
-  
-  // ── Folder Colors ───────────────────────────────────────────
-  // Users can assign these vibrant colors to folders.
-  
-  export const folderColors = [
-    '#E06030', // orange
-    '#3B7AE8', // blue
-    '#48903A', // green
-    '#D4880C', // amber
-    '#7E4CC5', // purple
-    '#1C8C86', // teal
-    '#D44060', // rose
-  ] as const;
-  
-  // ── Status Colors ───────────────────────────────────────────
-  // Used for status pills in the history table.
-  
-  export const statusColors = {
-    draft:    { bg: '#FEF4E8', text: '#D4880C', border: '#F5DDB5' },
-    saved:    { bg: '#F0F7EC', text: '#48903A', border: '#C8E2B8' },
-    archived: { bg: '#f8f7f5', text: '#8e8478', border: '#e6e3dc' },
-    exported: { bg: '#EEF4FF', text: '#3B7AE8', border: '#C6DBFC' },
-    error:    { bg: '#FEECEF', text: '#D44060', border: '#F9C3CC' },
-  } as const;
-  
-  export type StatusType = keyof typeof statusColors;
-  
-  // ── Font Families ───────────────────────────────────────────
-  
-  export const fonts = {
-    sans: '"DM Sans", system-ui, sans-serif',
-    serif: '"Instrument Serif", Georgia, serif',
-    mono: '"JetBrains Mono", ui-monospace, Menlo, monospace',
-    hand: '"Caveat", cursive',
-  } as const;
-  
-  // ── Border Radius ───────────────────────────────────────────
-  
-  export const radius = {
-    sm: '6px',
-    md: '10px',
-    lg: '14px',
-    xl: '20px',
-    pill: '999px',
-  } as const;
-  
-  // ── Brand Palette ───────────────────────────────────────────
-  // From the XtractNote logo file — deep navy + cream + amber.
-  // Used for the logo component and splash screens.
-  
-  export const brand = {
-    bg: '#0c1b3a',
-    bgDeep: '#081530',
-    ink: '#f3ebd9',
-    inkSoft: 'rgba(243,235,217,0.6)',
-    accent: '#e8a955',
-    paper: '#fbf7ec',
-  } as const;
+export type ThemeName = "light" | "dark";
+
+export const THEMES: readonly ThemeName[] = ["light", "dark"] as const;
+
+export const DEFAULT_THEME: ThemeName = "light";
+
+/** Narrow an unknown stored value — localStorage, a database row — to a theme. */
+export function isThemeName(value: unknown): value is ThemeName {
+  return value === "light" || value === "dark";
+}
+
+// ── Content-format identity ─────────────────────────────────
+// The seven formats are the only saturated colours in the product,
+// and they belong only on format-bearing elements: a chip, a type
+// icon, a folder dot, the rail on an output header. Never a button,
+// nav item, background, or primary action.
+//
+// These were literal hex, which meant a chip tuned for a light
+// surface kept exactly the same value on a near-black one. Each now
+// points at a variable that inverts with the theme, and the tints are
+// derived from it rather than hand-picked, so a fill and its border
+// can never drift away from the colour they belong to.
+
+/** Fill and border tints, derived from a format's own colour. */
+function formatTints(token: string) {
+  return {
+    color: `var(${token})`,
+    /** Chip and badge fill — light enough to sit under text. */
+    bg: `color-mix(in srgb, var(${token}) 13%, transparent)`,
+    /** Chip and card border — visible without competing with the fill. */
+    border: `color-mix(in srgb, var(${token}) 32%, transparent)`,
+  };
+}
+
+export const contentTypeColors = {
+  blog: { ...formatTints("--xn-fmt-blog"), label: "Blog Post" },
+  notes: { ...formatTints("--xn-fmt-notes"), label: "Study Notes" },
+  summary: { ...formatTints("--xn-fmt-summary"), label: "Summary" },
+  research: { ...formatTints("--xn-fmt-research"), label: "Research" },
+  flashcards: { ...formatTints("--xn-fmt-flashcards"), label: "Flashcards" },
+  quiz: { ...formatTints("--xn-fmt-quiz"), label: "Quiz" },
+  social: { ...formatTints("--xn-fmt-social"), label: "Social Pack" },
+} as const;
+
+export type ContentType = keyof typeof contentTypeColors;
+
+// ── Status ──────────────────────────────────────────────────
+// Status is chrome, not identity, so it stays near-monochrome. Giving
+// each status its own hue would put five more saturated colours on
+// screen competing with the seven that are supposed to mean something.
+//
+// Only the failure case earns colour, because only it needs to stop
+// someone. The rest are separated by weight and by their label.
+
+export const statusColors = {
+  draft: {
+    bg: "var(--xn-surface-alt)",
+    text: "var(--xn-ink-muted)",
+    border: "var(--xn-border)",
+  },
+  saved: {
+    bg: "var(--xn-surface-alt)",
+    text: "var(--xn-ink)",
+    border: "var(--xn-border-strong)",
+  },
+  archived: {
+    bg: "transparent",
+    text: "var(--xn-ink-soft)",
+    border: "var(--xn-border)",
+  },
+  exported: {
+    bg: "var(--xn-surface-alt)",
+    text: "var(--xn-ink-muted)",
+    border: "var(--xn-border)",
+  },
+  error: {
+    bg: "var(--xn-danger-soft)",
+    text: "var(--xn-danger)",
+    border: "color-mix(in srgb, var(--xn-danger) 32%, transparent)",
+  },
+} as const;
+
+export type StatusType = keyof typeof statusColors;
+
+// ── Folder colours ──────────────────────────────────────────
+// Unlike everything else here these are *data*: the chosen value is
+// written to the folder row and read back later, so it has to be a
+// literal that means the same thing whenever it is read.
+//
+// That is also the limitation. A stored hex cannot follow the theme,
+// so these are the light-surface values and they stay slightly dark
+// against the dark theme. Fixing it properly means storing a token
+// name instead of a colour, which is a migration rather than a
+// restyle — deferred deliberately.
+//
+// Folders created before this change keep whatever hex they were
+// given; nothing rewrites existing rows.
+
+export const folderColors = [
+  "#2563C9", // blue
+  "#2A8049", // green
+  "#97680D", // amber
+  "#7B4BD4", // violet
+  "#C14B26", // rust
+  "#CE3462", // rose
+  "#117E78", // teal
+] as const;

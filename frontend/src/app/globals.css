@@ -5,16 +5,25 @@
    1. @tailwind base      → CSS reset and base styles
    2. @tailwind components → component classes (we don't use many)
    3. @tailwind utilities  → all utility classes (bg-*, text-*, etc.)
-   
+
    @layer utilities { } must come AFTER @tailwind utilities
    so Tailwind knows the layer exists.
-   
-   Custom design tokens live in tailwind.config.ts.
-   Theme variables live here in [data-theme="..."] blocks.
+
+   TOKEN ARCHITECTURE
+   Every value the design system depends on is a CSS variable
+   declared here. tailwind.config.ts maps those variables to
+   utility classes; components only ever use the utilities.
+   Nothing downstream should hardcode a colour, radius, or shadow.
+
+   Two themes only — light (:root) and dark. Both are neutral:
+   no warm cream, no brown-tinted darks. The neutrals carry a
+   faint green bias so the greys read chosen rather than default.
    ───────────────────────────────────────────────────────────── */
 
-/* Instrument Serif — must be first because CSS requires @import before all other rules */
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
+/* All three families are self-hosted through next/font in layout.tsx.
+   There is deliberately no @import here: the serif used to be fetched
+   from an external origin on every first paint, which is what made the
+   "@import must come first" rule necessary in this file. */
 
 /* Load Tailwind's three layers */
 @tailwind base;
@@ -23,90 +32,209 @@
 
 
 /* ══════════════════════════════════════════════════════════════
-   THEME VARIABLES
+   THEME — LIGHT (default)
    ══════════════════════════════════════════════════════════════ */
 
-/* ── Paper Theme (Default — warm cream) ── */
-
-:root,
-[data-theme="paper"] {
-  --xn-bg: #fbf8f1;
-  --xn-bg-deep: #f3edde;
+:root {
+  /* ── Surfaces: the three-layer depth model ── */
+  --xn-bg: #f8f9f7;
+  --xn-bg-deep: #eef0ed;
   --xn-surface: #ffffff;
-  --xn-surface-alt: #fbf8f1;
+  --xn-surface-alt: #f3f5f2;
 
-  --xn-ink: #1c1813;
-  --xn-ink-muted: #6b6055;
-  --xn-ink-soft: #8e8478;
-  --xn-ink-faint: rgba(28, 24, 19, 0.10);
+  /* ── Ink ramp ── */
+  --xn-ink: #13161a;
+  --xn-ink-muted: #545a61;
+  --xn-ink-soft: #878e95;
+  --xn-ink-faint: rgba(19, 22, 26, 0.10);
 
-  --xn-border: #ece5d4;
-  --xn-border-strong: #dccfb1;
+  /* ── Borders ── */
+  --xn-border: #e4e6e3;
+  --xn-border-strong: #d0d3cf;
 
-  --xn-shadow: 0 1px 2px rgba(28, 24, 19, 0.04), 0 4px 16px rgba(28, 24, 19, 0.05);
-  --xn-shadow-lg: 0 4px 12px rgba(28, 24, 19, 0.06), 0 12px 40px rgba(28, 24, 19, 0.10);
+  /* ── Content-format identity colours ──
+     The only saturated things in the product. They appear on
+     format-bearing elements only — chips, type icons, folder
+     dots, the output header rail — never on buttons, nav,
+     backgrounds, or the primary action.
+     Every value below clears WCAG 4.5:1 against --xn-bg. */
+  --xn-fmt-blog: #2563C9;
+  --xn-fmt-notes: #2A8049;
+  --xn-fmt-summary: #97680D;
+  --xn-fmt-research: #7B4BD4;
+  --xn-fmt-flashcards: #C14B26;
+  --xn-fmt-quiz: #CE3462;
+  --xn-fmt-social: #117E78;
 
-  --xn-accent: #c54f2a;
-  --xn-accent-soft: rgba(197, 79, 42, 0.12);
-  --xn-highlight: #fbe28f;
+  /* ── Editorial annotation marks ──
+     Used by the .mark-* utilities. Kept as tokens so they can be
+     theme-aware; the current hardcoded values are light-only and
+     make text unreadable on a dark ground. */
+  --xn-mark-yellow: #fbe28f;
+  --xn-mark-green: #bbf7d0;
+  --xn-mark-blue: #bfdbfe;
+  --xn-mark-pink: #fecdd3;
+  --xn-mark-purple: #e9d5ff;
+  --xn-highlight: var(--xn-mark-yellow);
 
-  --xn-radius-sm: 6px;
-  --xn-radius-md: 10px;
-  --xn-radius-lg: 14px;
-  --xn-radius-xl: 20px;
-  --xn-radius-pill: 999px;
+  /* ── Elevation: four layers, offset and blur rising as opacity falls ──
+     The tight dark layer sits under the element; the wide faint
+     one does the ambient work. Separation comes from depth, not
+     from borders. */
+  --xn-elev-1:
+    0 3px 6px rgba(19, 22, 26, 0.07);
+  --xn-elev-2:
+    0 10px 10px rgba(19, 22, 26, 0.06),
+    0 3px 6px rgba(19, 22, 26, 0.07);
+  --xn-elev-3:
+    0 40px 16px rgba(19, 22, 26, 0.012),
+    0 22px 13px rgba(19, 22, 26, 0.04),
+    0 10px 10px rgba(19, 22, 26, 0.07),
+    0 3px 6px rgba(19, 22, 26, 0.08);
+  --xn-elev-hover:
+    0 60px 24px rgba(19, 22, 26, 0.016),
+    0 34px 20px rgba(19, 22, 26, 0.05),
+    0 16px 15px rgba(19, 22, 26, 0.08),
+    0 5px 9px rgba(19, 22, 26, 0.09);
 
-  --xn-logo-mark: #0c1b3a;
-  --xn-logo-muted: #6a6f7b;
+  /* ── Semantic: danger ──
+     New. §8 recorded "no semantic danger token" as a real gap:
+     the create route borrows the accent for error states. Now
+     that the accent is monochrome, errors need their own colour
+     or they disappear. Clears 4.5:1 on --xn-bg. */
+  --xn-danger: #C0392B;
+  --xn-danger-soft: rgba(192, 57, 43, 0.12);
+
+  /* ── Accent — transitional ──
+     The terracotta is gone. This token is NOT deleted, because
+     ~20 files still use bg-xn-accent / text-xn-accent, and a
+     removed variable fails silently: buttons render invisible
+     rather than erroring. It now resolves to ink, which is the
+     monochrome chrome the direction calls for, and the class
+     names get cleaned up when those components are restyled.
+     Error states pointing here must move to --xn-danger. */
+  --xn-accent: var(--xn-ink);
+  --xn-accent-soft: var(--xn-ink-faint);
+
+  /* ── Brand mark placeholders ──
+     The mark is still undecided, so these stay monochrome and
+     inherit the ink ramp. They exist so the Logo component keeps
+     rendering; they get real values once a mark is designed. */
+  --xn-logo-mark: var(--xn-ink);
+  --xn-logo-muted: var(--xn-ink-soft);
 }
 
-/* ── Clean Theme (crisp white) ── */
 
-[data-theme="clean"] {
-  --xn-bg: #f6f6f4;
-  --xn-bg-deep: #eeeeea;
-  --xn-surface: #ffffff;
-  --xn-surface-alt: #fafaf8;
-
-  --xn-ink: #161614;
-  --xn-ink-muted: #5e5d57;
-  --xn-ink-soft: #86847d;
-  --xn-ink-faint: rgba(22, 22, 20, 0.10);
-
-  --xn-border: #e6e5e0;
-  --xn-border-strong: #d4d3cc;
-
-  --xn-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 4px 16px rgba(0, 0, 0, 0.04);
-  --xn-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.05), 0 12px 40px rgba(0, 0, 0, 0.08);
-
-  --xn-logo-mark: #0c1b3a;
-  --xn-logo-muted: #5e5d57;
-}
-
-/* ── Dark Theme ── */
+/* ══════════════════════════════════════════════════════════════
+   THEME — DARK
+   ══════════════════════════════════════════════════════════════
+   Neutral near-black, faintly green rather than warm. Only the
+   tokens change; every component reads the same variable names,
+   so the toggle changes luminance and never identity.
+   ══════════════════════════════════════════════════════════════ */
 
 [data-theme="dark"] {
-  --xn-bg: #15130f;
-  --xn-bg-deep: #100e0b;
-  --xn-surface: #1d1a15;
-  --xn-surface-alt: #22201a;
+  --xn-bg: #0e100f;
+  --xn-bg-deep: #0a0c0b;
+  --xn-surface: #161917;
+  --xn-surface-alt: #1c201e;
 
-  --xn-ink: #f1ece0;
-  --xn-ink-muted: #a59e8e;
-  --xn-ink-soft: #7d776b;
-  --xn-ink-faint: rgba(241, 236, 224, 0.10);
+  --xn-ink: #f1f3f1;
+  --xn-ink-muted: #9ba2a6;
+  --xn-ink-soft: #6a7175;
+  --xn-ink-faint: rgba(241, 243, 241, 0.10);
 
-  --xn-border: #2d2922;
-  --xn-border-strong: #3b362d;
+  --xn-border: #242826;
+  --xn-border-strong: #333937;
 
-  --xn-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
-  --xn-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 40px rgba(0, 0, 0, 0.5);
+  /* Lifted so they hold against a near-black ground.
+     Every value clears WCAG 7:1 against --xn-surface. */
+  --xn-fmt-blog: #82AEFF;
+  --xn-fmt-notes: #63D08C;
+  --xn-fmt-summary: #F5C359;
+  --xn-fmt-research: #B79BFF;
+  --xn-fmt-flashcards: #FF9166;
+  --xn-fmt-quiz: #FF7BA0;
+  --xn-fmt-social: #4FD3C9;
 
-  --xn-accent-soft: rgba(197, 79, 42, 0.18);
-  --xn-highlight: rgba(251, 226, 143, 0.28);
+  /* Translucent on dark so light text stays legible through them */
+  --xn-mark-yellow: rgba(251, 226, 143, 0.26);
+  --xn-mark-green: rgba(187, 247, 208, 0.22);
+  --xn-mark-blue: rgba(191, 219, 254, 0.24);
+  --xn-mark-pink: rgba(254, 205, 211, 0.24);
+  --xn-mark-purple: rgba(233, 213, 255, 0.24);
 
-  --xn-logo-mark: #f3ebd9;
-  --xn-logo-muted: #a59e8e;
+  /* Same geometry, deeper alpha — a shadow on near-black needs it */
+  --xn-elev-1:
+    0 3px 6px rgba(0, 0, 0, 0.34);
+  --xn-elev-2:
+    0 10px 10px rgba(0, 0, 0, 0.28),
+    0 3px 6px rgba(0, 0, 0, 0.34);
+  --xn-elev-3:
+    0 40px 16px rgba(0, 0, 0, 0.16),
+    0 22px 13px rgba(0, 0, 0, 0.22),
+    0 10px 10px rgba(0, 0, 0, 0.28),
+    0 3px 6px rgba(0, 0, 0, 0.34);
+  --xn-elev-hover:
+    0 60px 24px rgba(0, 0, 0, 0.20),
+    0 34px 20px rgba(0, 0, 0, 0.26),
+    0 16px 15px rgba(0, 0, 0, 0.32),
+    0 5px 9px rgba(0, 0, 0, 0.40);
+
+  /* Lifted for the dark ground — clears 4.5:1 on --xn-bg */
+  --xn-danger: #F1705E;
+  --xn-danger-soft: rgba(241, 112, 94, 0.16);
+}
+
+
+/* ══════════════════════════════════════════════════════════════
+   SHAPE, TYPE, AND MOTION
+   ══════════════════════════════════════════════════════════════
+   These do not change between themes, so they are declared once
+   outside the theme blocks.
+   ══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Radius ── rounded throughout; nothing boxy, no oversized
+     pill masquerading as a corner token. */
+  --xn-radius-sm: 8px;
+  --xn-radius-md: 10px;
+  --xn-radius-lg: 14px;
+  --xn-radius-xl: 18px;
+  --xn-radius-pill: 999px;
+
+  /* ── Type scale ── reading grade. The output view is a reading
+     surface, not a dashboard, so body sits at 17.5px rather than
+     the 14px the app used to run at. Root is 16px, so 1rem = 16px
+     and every rem utility finally renders at its nominal size. */
+  --xn-text-nano: 0.625rem;     /* 10px — the smallest label    */
+  --xn-text-micro: 0.6875rem;   /* 11px — mono meta             */
+  --xn-text-xs: 0.75rem;        /* 12px — meta, mono labels     */
+  --xn-text-sm: 0.875rem;       /* 14px — dense rows            */
+  --xn-text-ui: 0.9375rem;      /* 15px — nav, buttons, chrome  */
+  --xn-text-body: 1.09375rem;   /* 17.5px — generated content   */
+  --xn-text-lg: 1.3125rem;      /* 21px — section headings      */
+  --xn-text-xl: 1.75rem;        /* 28px — sub-headings          */
+  --xn-text-2xl: 2.25rem;       /* 36px — page titles           */
+  --xn-text-3xl: 2.875rem;      /* 46px — document titles       */
+  --xn-text-4xl: 4rem;          /* 64px — landing               */
+  --xn-text-5xl: 5rem;          /* 80px — landing hero          */
+
+  --xn-leading-tight: 1.08;
+  --xn-leading-snug: 1.25;
+  --xn-leading-normal: 1.5;
+  --xn-leading-body: 1.72;      /* pairs with --xn-text-body    */
+
+  --xn-measure: 64ch;           /* reading column cap           */
+
+  /* ── Motion ── app motion is a response to input: short,
+     interruptible, never ambient. Landing motion is the only
+     place anything plays unprompted. */
+  --xn-dur-fast: 120ms;
+  --xn-dur-base: 200ms;
+  --xn-dur-slow: 320ms;
+  --xn-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --xn-ease-in-out: cubic-bezier(0.5, 0, 0.2, 1);
 }
 
 
@@ -124,8 +252,8 @@ html {
   font-family: var(--font-dm-sans), system-ui, sans-serif;
   color: var(--xn-ink);
   background: var(--xn-bg);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: var(--xn-leading-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'ss01' on, 'cv11' on;
@@ -136,17 +264,20 @@ body {
   min-height: 100vh;
 }
 
-/* ── Focus Ring ── */
+/* ── Focus Ring ──
+   Ink rather than an accent: chrome is monochrome, and there is
+   no brand accent until the mark is designed. */
 
 :focus-visible {
-  outline: 2px solid var(--xn-accent);
+  outline: 2px solid var(--xn-ink);
   outline-offset: 2px;
+  border-radius: var(--xn-radius-sm);
 }
 
 /* ── Text Selection ── */
 
 ::selection {
-  background: var(--xn-accent-soft);
+  background: var(--xn-ink-faint);
   color: var(--xn-ink);
 }
 
@@ -160,6 +291,23 @@ body {
   scrollbar-width: none;
 }
 
+/* ── Reduced Motion ──
+   Every animation needs an alternative. This is the global
+   backstop; individual components still provide their own
+   crossfade or instant transition where the movement carries
+   meaning. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 
 /* ══════════════════════════════════════════════════════════════
    TYPOGRAPHY & EDITORIAL UTILITIES
@@ -171,66 +319,105 @@ body {
    ══════════════════════════════════════════════════════════════ */
 
 @layer utilities {
+  /* ── Optical tracking only ──
+     The families themselves are declared once, in tailwind.config.ts,
+     which generates the font-family for these same class names. They
+     were previously declared in both places, so the two could drift.
+     Tailwind cannot carry letter-spacing on a font family, so the
+     tracking is added here and the family is not restated. */
+
   .font-serif {
-    font-family: 'Instrument Serif', Georgia, serif;
     letter-spacing: -0.01em;
   }
 
   .font-mono {
-    font-family: var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
     letter-spacing: 0.02em;
   }
 
-  .font-hand {
-    font-family: var(--font-caveat), cursive;
-  }
-
-  .eyebrow {
-    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--xn-accent);
-  }
-
-  /* ── Highlight Marks (Notability-style) ── */
+  /* ── Highlight Marks ──
+     Now sourced from tokens rather than literals, so they invert
+     with the theme. The five-colour set is groundwork for
+     annotation data the generation path does not produce yet;
+     only .mark-yellow is used in the product today. */
 
   .mark-yellow {
     background: linear-gradient(
       180deg,
       transparent 55%,
-      var(--xn-highlight) 55%,
-      var(--xn-highlight) 92%,
+      var(--xn-mark-yellow) 55%,
+      var(--xn-mark-yellow) 92%,
       transparent 92%
     );
     padding: 0 2px;
   }
 
   .mark-green {
-    background: linear-gradient(180deg, transparent 55%, #BBF7D0 55%, #BBF7D0 90%, transparent 90%);
+    background: linear-gradient(
+      180deg,
+      transparent 55%,
+      var(--xn-mark-green) 55%,
+      var(--xn-mark-green) 90%,
+      transparent 90%
+    );
     padding: 0 3px;
   }
 
   .mark-blue {
-    background: linear-gradient(180deg, transparent 55%, #BFDBFE 55%, #BFDBFE 90%, transparent 90%);
+    background: linear-gradient(
+      180deg,
+      transparent 55%,
+      var(--xn-mark-blue) 55%,
+      var(--xn-mark-blue) 90%,
+      transparent 90%
+    );
     padding: 0 3px;
   }
 
   .mark-pink {
-    background: linear-gradient(180deg, transparent 55%, #FECDD3 55%, #FECDD3 90%, transparent 90%);
+    background: linear-gradient(
+      180deg,
+      transparent 55%,
+      var(--xn-mark-pink) 55%,
+      var(--xn-mark-pink) 90%,
+      transparent 90%
+    );
     padding: 0 3px;
   }
 
   .mark-purple {
-    background: linear-gradient(180deg, transparent 55%, #E9D5FF 55%, #E9D5FF 90%, transparent 90%);
+    background: linear-gradient(
+      180deg,
+      transparent 55%,
+      var(--xn-mark-purple) 55%,
+      var(--xn-mark-purple) 90%,
+      transparent 90%
+    );
     padding: 0 3px;
   }
 
-  /* ── Accent Underline ── */
+  /* ── Eyebrow ──
+     On the discard list as a pattern, but still referenced by the
+     dev showcase. Kept working and re-sourced off ink so no
+     accent survives; the class itself goes when the surfaces
+     using it are restyled. */
+
+  .eyebrow {
+    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+    font-size: var(--xn-text-xs);
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--xn-ink-soft);
+  }
+
+  /* ── Accent Underline ──
+     Name kept because three component files still reference it —
+     renaming here would break them silently while their restyle
+     is still several steps away. The colour is now ink, since the
+     terracotta accent is gone. */
 
   .underline-accent {
-    background-image: linear-gradient(var(--xn-accent), var(--xn-accent));
+    background-image: linear-gradient(var(--xn-ink), var(--xn-ink));
     background-position: 0 100%;
     background-size: 100% 1.5px;
     background-repeat: no-repeat;

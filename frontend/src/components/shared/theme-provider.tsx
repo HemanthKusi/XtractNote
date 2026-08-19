@@ -3,22 +3,17 @@
 // ─────────────────────────────────────────────────────────────
 // ThemeProvider
 // ─────────────────────────────────────────────────────────────
-// Manages the app's visual theme (Paper / Clean / Dark).
+// Manages the app's visual theme. There are two: light and dark.
 //
 // How it works:
-// 1. On first load, checks localStorage for a saved theme preference
-// 2. If none found, defaults to "paper" (warm cream)
-// 3. Sets data-theme="paper" on the <html> element
-// 4. globals.css sees [data-theme="paper"] and activates those CSS variables
-// 5. Every component using bg-xn-surface, text-xn-ink, etc. gets the right colors
+// 1. On first load, checks localStorage for a saved preference
+// 2. If none is found, or the stored value is not a theme, uses light
+// 3. Sets data-theme on the <html> element
+// 4. globals.css sees that attribute and activates those CSS variables
+// 5. Everything using bg-xn-surface, text-xn-ink and friends re-colours
 //
-// When the user clicks a theme toggle:
-// 1. setTheme("dark") is called
-// 2. State updates, useEffect fires
-// 3. <html> attribute changes to data-theme="dark"
-// 4. CSS variables instantly swap to dark values
-// 5. Entire app re-colors without a single React re-render of child components
-// 6. Choice is saved to localStorage for next visit
+// The attribute swap is the whole mechanism: changing it re-colours the
+// entire app without re-rendering a single child component.
 //
 // Usage in any component:
 //   import { useTheme } from "@/components/shared/theme-provider";
@@ -35,90 +30,95 @@ import {
   type ReactNode,
 } from "react";
 
-// Import the ThemeName type so we get autocomplete and type safety.
-// This type is "paper" | "clean" | "dark" — nothing else is allowed.
-import type { ThemeName } from "@/lib/constants/theme";
+// The theme names, the default, and the guard all come from the token
+// file. They were previously restated here, so the two could disagree
+// about which themes exist.
+import {
+  DEFAULT_THEME,
+  isThemeName,
+  type ThemeName,
+} from "@/lib/constants/theme";
 
 // ── Context Definition ──────────────────────────────────────
-// This defines the SHAPE of what the context provides.
-// Any component using useTheme() gets an object with these two properties.
 
 interface ThemeContextValue {
-  /** The currently active theme name: "paper", "clean", or "dark" */
+  /** The currently active theme: "light" or "dark". */
   theme: ThemeName;
-  /** Function to change the theme. Saves to localStorage automatically. */
+  /** Change the theme. Persists to localStorage automatically. */
   setTheme: (theme: ThemeName) => void;
 }
 
-// Create the context with undefined as default.
-// It's undefined because the actual value is set by the Provider below.
-// If someone tries to use useTheme() outside of a ThemeProvider,
-// we throw a helpful error (see the hook at the bottom).
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 // ── Constants ───────────────────────────────────────────────
 
-// The key used to save/read the theme in localStorage.
-// Using a prefix ("xn-") avoids conflicts with other apps on localhost.
+// Prefixed so it cannot collide with another app on the same origin.
 const STORAGE_KEY = "xn-theme";
 
-// If nothing is saved in localStorage, use this theme.
-const DEFAULT_THEME: ThemeName = "paper";
+// Themes that no longer exist, and what they become. The warm "paper"
+// and near-white "clean" themes were retired; anyone still carrying one
+// in localStorage is moved to light and the stale value is rewritten,
+// rather than being silently ignored on every load.
+const RETIRED_THEMES: Record<string, ThemeName> = {
+  paper: "light",
+  clean: "light",
+};
 
-// The three valid theme names. Used to validate what we read from localStorage
-// (because localStorage could contain anything — even garbage from another app).
-const VALID_THEMES: ThemeName[] = ["paper", "clean", "dark"];
+/**
+ * Read the stored preference, tolerating anything localStorage might
+ * hold — a retired theme name, a value from another app, or nothing.
+ */
+function readStoredTheme(): ThemeName | null {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) return null;
+
+  // Note the guard takes the bare value rather than a cast expression:
+  // a type guard called on a cast does not narrow.
+  if (isThemeName(stored)) return stored;
+
+  const migrated = RETIRED_THEMES[stored];
+  if (migrated) {
+    localStorage.setItem(STORAGE_KEY, migrated);
+    return migrated;
+  }
+
+  return null;
+}
 
 // ── Provider Component ──────────────────────────────────────
 
 interface ThemeProviderProps {
   children: ReactNode;
-  /** Override the default theme (useful for testing or previews) */
+  /** Override the default theme (useful for testing or previews). */
   defaultTheme?: ThemeName;
 }
 
 export function ThemeProvider({ children, defaultTheme }: ThemeProviderProps) {
-  // Read from localStorage immediately so the theme is correct on
-  // first render. This may cause a harmless hydration warning in dev
-  // (server renders "paper", client renders "dark"), but users never
-  // see it and the visual result is instant — no theme flash.
+  // Read localStorage during the first render so the theme is right
+  // immediately and there is no flash of the wrong one.
   //
-  // The blocking script in layout.tsx ensures data-theme is set
-  // before React renders, so the CSS variables are already correct
-  // when the first paint happens.
+  // Known trade-off: the server cannot see localStorage, so it renders
+  // the default while a client holding "dark" renders dark, and React
+  // reports a hydration mismatch in development. It is dev-only and
+  // users never see it. The real fix is to store the preference in a
+  // cookie the server can read; that is deliberately deferred.
   const [theme, setThemeState] = useState<ThemeName>(() => {
     if (typeof window === "undefined") {
       return defaultTheme ?? DEFAULT_THEME;
     }
-
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && VALID_THEMES.includes(stored as ThemeName)) {
-      return stored as ThemeName;
-    }
-
-    return defaultTheme ?? DEFAULT_THEME;
+    return readStoredTheme() ?? defaultTheme ?? DEFAULT_THEME;
   });
 
-  // ── Apply Theme to DOM ──
-  // Whenever the theme state changes, update the data-theme attribute
-  // on <html>. This is the single line that triggers the entire CSS
-  // variable swap defined in globals.css.
+  // The single line that triggers the CSS variable swap.
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // ── Theme Setter ──
-  // useCallback memoizes this function so it doesn't get recreated on
-  // every render. This prevents unnecessary re-renders in child components
-  // that receive setTheme as a prop or through context.
   const setTheme = useCallback((newTheme: ThemeName) => {
     setThemeState(newTheme);
     localStorage.setItem(STORAGE_KEY, newTheme);
   }, []);
 
-  // ── Render ──
-  // ThemeContext.Provider makes { theme, setTheme } available to
-  // every descendant component that calls useTheme().
   return (
     <ThemeContext.Provider value={{ theme, setTheme }}>
       {children}
@@ -127,12 +127,6 @@ export function ThemeProvider({ children, defaultTheme }: ThemeProviderProps) {
 }
 
 // ── useTheme Hook ───────────────────────────────────────────
-// This is what components actually import and use.
-// It reads the current context value and returns { theme, setTheme }.
-//
-// The error check ensures you don't accidentally use useTheme()
-// in a component that's not wrapped by ThemeProvider. Without this,
-// you'd get `undefined` and a confusing crash later.
 
 export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
@@ -140,7 +134,7 @@ export function useTheme(): ThemeContextValue {
   if (!context) {
     throw new Error(
       "useTheme() must be used within a <ThemeProvider>. " +
-      "Make sure your component is a child of the ThemeProvider in layout.tsx."
+        "Make sure your component is a child of the ThemeProvider in layout.tsx."
     );
   }
 

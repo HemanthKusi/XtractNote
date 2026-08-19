@@ -13,137 +13,188 @@ const config: Config = {
       // ────────────────────────────────────────────────────────
       // COLORS
       // ────────────────────────────────────────────────────────
-      // These map to CSS variables defined in globals.css.
+      // Every colour is a CSS variable declared in globals.css.
       // When you write bg-xn-surface, Tailwind outputs:
       //   background-color: var(--xn-surface);
-      // The actual hex value comes from whichever [data-theme]
-      // is active — that's how theme switching works.
+      // and the value comes from whichever theme is active. Nothing
+      // here is a literal, so nothing here can go stale against the
+      // token layer or ignore the theme.
       colors: {
         xn: {
-          bg:             "var(--xn-bg)",
-          "bg-deep":      "var(--xn-bg-deep)",
-          surface:        "var(--xn-surface)",
-          "surface-alt":  "var(--xn-surface-alt)",
-          ink:            "var(--xn-ink)",
-          "ink-muted":    "var(--xn-ink-muted)",
-          "ink-soft":     "var(--xn-ink-soft)",
-          "ink-faint":    "var(--xn-ink-faint)",
-          border:         "var(--xn-border)",
-          "border-strong":"var(--xn-border-strong)",
-          accent:         "var(--xn-accent)",
-          "accent-soft":  "var(--xn-accent-soft)",
-          highlight:      "var(--xn-highlight)",
-        },
+          bg:              "var(--xn-bg)",
+          "bg-deep":       "var(--xn-bg-deep)",
+          surface:         "var(--xn-surface)",
+          "surface-alt":   "var(--xn-surface-alt)",
+          ink:             "var(--xn-ink)",
+          "ink-muted":     "var(--xn-ink-muted)",
+          "ink-soft":      "var(--xn-ink-soft)",
+          "ink-faint":     "var(--xn-ink-faint)",
+          border:          "var(--xn-border)",
+          "border-strong": "var(--xn-border-strong)",
+          highlight:       "var(--xn-highlight)",
 
-        // Content type colors are static — they don't change with theme.
-        // These are the identity colors for each content format.
-        // Usage: text-content-blog, bg-content-notes, border-content-quiz
-        content: {
-          blog:       "#3B7AE8",
-          notes:      "#48903A",
-          summary:    "#D4880C",
-          research:   "#7E4CC5",
-          flashcards: "#E06030",
-          quiz:       "#D44060",
-          social:     "#1C8C86",
+          // Semantic. Danger is a real token now rather than the
+          // accent standing in for error states.
+          danger:          "var(--xn-danger)",
+          "danger-soft":   "var(--xn-danger-soft)",
+
+          // Transitional: resolves to ink. Kept only because a
+          // number of components still reference it — see the note
+          // in globals.css.
+          accent:          "var(--xn-accent)",
+          "accent-soft":   "var(--xn-accent-soft)",
+
+          // ── Content-format identity ──
+          // The only saturated colours in the product, and the only
+          // place they belong is a format-bearing element: a chip, a
+          // type icon, a folder dot, the rail on an output header.
+          // Never a button, nav item, background, or primary action.
+          //
+          // Previously these were literal hex under a "content" key,
+          // which meant they could not respond to the theme. Every
+          // value now clears WCAG 4.5:1 on its own ground.
+          //
+          // Usage: text-xn-fmt-research, bg-xn-fmt-quiz
+          "fmt-blog":       "var(--xn-fmt-blog)",
+          "fmt-notes":      "var(--xn-fmt-notes)",
+          "fmt-summary":    "var(--xn-fmt-summary)",
+          "fmt-research":   "var(--xn-fmt-research)",
+          "fmt-flashcards": "var(--xn-fmt-flashcards)",
+          "fmt-quiz":       "var(--xn-fmt-quiz)",
+          "fmt-social":     "var(--xn-fmt-social)",
         },
       },
 
       // ────────────────────────────────────────────────────────
-      // BOX SHADOWS
+      // ELEVATION
       // ────────────────────────────────────────────────────────
-      // The hi-fi uses warm-tinted shadows in light mode and
-      // heavy dark shadows in dark mode. CSS variables handle this.
-      // Usage: shadow-xn (default), shadow-xn-lg (prominent)
+      // Four stacked layers whose offset and blur grow as opacity
+      // falls, so the tight dark layer sits under the element and the
+      // wide faint one does the ambient work. Depth does the
+      // separating; borders are for structure, not for edges.
+      //
+      // shadow-xn and shadow-xn-lg keep their names because a dozen
+      // components already use them, and a renamed shadow would fail
+      // silently rather than error.
+      //
+      // Usage: shadow-xn-1 (rest), shadow-xn (raised),
+      //        shadow-xn-lg (floating), shadow-xn-hover
       boxShadow: {
-        xn:       "var(--xn-shadow)",
-        "xn-lg":  "var(--xn-shadow-lg)",
+        "xn-1":     "var(--xn-elev-1)",
+        xn:         "var(--xn-elev-2)",
+        "xn-lg":    "var(--xn-elev-3)",
+        "xn-hover": "var(--xn-elev-hover)",
       },
 
       // ────────────────────────────────────────────────────────
       // BORDER RADIUS
       // ────────────────────────────────────────────────────────
-      // The hi-fi uses a specific radius scale, not Tailwind's
-      // default. Pill (999px) is for buttons and chips.
-      // Usage: rounded-xn-sm, rounded-xn-md, rounded-xn-lg,
-      //        rounded-xn-xl, rounded-xn-pill
+      // Rounded throughout — nothing boxy. Cards sit at lg, controls
+      // at pill. There is deliberately no oversized token pretending
+      // to be a corner.
+      //
+      // Usage: rounded-xn-sm … rounded-xn-pill
       borderRadius: {
-        "xn-sm":    "var(--xn-radius-sm)",   // 6px
-        "xn-md":    "var(--xn-radius-md)",   // 10px
-        "xn-lg":    "var(--xn-radius-lg)",   // 14px
-        "xn-xl":    "var(--xn-radius-xl)",   // 20px
-        "xn-pill":  "var(--xn-radius-pill)", // 999px
+        "xn-sm":   "var(--xn-radius-sm)",   // 8px
+        "xn-md":   "var(--xn-radius-md)",   // 10px
+        "xn-lg":   "var(--xn-radius-lg)",   // 14px — cards
+        "xn-xl":   "var(--xn-radius-xl)",   // 18px
+        "xn-pill": "var(--xn-radius-pill)", // 999px — controls
       },
 
       // ────────────────────────────────────────────────────────
       // FONT FAMILIES
       // ────────────────────────────────────────────────────────
-      // Four fonts from the hi-fi design:
-      // - sans: DM Sans — all UI text
-      // - serif: Instrument Serif — headings in editorial content
-      // - mono: JetBrains Mono — metadata, code, eyebrow labels
-      // - hand: Caveat — only on Notes screen margin annotations
+      // Three families, each with a job:
+      // - sans:  all UI text
+      // - serif: editorial headings
+      // - mono:  metadata, timestamps, counts — anything measured
       //
-      // Usage: font-sans (default), font-serif, font-mono, font-hand
+      // The handwriting family is gone: it existed for margin
+      // annotations that were never built, and it was being loaded on
+      // every page for nothing.
+      //
+      // This file is the single home for the families themselves.
+      // Their optical letter-spacing cannot live here — Tailwind's
+      // fontFamily options accept only font-feature and
+      // font-variation settings — so it is applied to the same class
+      // names in globals.css, which now sets tracking alone and no
+      // longer restates the family.
       fontFamily: {
         sans:  ["var(--font-dm-sans)", "system-ui", "sans-serif"],
-        serif: ["Instrument Serif", "Georgia", "serif"],
+        serif: ["var(--font-instrument-serif)", "Georgia", "serif"],
         mono:  ["var(--font-jetbrains-mono)", "ui-monospace", "Menlo", "monospace"],
-        hand:  ["var(--font-caveat)", "cursive"],
       },
 
       // ────────────────────────────────────────────────────────
       // FONT SIZES
       // ────────────────────────────────────────────────────────
-      // Matches the heading scale from hifi-core.jsx exactly:
-      //   .hf-h1 = 56px, .hf-h2 = 36px, .hf-h3 = 20px, .hf-h4 = 16px
+      // Reading grade. The output view is where people actually read,
+      // so body is set for reading rather than for a dashboard — it
+      // was 14px, which at the old 14px root rendered smaller still.
       //
-      // Each entry is [fontSize, { lineHeight, letterSpacing }].
-      // Usage: text-display, text-h1, text-h2, text-h3, text-h4,
-      //        text-body, text-sm, text-xs, text-micro, text-nano
+      // Names are unchanged because components use them throughout;
+      // only the values moved.
+      //
+      // Usage: text-display, text-h1…text-h4, text-body, text-ui,
+      //        text-sm, text-xs, text-micro, text-nano
       fontSize: {
-        "display": ["56px", { lineHeight: "1.02", letterSpacing: "-0.02em" }],
-        "h1":      ["42px", { lineHeight: "1.05", letterSpacing: "-0.02em" }],
-        "h2":      ["36px", { lineHeight: "1.08", letterSpacing: "-0.015em" }],
-        "h3":      ["20px", { lineHeight: "1.2",  letterSpacing: "-0.005em" }],
-        "h4":      ["16px", { lineHeight: "1.3" }],
-        "body":    ["14px", { lineHeight: "1.45" }],
-        "sm":      ["13px", { lineHeight: "1.4" }],
-        "xs":      ["12px", { lineHeight: "1.35" }],
-        "micro":   ["11px", { lineHeight: "1.3" }],
-        "nano":    ["10px", { lineHeight: "1.2" }],
+        "display": ["var(--xn-text-5xl)", { lineHeight: "var(--xn-leading-tight)", letterSpacing: "-0.045em" }],
+        "h1":      ["var(--xn-text-4xl)", { lineHeight: "var(--xn-leading-tight)", letterSpacing: "-0.04em" }],
+        "h2":      ["var(--xn-text-3xl)", { lineHeight: "1.12", letterSpacing: "-0.035em" }],
+        "h3":      ["var(--xn-text-2xl)", { lineHeight: "1.18", letterSpacing: "-0.03em" }],
+        "h4":      ["var(--xn-text-xl)",  { lineHeight: "var(--xn-leading-snug)", letterSpacing: "-0.025em" }],
+        "h5":      ["var(--xn-text-lg)",  { lineHeight: "1.35", letterSpacing: "-0.02em" }],
+        "body":    ["var(--xn-text-body)", { lineHeight: "var(--xn-leading-body)" }],
+        "ui":      ["var(--xn-text-ui)",  { lineHeight: "var(--xn-leading-normal)" }],
+        "sm":      ["var(--xn-text-sm)",  { lineHeight: "1.5" }],
+        "xs":      ["var(--xn-text-xs)",  { lineHeight: "1.4" }],
+        "micro":   ["var(--xn-text-micro)", { lineHeight: "1.35" }],
+        "nano":    ["var(--xn-text-nano)",  { lineHeight: "1.3" }],
       },
 
       // ────────────────────────────────────────────────────────
       // SPACING
       // ────────────────────────────────────────────────────────
-      // Extra spacing values that Tailwind doesn't include by default.
-      // These match specific measurements from the hi-fi layouts.
-      // Usage: w-sidebar, h-topbar, p-13, etc.
+      // Extra steps Tailwind does not ship. The named layout values
+      // are revisited when the app shell is redesigned.
       spacing: {
-        "4.5":    "18px",
-        "13":     "52px",
-        "15":     "60px",
-        "18":     "72px",
-        "sidebar": "232px",  // Sidebar width from HFSidebar
-        "topbar":  "56px",   // Top bar height from HFTopbar
+        "4.5":     "18px",
+        "13":      "52px",
+        "15":      "60px",
+        "18":      "72px",
+        "sidebar": "232px",
+        "topbar":  "56px",
       },
 
       // ────────────────────────────────────────────────────────
       // MAX WIDTHS
       // ────────────────────────────────────────────────────────
-      // Content reading width and dashboard content width.
-      // Usage: max-w-content (blog posts), max-w-wide (dashboard)
+      // measure is the reading column: a character count rather than
+      // a pixel width, so it holds its line length as type scales.
       maxWidth: {
-        "content": "680px",  // Blog post reading column
-        "wide":    "960px",  // Dashboard and wider layouts
+        "measure": "var(--xn-measure)", // 64ch — generated content
+        "content": "680px",             // legacy reading column
+        "wide":    "960px",
       },
 
       // ────────────────────────────────────────────────────────
-      // ANIMATIONS
+      // MOTION
       // ────────────────────────────────────────────────────────
-      // Subtle entrance animations for components.
-      // Usage: animate-fade-in, animate-slide-in-right, etc.
+      // Durations and easing come from the token layer so app motion
+      // stays consistent: short, interruptible, and always a response
+      // to something the user did. The global reduced-motion rule in
+      // globals.css neutralises all of it.
+      transitionDuration: {
+        "xn-fast": "var(--xn-dur-fast)",
+        "xn":      "var(--xn-dur-base)",
+        "xn-slow": "var(--xn-dur-slow)",
+      },
+      transitionTimingFunction: {
+        "xn":        "var(--xn-ease-out)",
+        "xn-in-out": "var(--xn-ease-in-out)",
+      },
+
       keyframes: {
         "fade-in": {
           from: { opacity: "0", transform: "translateY(4px)" },
@@ -163,9 +214,9 @@ const config: Config = {
         },
       },
       animation: {
-        "fade-in":        "fade-in 0.2s ease-out",
-        "slide-in-right": "slide-in-right 0.2s ease-out",
-        "scale-in":       "scale-in 0.15s ease-out",
+        "fade-in":        "fade-in var(--xn-dur-base) var(--xn-ease-out)",
+        "slide-in-right": "slide-in-right var(--xn-dur-base) var(--xn-ease-out)",
+        "scale-in":       "scale-in var(--xn-dur-fast) var(--xn-ease-out)",
         "shimmer":        "shimmer 1.5s infinite linear",
       },
     },

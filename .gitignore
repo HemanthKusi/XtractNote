@@ -34,3 +34,25 @@ Thumbs.db
 .vscode/
 .idea/
 *.code-workspace
+
+# ── Knowledge-graph output ──
+graphify-out/
+
+# ── local context docs (maintained, never committed) ──
+XTRACTNOTE-BIBLE.md
+CLAUDE.md
+SKILLS.md
+DESIGN-REGISTRIES.md
+DESIGN-REF-LIGHT.md
+DESIGN-REF-DARK.md
+.graphifyignore
+
+# ── Local agent config ──
+.claude/
+skills-lock.json
+
+# ── Root-level local tooling (never committed) ──
+.mcp.json
+/package.json
+/package-lock.json
+/node_modules/

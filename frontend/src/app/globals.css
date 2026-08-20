@@ -104,10 +104,19 @@
      ever looks busy, these are the values to turn down, and turning
      them down here changes every control at once.
 
-     Strength is deliberately one decision in one place. */
-  --xn-halo: rgba(19, 22, 26, 0.07);
-  --xn-halo-press: rgba(19, 22, 26, 0.11);
-  --xn-halo-size: 5px;
+     Strength is deliberately one decision in one place.
+
+     ⚠ The two themes carry DIFFERENT alphas on purpose, and the dark
+     one is lower. That looks wrong in the file and is right on screen:
+     measured in perceptual lightness, the same alpha lifts roughly a
+     third harder against a near-black ground than a near-white one.
+     These two values both shift the ring about 8.7 ΔL* off their own
+     background, so the ring reads the same weight in both themes.
+     Matching the numbers would make light look weak — which is exactly
+     the bug this replaced. */
+  --xn-halo: rgba(19, 22, 26, 0.11);
+  --xn-halo-press: rgba(19, 22, 26, 0.15);
+  --xn-halo-size: 4px;
   --xn-halo-size-press: 2px;
 
   /* ── Semantic: danger ──
@@ -194,10 +203,11 @@
     0 16px 15px rgba(0, 0, 0, 0.32),
     0 5px 9px rgba(0, 0, 0, 0.40);
 
-  /* Slightly stronger on dark: a light ring on a near-black ground
-     needs a little more presence to register at all. */
-  --xn-halo: rgba(241, 243, 241, 0.08);
-  --xn-halo-press: rgba(241, 243, 241, 0.13);
+  /* Lower than light, and deliberately so — see the note beside the
+     light values. A light ring on near-black lifts harder per unit of
+     alpha, so it needs less of it to read as the same weight. */
+  --xn-halo: rgba(241, 243, 241, 0.082);
+  --xn-halo-press: rgba(241, 243, 241, 0.112);
 
   /* Lifted for the dark ground — clears 4.5:1 on --xn-bg */
   --xn-danger: #F1705E;
@@ -253,6 +263,12 @@
   --xn-dur-slow: 320ms;
   --xn-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --xn-ease-in-out: cubic-bezier(0.5, 0, 0.2, 1);
+
+  /* Eased at both ends, and gently. --xn-ease-out starts fast, which is
+     right for something answering a click and wrong for something that
+     plays on its own: ambient movement that leaps at the start reads as
+     a jump. Used by the cycling placeholder. */
+  --xn-ease-smooth: cubic-bezier(0.4, 0.02, 0.2, 1);
 }
 
 

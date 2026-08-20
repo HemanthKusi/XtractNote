@@ -94,6 +94,10 @@ const config: Config = {
         "xn-lift":    "0 0 0 var(--xn-halo-size) var(--xn-halo), var(--xn-elev-2)",
         "xn-lift-lg": "0 0 0 var(--xn-halo-size) var(--xn-halo), var(--xn-elev-3)",
         "xn-press":   "0 0 0 var(--xn-halo-size-press) var(--xn-halo-press)",
+
+        // The halo alone, with no elevation. Fields use this on focus:
+        // they do not lift, so they get the ring without the shadow.
+        "xn-ring":    "0 0 0 var(--xn-halo-size) var(--xn-halo)",
       },
 
       // ────────────────────────────────────────────────────────
@@ -203,6 +207,12 @@ const config: Config = {
       transitionTimingFunction: {
         "xn":        "var(--xn-ease-out)",
         "xn-in-out": "var(--xn-ease-in-out)",
+
+        // Overshoots slightly before settling. It stands in for a
+        // spring on properties CSS can transition — enough for a width
+        // and an offset, and it avoids a runtime dependency whose only
+        // job here was easing.
+        "xn-spring": "cubic-bezier(0.34, 1.38, 0.5, 1)",
       },
 
       keyframes: {
@@ -222,13 +232,40 @@ const config: Config = {
           from: { backgroundPosition: "-200% 0" },
           to:   { backgroundPosition: "200% 0" },
         },
+
+        // A cycling label. The two lines travel a full line-height in
+        // the same direction, so together they read as one strip of
+        // text advancing upward rather than two things crossfading.
+        //
+        // The distance is a percentage, not pixels, so it stays correct
+        // at any font size — and the opacity is held until the line is
+        // most of the way through its travel, which is what stops it
+        // looking like a fade with some movement attached.
+        "rise-in": {
+          "0%":   { opacity: "0", transform: "translateY(100%)" },
+          "55%":  { opacity: "0.85" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "rise-out": {
+          "0%":   { opacity: "1", transform: "translateY(0)" },
+          "45%":  { opacity: "0.5" },
+          "100%": { opacity: "0", transform: "translateY(-100%)" },
+        },
       },
       animation: {
         "fade-in":        "fade-in var(--xn-dur-base) var(--xn-ease-out)",
         "slide-in-right": "slide-in-right var(--xn-dur-base) var(--xn-ease-out)",
         "scale-in":       "scale-in var(--xn-dur-fast) var(--xn-ease-out)",
         "shimmer":        "shimmer 1.5s infinite linear",
+        // Slower than a UI transition on purpose: this is ambient text
+        // being read, not a response to an action, and a short travel
+        // was over before the eye could follow it. Eased at both ends
+        // rather than fast-out, because movement that starts abruptly
+        // reads as a jump when nobody asked for it.
+        "rise-in":        "rise-in 560ms var(--xn-ease-smooth) both",
+        "rise-out":       "rise-out 560ms var(--xn-ease-smooth) both",
       },
+
     },
   },
 

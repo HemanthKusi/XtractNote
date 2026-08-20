@@ -84,6 +84,16 @@ const config: Config = {
         xn:         "var(--xn-elev-2)",
         "xn-lg":    "var(--xn-elev-3)",
         "xn-hover": "var(--xn-elev-hover)",
+
+        // ── Interactive states ──
+        // Elevation and halo composed once here rather than spelled out
+        // as arbitrary values in every component. A control lifts into
+        // -lift on hover, and -press removes the elevation entirely while
+        // the halo contracts, so it reads as being pushed into the
+        // surface rather than merely dropping.
+        "xn-lift":    "0 0 0 var(--xn-halo-size) var(--xn-halo), var(--xn-elev-2)",
+        "xn-lift-lg": "0 0 0 var(--xn-halo-size) var(--xn-halo), var(--xn-elev-3)",
+        "xn-press":   "0 0 0 var(--xn-halo-size-press) var(--xn-halo-press)",
       },
 
       // ────────────────────────────────────────────────────────

@@ -97,6 +97,19 @@
     0 16px 15px rgba(19, 22, 26, 0.08),
     0 5px 9px rgba(19, 22, 26, 0.09);
 
+  /* ── Halo ──
+     A tight ring of the element's own tone that appears on hover and
+     contracts on press. It is meant to read as the near field of the
+     shadow, not as a second ring competing with it — so if a control
+     ever looks busy, these are the values to turn down, and turning
+     them down here changes every control at once.
+
+     Strength is deliberately one decision in one place. */
+  --xn-halo: rgba(19, 22, 26, 0.07);
+  --xn-halo-press: rgba(19, 22, 26, 0.11);
+  --xn-halo-size: 5px;
+  --xn-halo-size-press: 2px;
+
   /* ── Semantic: danger ──
      New. §8 recorded "no semantic danger token" as a real gap:
      the create route borrows the accent for error states. Now
@@ -180,6 +193,11 @@
     0 34px 20px rgba(0, 0, 0, 0.26),
     0 16px 15px rgba(0, 0, 0, 0.32),
     0 5px 9px rgba(0, 0, 0, 0.40);
+
+  /* Slightly stronger on dark: a light ring on a near-black ground
+     needs a little more presence to register at all. */
+  --xn-halo: rgba(241, 243, 241, 0.08);
+  --xn-halo-press: rgba(241, 243, 241, 0.13);
 
   /* Lifted for the dark ground — clears 4.5:1 on --xn-bg */
   --xn-danger: #F1705E;

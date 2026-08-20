@@ -230,7 +230,7 @@ export default function ShowcasePage() {
             <div className="flex flex-wrap gap-3">
               <Button>Default</Button>
               <Button variant="primary">Primary</Button>
-              <Button variant="accent">Accent</Button>
+              <Button variant="primary">Accent</Button>
               <Button variant="ghost">Ghost</Button>
               <Button variant="danger">Danger</Button>
             </div>
@@ -242,7 +242,7 @@ export default function ShowcasePage() {
               <Button size="lg">Large</Button>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Button icon={<SparkIcon />} variant="accent">Generate</Button>
+              <Button icon={<SparkIcon />} variant="primary">Generate</Button>
               <Button icon={<PlusIcon />} kbd="⌘N">Create</Button>
               <Button variant="ghost" kbd="⌘K">Search Library</Button>
             </div>
@@ -259,7 +259,7 @@ export default function ShowcasePage() {
             <div className="flex gap-3">
               <Button disabled>Default</Button>
               <Button variant="primary" disabled>Primary</Button>
-              <Button variant="accent" disabled>Accent</Button>
+              <Button variant="primary" disabled>Accent</Button>
             </div>
           </SubSection>
         </Section>
@@ -272,7 +272,7 @@ export default function ShowcasePage() {
             <Input
               placeholder="https://youtube.com/watch?v=..."
               prefix={<LinkIcon />}
-              suffix={<Button size="sm" variant="accent">Extract</Button>}
+              suffix={<Button size="sm" variant="primary">Extract</Button>}
             />
             <Input size="sm" placeholder="Small input" prefix={<SearchIcon />} />
             <Input size="lg" placeholder="Large hero input" prefix={<LinkIcon />} />
@@ -846,7 +846,7 @@ export default function ShowcasePage() {
                 title="No content generated yet"
                 description="Start by pasting a YouTube URL to generate your first piece of content. You can create blog posts, study notes, summaries, and more."
                 action={
-                  <Button variant="accent" icon={<SparkIcon />}>
+                  <Button variant="primary" icon={<SparkIcon />}>
                     Create Content
                   </Button>
                 }
@@ -946,7 +946,7 @@ export default function ShowcasePage() {
                 size="lg"
                 placeholder="https://youtube.com/watch?v=..."
                 prefix={<LinkIcon />}
-                suffix={<Button variant="accent" icon={<SparkIcon />}>Extract</Button>}
+                suffix={<Button variant="primary" icon={<SparkIcon />}>Extract</Button>}
               />
               <p className="text-xs text-xn-ink-soft mt-3">
                 Supports standard links, shorts, and youtu.be URLs

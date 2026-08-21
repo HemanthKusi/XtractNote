@@ -90,7 +90,7 @@ export default function FoldersPage() {
             arrive. Same grid as the loaded state below, for the same
             reason. */}
         {state.phase === "loading" && (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="p-1.5">
                 <Skeleton className="aspect-[5/4] w-full rounded-xn-lg" />
@@ -125,12 +125,19 @@ export default function FoldersPage() {
         )}
 
         {/* ── Grid ──
-            Denser than it was. The tile is a drawn folder now rather than a
-            horizontal row, and at three columns each one renders around
-            320px wide — a great deal of amber for an index page. This is a
-            shelf of folders instead. */}
+            Denser than it was from sm upward. The tile is a drawn folder now
+            rather than a horizontal row, and at three columns each one
+            rendered around 320px wide — a great deal of amber for an index
+            page. This is a shelf of folders instead.
+
+            The base stays at one column, which looks over-cautious and is
+            not: the app shell holds a 232px sidebar at every width with no
+            mobile behaviour, and the content area adds 32px of padding each
+            side. At a 375px viewport that leaves 79px for this grid, so
+            three columns would render 21px tiles. One column keeps the
+            narrow case legible until the shell learns to collapse. */}
         {state.phase === "loaded" && state.folders.length > 0 && (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {state.folders.map((folder) => (
               <FolderCard key={folder.id} folder={folder} onOpen={handleOpen} />
             ))}

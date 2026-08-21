@@ -84,19 +84,18 @@ export default function FoldersPage() {
           </Button>
         </header>
 
-        {/* ── Loading ── */}
+        {/* ── Loading ──
+            Shaped like the tile it becomes — a 5:4 block for the folder
+            and two lines under it — so nothing jumps when the real folders
+            arrive. Same grid as the loaded state below, for the same
+            reason. */}
         {state.phase === "loading" && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 rounded-xn-lg border border-xn-border p-4"
-              >
-                <Skeleton className="h-10 w-10 shrink-0 rounded-xn-md" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="h-3 w-1/3" />
-                </div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="p-1.5">
+                <Skeleton className="aspect-[5/4] w-full rounded-xn-lg" />
+                <Skeleton className="mx-auto mt-2.5 h-4 w-2/3" />
+                <Skeleton className="mx-auto mt-1 h-3 w-1/3" />
               </div>
             ))}
           </div>
@@ -125,9 +124,13 @@ export default function FoldersPage() {
           />
         )}
 
-        {/* ── Grid ── */}
+        {/* ── Grid ──
+            Denser than it was. The tile is a drawn folder now rather than a
+            horizontal row, and at three columns each one renders around
+            320px wide — a great deal of amber for an index page. This is a
+            shelf of folders instead. */}
         {state.phase === "loaded" && state.folders.length > 0 && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {state.folders.map((folder) => (
               <FolderCard key={folder.id} folder={folder} onOpen={handleOpen} />
             ))}

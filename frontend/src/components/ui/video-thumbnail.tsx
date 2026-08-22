@@ -22,7 +22,7 @@
 //   <VideoThumbnail />  → shows fallback placeholder
 // ─────────────────────────────────────────────────────────────
 
-import { useState, type HTMLAttributes } from "react";
+import { useEffect, useRef, useState, type HTMLAttributes } from "react";
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -60,11 +60,39 @@ export function VideoThumbnail({
 }: VideoThumbnailProps) {
   const [imgError, setImgError] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   // Build the thumbnail URL: explicit src > YouTube CDN > none
   const thumbnailUrl = src || (videoId
     ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
     : null);
+
+  // ── Why this effect exists ──
+  // The fade-in is driven by state set from the image's onLoad handler.
+  // A cached image finishes decoding *before* React attaches that
+  // handler, so onLoad never fires, the state never flips, and the
+  // thumbnail sits at opacity 0 for good — the frame, the border and the
+  // play badge render over an empty ground. It only shows on a warm
+  // cache, which is why it survived: a hard reload looks correct.
+  //
+  // Reading the element directly covers that case. `complete` means the
+  // browser is done either way, and `naturalWidth` is what separates a
+  // decoded image from a failed one.
+  //
+  // Resetting first matters because these two flags describe one
+  // specific URL. React reuses this component for the next row in a
+  // list, and without the reset a recycled instance would keep the
+  // previous image's verdict.
+  useEffect(() => {
+    setImgLoaded(false);
+    setImgError(false);
+
+    const node = imgRef.current;
+    if (!node || !node.complete) return;
+
+    if (node.naturalWidth > 0) setImgLoaded(true);
+    else setImgError(true);
+  }, [thumbnailUrl]);
 
   // Should we show the real image?
   const showImage = thumbnailUrl && !imgError;
@@ -113,9 +141,16 @@ export function VideoThumbnail({
 
       {/* ── Thumbnail Image ──
           Covers the entire container. object-cover ensures it fills
-          without stretching (crops edges if aspect ratio differs). */}
+          without stretching (crops edges if aspect ratio differs).
+
+          object-cover is deliberate and measured, not a default: stills
+          arrive at 480x360 with 45px letterbox bars top and bottom for
+          16:9 source video, and scaled into a 16:9 frame that is exactly
+          what cover crops away. object-contain would put those black
+          bars back on our own surface. */}
       {showImage && (
         <img
+          ref={imgRef}
           src={thumbnailUrl}
           alt={label}
           className={[

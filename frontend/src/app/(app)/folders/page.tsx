@@ -70,7 +70,11 @@ export default function FoldersPage() {
 
   return (
     <AppShell activePage="folders">
-      <div className="mx-auto max-w-content">
+      {/* The same wider column the history list uses. max-w-content is
+          680px and is named the legacy reading column; at six tiles across
+          it left each folder about 95px wide. The token itself is left
+          alone because the create route still uses it. */}
+      <div className="mx-auto max-w-wide">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
             <h1 className="font-serif text-h2 text-xn-ink">Folders</h1>
@@ -90,9 +94,9 @@ export default function FoldersPage() {
             arrive. Same grid as the loaded state below, for the same
             reason. */}
         {state.phase === "loading" && (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          <div className="grid justify-items-center gap-4 grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {[0, 1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="p-1.5">
+              <div key={i} className="w-full max-w-[128px] p-1.5">
                 <Skeleton className="aspect-[5/4] w-full rounded-xn-lg" />
                 <Skeleton className="mx-auto mt-2.5 h-4 w-2/3" />
                 <Skeleton className="mx-auto mt-1 h-3 w-1/3" />
@@ -135,11 +139,21 @@ export default function FoldersPage() {
             mobile behaviour, and the content area adds 32px of padding each
             side. At a 375px viewport that leaves 79px for this grid, so
             three columns would render 21px tiles. One column keeps the
-            narrow case legible until the shell learns to collapse. */}
+            narrow case legible until the shell learns to collapse.
+
+            The tile has no size of its own — it draws at aspect-[5/4] w-full,
+            so the column decides everything. Six columns in the old 680px
+            container gave it about 95px. Widening the container alone
+            overshot, so the cell is capped and centred instead: that lands
+            the drawn folder near 116px, larger than it was without becoming
+            the loudest thing on the page. The cap lives here rather than in
+            folder-card.tsx, which stays exactly as it was reviewed. */}
         {state.phase === "loaded" && state.folders.length > 0 && (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          <div className="grid justify-items-center gap-4 grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {state.folders.map((folder) => (
-              <FolderCard key={folder.id} folder={folder} onOpen={handleOpen} />
+              <div key={folder.id} className="w-full max-w-[128px]">
+                <FolderCard folder={folder} onOpen={handleOpen} />
+              </div>
             ))}
           </div>
         )}

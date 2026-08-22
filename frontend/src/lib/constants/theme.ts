@@ -126,3 +126,17 @@ export const folderColors = [
   "#CE3462", // rose
   "#117E78", // teal
 ] as const;
+
+// ── The one folder amber ────────────────────────────────────
+// Presentation, not data — the opposite of folderColors above. Every
+// folder now *displays* as the same amber regardless of the hex stored
+// on its row, because a wall of differently-tinted folders put a second
+// saturated system on screen competing with the seven format colours,
+// which are meant to be the only saturated things that mean anything.
+// Identity comes from the emoji and the name instead.
+//
+// It is a literal rather than a token because it does not invert with
+// the theme: manila is a physical colour, the same reasoning that keeps
+// a sheet of paper white on a dark ground.
+
+export const folderAmber = "#E5AE3C";

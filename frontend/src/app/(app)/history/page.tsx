@@ -81,7 +81,11 @@ type State =
 
   return (
     <AppShell activePage="history">
-      <div className="mx-auto max-w-content">
+      {/* Wider than the shared reading column: these rows carry a 192px
+          still plus a title, and 680px left the list looking cramped on
+          any real display. max-w-content stays as it is — the folders
+          index and the create route still use it. */}
+      <div className="mx-auto max-w-wide">
         <header className="mb-6">
           <h1 className="font-serif text-h2 text-xn-ink">History</h1>
           <p className="mt-1 text-body text-xn-ink-muted">
@@ -92,13 +96,21 @@ type State =
         {/* ── Loading ── */}
         {state.phase === "loading" && (
           <div className="space-y-3">
+            {/* Mirrors the row's real geometry — 136px tall, a rail, and a
+                192×108 still — so nothing jumps when the data lands. */}
             {[0, 1, 2].map((i) => (
-              <div key={i} className="flex gap-4 rounded-xn-lg border border-xn-border p-4">
-                <Skeleton className="h-[68px] w-[120px] shrink-0 rounded-xn-md" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
+              <div
+                key={i}
+                className="flex h-[136px] overflow-hidden rounded-xn-lg border border-xn-border"
+              >
+                <Skeleton className="w-[4px] shrink-0 rounded-none" />
+                <div className="hidden shrink-0 items-center p-3.5 lg:flex">
+                  <Skeleton className="h-[108px] w-[192px] rounded-xn-md" />
+                </div>
+                <div className="flex-1 self-center space-y-2 pl-4 pr-4 lg:pl-0">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
                 </div>
               </div>
             ))}
@@ -169,9 +181,10 @@ function HistoryList({
     <div className="space-y-3">
       {items.map((item) => {
         const folder = item.folderId ? folderById.get(item.folderId) : null;
-        const folderLabel = folder
-          ? { name: folder.name, emoji: folder.emoji, color: folder.color }
-          : null;
+        // No colour: every folder displays as the one amber now, so the
+        // row does not read the stored hex. The move-to-folder modal
+        // still does.
+        const folderLabel = folder ? { name: folder.name, emoji: folder.emoji } : null;
 
         return (
           <HistoryCard

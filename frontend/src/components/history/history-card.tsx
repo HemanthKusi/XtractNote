@@ -1,13 +1,31 @@
 // src/components/history/history-card.tsx
-// Presentational card for a single saved item. No data/state — the page
+// Presentational row for a single saved item. No data/state — the page
 // supplies the HistoryItem and decides what onOpen does.
+//
+// ── Why this is not a Card ──
+// It used to be a <Card> holding a thumbnail and a text block: the same
+// rectangle the folder tiles and the create pickers were using for three
+// other kinds of data. A saved item is a document, so it now draws as a
+// document strip — a coloured rail down the edge, the still it came
+// from, and the text.
+//
+// ── The rail replaced the chip ──
+// The format used to be announced by an inline coloured chip sitting
+// above the title. The rail says the same thing along the whole height
+// of the row, which lets the chip go away and leaves the text column
+// quieter. The rail is also what answers the cursor: widening a 4px bar
+// costs the image nothing, where scaling the thumbnail cropped it.
+//
+// ── Equal heights on purpose ──
+// The height is fixed rather than derived, so a row carrying a folder
+// pill is exactly as tall as one without and the column reads as a list
+// instead of a ragged stack. The title clamps to two lines to hold it.
 
 "use client";
 
-import { Card } from "@/components/ui/card";
-import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
-import { contentTypeColors } from "@/lib/constants/theme";
+import { VideoThumbnail } from "@/components/ui/video-thumbnail";
+import { contentTypeColors, folderAmber } from "@/lib/constants/theme";
 import type { HistoryItem } from "@/lib/api/history";
 
 // Small, dependency-free relative time ("just now" … "3 days ago").
@@ -32,108 +50,125 @@ function formatRelativeDate(iso: string): string {
   });
 }
 
+/** Mix a hex with the surface beneath it, so the tint follows the theme. */
+function amberTint(percent: number): string {
+  return `color-mix(in srgb, ${folderAmber} ${percent}%, transparent)`;
+}
+
 /** The display info for the folder an item is in (resolved by the page). */
 interface FolderLabel {
-    name: string;
-    emoji: string;
-    color: string;
-  }
-  
-  interface HistoryCardProps {
-    item: HistoryItem;
-    /** Called with the item id when the card is clicked. */
-    onOpen?: (id: string) => void;
-    /** The folder this item is in (page resolves it from folderId); null = none. */
-    folderLabel?: FolderLabel | null;
-    /** Called with the full item when the Move button is clicked. */
-    onMove?: (item: HistoryItem) => void;
-  }
-  
-  export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardProps) {
-    const meta = contentTypeColors[item.contentType];
+  name: string;
+  emoji: string;
+}
+
+interface HistoryCardProps {
+  item: HistoryItem;
+  /** Called with the item id when the row is clicked. */
+  onOpen?: (id: string) => void;
+  /** The folder this item is in (page resolves it from folderId); null = none. */
+  folderLabel?: FolderLabel | null;
+  /** Called with the full item when the Move button is clicked. */
+  onMove?: (item: HistoryItem) => void;
+}
+
+export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardProps) {
+  const meta = contentTypeColors[item.contentType];
 
   return (
-    <Card
-      variant="default"
-      padding="none"
-      interactive
+    <article
       onClick={() => onOpen?.(item.id)}
+      className="group relative flex h-[136px] cursor-pointer overflow-hidden rounded-xn-lg border border-xn-border bg-xn-surface transition-colors duration-xn ease-xn hover:border-xn-border-strong"
     >
-      <div className="flex gap-4 p-4">
-        {/* Thumbnail — fixed compact size for the list row */}
-        <div className="w-[120px] shrink-0">
-          <VideoThumbnail
-            src={item.thumbnail}
-            label={item.title}
-            height={68}
-          />
-        </div>
+      {/* The format, said once, down the whole edge. */}
+      <span
+        className="w-[4px] shrink-0 transition-[width] duration-xn ease-xn group-hover:w-[7px]"
+        style={{ backgroundColor: meta.color }}
+        aria-hidden
+      />
 
-        {/* Text column */}
-        <div className="min-w-0 flex-1">
-          {/* Format chip (styled span — Chip internals aren't overridable) */}
-          <span
-            className="inline-flex items-center gap-1.5 rounded-xn-pill border px-2 py-0.5 text-xs font-medium"
-            style={{ backgroundColor: meta.bg, color: meta.color, borderColor: meta.border }}
-          >
-            <ContentTypeIcon type={item.contentType} size="sm" />
-            {meta.label}
-          </span>
+      {/* 16:9 and fixed. It does not scale on hover — the rail does that
+          job instead, because scaling this cropped it.
 
-          {/* Title */}
-          <h3 className="mt-2 line-clamp-2 text-[15px] font-semibold leading-snug text-xn-ink">
-            {item.title}
-          </h3>
-
-          {/* Channel + meta line */}
-          <div className="mt-1 flex items-center gap-2 text-xs text-xn-ink-soft">
-            {item.channel && <span className="truncate">{item.channel}</span>}
-            {item.channel && <span aria-hidden>·</span>}
-            <span className="shrink-0">{formatRelativeDate(item.createdAt)}</span>
-            {item.wordCount > 0 && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="shrink-0">{item.wordCount.toLocaleString()} words</span>
-              </>
-            )}
-          </div>
-
-          {/* Folder label + Move action */}
-          <div className="mt-2 flex items-center gap-2">
-            {folderLabel && (
-              <span
-                className="inline-flex items-center gap-1 rounded-xn-pill px-2 py-0.5 text-xs font-medium"
-                style={{ backgroundColor: `${folderLabel.color}1A`, color: "var(--xn-ink-muted)" }}
-              >
-                <span aria-hidden>{folderLabel.emoji}</span>
-                <span className="max-w-[140px] truncate">{folderLabel.name}</span>
-              </span>
-            )}
-
-            {onMove && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation(); // don't also trigger the card's onOpen
-                  onMove(item);
-                }}
-                className="inline-flex items-center gap-1 rounded-xn-md px-2 py-0.5 text-xs font-medium text-xn-ink-soft hover:bg-xn-surface-alt hover:text-xn-ink transition-colors"
-              >
-                <MoveIcon />
-                {folderLabel ? "Move" : "Add to folder"}
-              </button>
-            )}
-          </div>
+          It steps out below lg. The still plus the Move gutter reserve
+          394px before the title gets anything, and the shell's sidebar
+          takes a further 232px at every width, so on a narrower window
+          the title was left with almost nothing. The rail still carries
+          the format, which is what makes the still the right thing to
+          drop rather than the tag. */}
+      <div className="hidden shrink-0 items-center p-3.5 lg:flex">
+        <div className="w-[192px]">
+          <VideoThumbnail src={item.thumbnail} label={item.title} height={108} />
         </div>
       </div>
-    </Card>
+
+      {/* The gutter keeps a long title from running under the Move button.
+          The left padding only applies once the still is gone, since the
+          still's own padding provides it otherwise. */}
+      <div className="min-w-0 flex-1 self-center pl-4 pr-[170px] lg:pl-0">
+        <div className="flex items-center gap-2">
+          <ContentTypeIcon type={item.contentType} size="md" />
+          <span className="text-sm font-medium" style={{ color: meta.color }}>
+            {meta.label}
+          </span>
+          <span className="font-mono text-sm text-xn-ink-soft">
+            · {formatRelativeDate(item.createdAt)}
+          </span>
+        </div>
+
+        <h3 className="mt-1.5 line-clamp-2 text-[17px] font-semibold leading-snug text-xn-ink">
+          {item.title}
+        </h3>
+
+        <div className="mt-1.5 flex items-center gap-2 font-mono text-sm text-xn-ink-soft">
+          {item.channel && <span className="truncate">{item.channel}</span>}
+          {item.channel && <span aria-hidden>·</span>}
+          {item.wordCount > 0 && (
+            <span className="shrink-0">{item.wordCount.toLocaleString()} words</span>
+          )}
+
+          {/* Outlined rather than filled, so it holds its weight against a
+              row that already carries a rail and a format icon. The amber
+              is the tile's amber — the two finally agree. */}
+          {folderLabel && (
+            <span
+              className="ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-xn-pill px-2.5 py-1 font-sans text-sm font-medium"
+              style={{
+                backgroundColor: amberTint(20),
+                color: "var(--xn-ink)",
+                border: `1px solid ${folderAmber}`,
+              }}
+            >
+              <span aria-hidden>{folderLabel.emoji}</span>
+              <span className="max-w-[140px] truncate">{folderLabel.name}</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Always visible rather than revealed on hover: a control that
+          appears only under a cursor is unreachable by touch and easy to
+          miss by keyboard. Focus adds the ring and nothing else. */}
+      {onMove && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation(); // don't also trigger the row's onOpen
+            onMove(item);
+          }}
+          className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-xn-md px-2.5 py-1.5 text-sm font-medium text-xn-ink-soft transition-colors duration-xn ease-xn hover:bg-xn-surface-alt hover:text-xn-ink focus-visible:shadow-xn-ring focus-visible:outline-none"
+        >
+          <MoveIcon />
+          {folderLabel ? "Move" : "Add to folder"}
+        </button>
+      )}
+    </article>
   );
 }
 
 // Small folder/move icon.
 function MoveIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
       <path
         d="M2 4.5A1.5 1.5 0 0 1 3.5 3h2.4a1 1 0 0 1 .7.3l.9.9h5A1.5 1.5 0 0 1 14 5.7V11a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11V4.5Z"
         stroke="currentColor"

@@ -104,10 +104,10 @@ type State =
                 className="flex h-[136px] overflow-hidden rounded-xn-lg border border-xn-border"
               >
                 <Skeleton className="w-[4px] shrink-0 rounded-none" />
-                <div className="flex shrink-0 items-center p-3.5">
+                <div className="hidden shrink-0 items-center p-3.5 lg:flex">
                   <Skeleton className="h-[108px] w-[192px] rounded-xn-md" />
                 </div>
-                <div className="flex-1 self-center space-y-2 pr-4">
+                <div className="flex-1 self-center space-y-2 pl-4 pr-4 lg:pl-0">
                   <Skeleton className="h-4 w-28" />
                   <Skeleton className="h-5 w-3/4" />
                   <Skeleton className="h-4 w-1/2" />

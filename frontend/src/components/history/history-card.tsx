@@ -87,15 +87,24 @@ export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardPr
       />
 
       {/* 16:9 and fixed. It does not scale on hover — the rail does that
-          job instead, because scaling this cropped it. */}
-      <div className="flex shrink-0 items-center p-3.5">
+          job instead, because scaling this cropped it.
+
+          It steps out below lg. The still plus the Move gutter reserve
+          394px before the title gets anything, and the shell's sidebar
+          takes a further 232px at every width, so on a narrower window
+          the title was left with almost nothing. The rail still carries
+          the format, which is what makes the still the right thing to
+          drop rather than the tag. */}
+      <div className="hidden shrink-0 items-center p-3.5 lg:flex">
         <div className="w-[192px]">
           <VideoThumbnail src={item.thumbnail} label={item.title} height={108} />
         </div>
       </div>
 
-      {/* The gutter keeps a long title from running under the Move button. */}
-      <div className="min-w-0 flex-1 self-center pr-[170px]">
+      {/* The gutter keeps a long title from running under the Move button.
+          The left padding only applies once the still is gone, since the
+          still's own padding provides it otherwise. */}
+      <div className="min-w-0 flex-1 self-center pl-4 pr-[170px] lg:pl-0">
         <div className="flex items-center gap-2">
           <ContentTypeIcon type={item.contentType} size="md" />
           <span className="text-sm font-medium" style={{ color: meta.color }}>

@@ -147,7 +147,7 @@ export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardPr
 
       {/* Always visible rather than revealed on hover: a control that
           appears only under a cursor is unreachable by touch and easy to
-          miss by keyboard. Focus adds the ring and nothing else. */}
+          miss by keyboard. Focus adds an outline and nothing else. */}
       {onMove && (
         <button
           type="button"
@@ -155,7 +155,14 @@ export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardPr
             e.stopPropagation(); // don't also trigger the row's onOpen
             onMove(item);
           }}
-          className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-xn-md px-2.5 py-1.5 text-sm font-medium text-xn-ink-soft transition-colors duration-xn ease-xn hover:bg-xn-surface-alt hover:text-xn-ink focus-visible:shadow-xn-ring focus-visible:outline-none"
+          // The outline is the focus indicator. It used to be
+          // `shadow-xn-ring` alongside `outline-none`, which suppressed the
+          // browser's own ring and replaced it with nothing: that class
+          // reads like a token but is not one — the boxShadow map has only
+          // xn-1, xn, xn-lg and xn-hover — so it generated no CSS and a
+          // focused button had no indicator at all. Same pattern the
+          // folder tile and the format tiles use.
+          className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-xn-md px-2.5 py-1.5 text-sm font-medium text-xn-ink-soft transition-colors duration-xn ease-xn hover:bg-xn-surface-alt hover:text-xn-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xn-ink"
         >
           <MoveIcon />
           {folderLabel ? "Move" : "Add to folder"}

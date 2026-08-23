@@ -70,10 +70,8 @@ export default function FoldersPage() {
 
   return (
     <AppShell activePage="folders">
-      {/* The same wider column the history list uses. max-w-content is
-          680px and is named the legacy reading column; at six tiles across
-          it left each folder about 95px wide. The token itself is left
-          alone because the create route still uses it. */}
+      {/* The same wider column the history list uses. The old 680px reading
+          column left each folder about 95px wide at six tiles across. */}
       <div className="mx-auto max-w-wide">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>

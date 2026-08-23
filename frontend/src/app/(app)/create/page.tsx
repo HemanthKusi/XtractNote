@@ -441,7 +441,10 @@ export default function CreatePage() {
   const needsPlatform = selectedType === "social" && !selectedPlatform;
 
   return (
-    <div className="mx-auto max-w-content px-6 py-10">
+    // The same wider column history and folders use. This was the last
+    // route on max-w-content, the 680px "legacy reading column", where
+    // four format tiles came out cramped.
+    <div className="mx-auto max-w-wide px-6 py-10">
       {/* Heading */}
       <header className="mb-6">
         <h1 className="font-serif text-h2 text-xn-ink">Create</h1>

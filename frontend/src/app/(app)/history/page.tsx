@@ -81,10 +81,9 @@ type State =
 
   return (
     <AppShell activePage="history">
-      {/* Wider than the shared reading column: these rows carry a 192px
-          still plus a title, and 680px left the list looking cramped on
-          any real display. max-w-content stays as it is — the folders
-          index and the create route still use it. */}
+      {/* Wider than the old reading column: these rows carry a 192px still
+          plus a title, and 680px left the list looking cramped on any real
+          display. */}
       <div className="mx-auto max-w-wide">
         <header className="mb-6">
           <h1 className="font-serif text-h2 text-xn-ink">History</h1>

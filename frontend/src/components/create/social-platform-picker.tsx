@@ -129,8 +129,14 @@ export function SocialPlatformPicker({
 
       {/* inline-flex, not flex: a block-level flex container would span the
           whole column even though the marks need a fraction of it.
-          pt-9 leaves room for the tooltip above rather than letting it clip. */}
-      <ul className="inline-flex max-w-full flex-wrap gap-5 pt-9">
+
+          The two gaps differ on purpose. 20px between marks is the chosen
+          spacing; the row gap has to clear a tooltip instead, because a
+          wrapped row's label is drawn above its mark and lands on the row
+          before it. The tooltip is 29px tall and sits 8px clear, so 37px
+          is the floor and 40px is the nearest step. pt-9 does the same job
+          for the first row, which has no row above it to borrow from. */}
+      <ul className="inline-flex max-w-full flex-wrap gap-x-5 gap-y-10 pt-9">
         {SOCIAL_PLATFORMS.map((platform) => {
           const skin = PLATFORM_SKIN[platform.id];
           const isSelected = selected === platform.id;
@@ -143,7 +149,17 @@ export function SocialPlatformPicker({
           } as CSSProperties;
 
           return (
-            <li key={platform.id} className="group relative" style={vars}>
+            // The `group` class is dropped when disabled, which switches off
+            // every reveal below in one move: a group-hover selector cannot
+            // match a descendant of an element that is not a group. Without
+            // this a disabled mark still lit up and named itself under the
+            // cursor, because `disabled` only stops the button receiving
+            // pointer events — the li wrapping it still gets hovered.
+            <li
+              key={platform.id}
+              className={disabled ? "relative" : "group relative"}
+              style={vars}
+            >
               {/* Branded like the mark. Its text colour is the same
                   measured choice as the glyph's — white where the ground
                   is dark enough, ink where it is not. */}
@@ -155,7 +171,13 @@ export function SocialPlatformPicker({
                   "bg-[color:var(--tip)] text-xs font-bold shadow-xn",
                   "text-[color:var(--glyph-lit)]",
                   "opacity-0 transition-[opacity,transform] duration-xn-slow ease-xn",
+                  // focus-within alongside hover: these buttons carry an icon
+                  // and no visible text, so a sighted keyboard user tabbing
+                  // through them would otherwise get a ring around an
+                  // unnamed circle. Screen readers already had the name from
+                  // aria-label; this is for the people who can see it.
                   "group-hover:translate-y-0 group-hover:opacity-100",
+                  "group-focus-within:translate-y-0 group-focus-within:opacity-100",
                 ].join(" ")}
                 aria-hidden
               >
@@ -174,6 +196,7 @@ export function SocialPlatformPicker({
                   isSelected ? "border-transparent" : "border-xn-border bg-xn-surface",
                   // The knocked-out triangle follows the fill once it is up.
                   "group-hover:[--xn-yt-knock:var(--lit)]",
+                  "group-focus-within:[--xn-yt-knock:var(--lit)]",
                   disabled ? "cursor-not-allowed opacity-60" : "",
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xn-ink",
                 ].join(" ")}
@@ -187,7 +210,7 @@ export function SocialPlatformPicker({
                     "absolute inset-0 transition-transform duration-xn-slow ease-xn",
                     isSelected
                       ? "translate-y-0"
-                      : "translate-y-full group-hover:translate-y-0",
+                      : "translate-y-full group-hover:translate-y-0 group-focus-within:translate-y-0",
                   ].join(" ")}
                   style={{ background: "var(--lit)" }}
                 />
@@ -197,6 +220,7 @@ export function SocialPlatformPicker({
                     "transition-colors duration-xn-slow ease-xn",
                     isSelected ? "text-[color:var(--glyph-lit)]" : "text-xn-ink-muted",
                     "group-hover:text-[color:var(--glyph-lit)]",
+                    "group-focus-within:text-[color:var(--glyph-lit)]",
                   ].join(" ")}
                 >
                   <PlatformMark platform={platform.id} />

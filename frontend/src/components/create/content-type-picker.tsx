@@ -189,7 +189,17 @@ function BrandPill({ platform }: { platform: SocialPlatform }) {
       <span className="inline-block h-3 w-3 shrink-0">
         <PlatformMark platform={platform} />
       </span>
-      {BRAND_NAME[platform]}
+      {/* The wordmark is hidden below xl but not removed. Measured across
+          all five names inside the real create column: at 1024 a tile's
+          icon row is 127px, and the icon plus gap plus a named pill wants
+          126px for LinkedIn but 135px for Instagram and 140px for
+          Newsletter — so the two longest overflowed. xl is the first
+          breakpoint where every name has room. Below it the mark alone
+          identifies the platform.
+          sr-only rather than hidden, because the mark itself is
+          aria-hidden: display:none would take the platform's name out of
+          the accessibility tree and leave the pill silent. */}
+      <span className="sr-only xl:not-sr-only">{BRAND_NAME[platform]}</span>
     </span>
   );
 }
@@ -257,7 +267,13 @@ export function ContentTypePicker({
             className={[
               "group flex flex-col items-start gap-3 rounded-xn-lg border p-4 text-left",
               "transition-colors duration-xn ease-xn",
-              "focus-visible:outline-none focus-visible:shadow-xn-ring",
+              // A real outline rather than a ring shadow. `shadow-xn-ring`
+              // reads like a token but is not one — the boxShadow map has
+              // only xn-1, xn, xn-lg and xn-hover — so it generated no CSS
+              // and, with the native outline suppressed alongside it, a
+              // focused tile had no indicator at all. This is the pattern
+              // the folder tile already uses, and it resolves.
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xn-ink",
               isSelected ? "" : "border-xn-border bg-xn-surface",
               live ? "hover:border-xn-border-strong" : "cursor-not-allowed opacity-60",
             ].join(" ")}

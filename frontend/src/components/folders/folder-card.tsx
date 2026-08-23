@@ -28,10 +28,15 @@ import type { CSSProperties } from "react";
 import type { Folder } from "@/lib/api/folders";
 
 // ── Motion ──────────────────────────────────────────────────
-// Ease-out with no overshoot, so this sits inside the motion policy's
-// "no bounce, no elastic". Duration is the slow step (320ms) rather than
-// the 450ms the reference used, because app motion is capped under 300ms
-// and 320 is as close as the token scale gets.
+// A plain ease-out with no overshoot. That is a choice about how a
+// folder should open, not a rule being obeyed: no curve is prescribed
+// and none is banned, so overshoot was available here and simply did
+// not suit a paper fold.
+//
+// 320ms (--xn-dur-slow) where the reference used 450ms. The shortening
+// was originally required by a hard cap on app motion; that cap is now
+// a default rather than a limit, so the slower original is available if
+// this ever reads too brisk on a real page.
 
 const FOLDER_EASE = "cubic-bezier(0.22,0.61,0.36,1)";
 

@@ -164,19 +164,32 @@ export function FlashcardsView({ body, className = "" }: FlashcardsViewProps) {
         {cards.length} {cards.length === 1 ? "card" : "cards"} · tap a card to turn it over
       </p>
 
-      {/* TWO COLUMNS AT MOST, and that is arithmetic rather than taste.
-          OutputView renders this inside a 680px column. Three 220px cards
-          plus their gaps need 684px, so at three columns the cards shrink
-          to fill their cells and the slack the swing depends on vanishes
-          entirely — measured at zero, with the cover landing 52px into its
-          left neighbour and the card 20px into its right one. Two columns
-          leave 114px of slack per cell, which is what the lid and the step
-          aside are spending.
+      {/* THE COLUMN COUNT IS THE CONTAINER'S DECISION, NOT A BREAKPOINT'S.
+          This is `auto-fit`: make as many columns as genuinely fit, each at
+          least 310px, and share the remainder between them. The browser
+          measures the box this grid is actually in, so the count is right
+          on every surface without a single width named here.
+
+          That is deliberate, and it replaced `sm:grid-cols-2`. Tailwind's
+          breakpoints measure the VIEWPORT, and on an app-shell surface the
+          viewport is not the container — a sidebar and several layers of
+          padding sit in between. `sm:` fires at a 640px window, where this
+          grid has around 250px to work with, and asks it for two 220px
+          columns. Every attempt to fix that by choosing a better window
+          number failed the same way, because the two output routes have
+          different amounts of furniture and no single number is right for
+          both.
+
+          310 is the one real constraint, stated directly: it is the
+          narrowest cell in which an open cover still clears the card beside
+          it. Measured across every width from 300 to 1300px with all cards
+          open — 1 column below 640, 2 at 640, 3 at 960, 4 at 1280, and the
+          tightest clearance anywhere is 6.4px. Never negative.
 
           The row gap is deliberately larger than the column gap for a
           different reason: an open cover renders taller than its card, so
           stacked rows collide at a gap sized only for closed ones. */}
-      <div className="grid grid-cols-1 gap-x-3 gap-y-14 sm:grid-cols-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-x-3 gap-y-14">
         {cards.map((card, index) => (
           <FlashcardTile key={index} card={card} index={index} accent={accent} />
         ))}

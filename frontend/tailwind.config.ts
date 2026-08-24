@@ -176,6 +176,19 @@ const config: Config = {
         "measure": "var(--xn-measure)", // 64ch — generated content
         "content": "680px",             // legacy reading column
         "wide":    "960px",
+
+        // The page column for routes that render generated output.
+        //
+        // 1058 is derived, not chosen: 960 (`wide`) of content, plus the
+        // 24px padding and 1px border the output Card puts on each side,
+        // plus the 24px the page itself pads by. Cap a page here and the
+        // content column inside its card lands on `wide` exactly.
+        //
+        // That 960 matters because the flashcard grid's column count is
+        // measured against it — three 312px columns with the covers
+        // clearing each other. Change this and the content width moves,
+        // so re-measure rather than assuming the grid still fits.
+        "output":  "1058px",
       },
 
       // ────────────────────────────────────────────────────────

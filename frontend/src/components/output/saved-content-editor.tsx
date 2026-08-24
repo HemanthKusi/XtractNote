@@ -387,7 +387,7 @@ export function SavedContentEditor({
   // ── Render: loading ──
   if (status === "loading") {
     return (
-      <div className="mx-auto w-full max-w-3xl px-4 py-8">
+      <div className="mx-auto w-full max-w-output px-6 py-10">
         <Skeleton height={16} width={112} className="mb-6 rounded" />
         <Skeleton height={32} width="66%" className="mb-3 rounded" />
         <Skeleton height={16} width="50%" className="mb-8 rounded" />
@@ -403,7 +403,7 @@ export function SavedContentEditor({
   // ── Render: not found ──
   if (status === "not-found") {
     return (
-      <div className="mx-auto w-full max-w-3xl px-4 py-8">
+      <div className="mx-auto w-full max-w-output px-6 py-10">
         <EmptyState
           icon={<AlertCircle />}
           title="Content not found"
@@ -426,7 +426,7 @@ export function SavedContentEditor({
   // ── Render: load error ──
   if (status === "error") {
     return (
-      <div className="mx-auto w-full max-w-3xl px-4 py-8">
+      <div className="mx-auto w-full max-w-output px-6 py-10">
         <EmptyState
           icon={<AlertCircle />}
           title="Something went wrong"
@@ -469,7 +469,12 @@ export function SavedContentEditor({
   );
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8">
+    // `max-w-output`, matching create, so a saved item reads at the same
+    // width it did when it was generated. This was `max-w-3xl` — 768px,
+    // which capped the content column at 686px and made this the narrowest
+    // surface in the app, regardless of how wide OutputView was allowed to
+    // be. The same flashcard set rendered two columns here and three there.
+    <div className="mx-auto w-full max-w-output px-6 py-10">
       {/* ── Back link ── */}
       <Link
         href={backHref}

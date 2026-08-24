@@ -441,10 +441,17 @@ export default function CreatePage() {
   const needsPlatform = selectedType === "social" && !selectedPlatform;
 
   return (
-    // The same wider column history and folders use. This was the last
-    // route on max-w-content, the 680px "legacy reading column", where
-    // four format tiles came out cramped.
-    <div className="mx-auto max-w-wide px-6 py-10">
+    // `output` rather than the `wide` column history and folders use: this
+    // route ends in a rendered result, and the output Card's own padding
+    // eats 98px before its contents start. Sizing the page at `wide` left
+    // the content column at 862px, which is under what the flashcard grid
+    // needs for three columns. `output` is `wide` plus that padding, so the
+    // column inside the card lands on 960 exactly.
+    //
+    // The 98px the form gains along the way is harmless — the pickers size
+    // their columns off the viewport, not this container, so their layout
+    // is unchanged and only the tiles get marginally wider.
+    <div className="mx-auto max-w-output px-6 py-10">
       {/* Heading */}
       <header className="mb-6">
         <h1 className="font-serif text-h2 text-xn-ink">Create</h1>

@@ -186,10 +186,19 @@ export function FlashcardsView({ body, className = "" }: FlashcardsViewProps) {
           open — 1 column below 640, 2 at 640, 3 at 960, 4 at 1280, and the
           tightest clearance anywhere is 6.4px. Never negative.
 
+          The `min(310px, 100%)` matters and is not decoration. A bare
+          `minmax(310px, 1fr)` treats 310 as a hard floor, so in a container
+          narrower than that it still lays a 310px track and the card
+          overflows — and the Card around it is `overflow-hidden`, so the
+          card is clipped rather than merely tight. Wrapping the floor in
+          `min()` lets the track collapse to the container when the
+          container is the smaller of the two, which costs nothing at every
+          width where 310 fits.
+
           The row gap is deliberately larger than the column gap for a
           different reason: an open cover renders taller than its card, so
           stacked rows collide at a gap sized only for closed ones. */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(310px,1fr))] gap-x-3 gap-y-14">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(310px,100%),1fr))] gap-x-3 gap-y-14">
         {cards.map((card, index) => (
           <FlashcardTile key={index} card={card} index={index} accent={accent} />
         ))}

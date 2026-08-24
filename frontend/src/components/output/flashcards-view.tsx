@@ -117,7 +117,10 @@ function FlashcardTile({
         {/* The cover. transform-origin at the spine is the whole trick —
             about its middle it would read as a flip rather than an opening. */}
         <span
-          className="absolute inset-0 flex origin-left flex-col overflow-hidden rounded-xn-md border border-xn-border bg-xn-surface p-4 shadow-xn"
+          // overflow-y-auto, matching the answer: a long prompt would
+          // otherwise be clipped with no way to read the rest of it, and
+          // the front is generated text with no length guarantee.
+          className="absolute inset-0 flex origin-left flex-col overflow-y-auto rounded-xn-md border border-xn-border bg-xn-surface p-4 shadow-xn"
           style={{
             transform: open ? `rotateY(${SWING_DEG}deg)` : "rotateY(0deg)",
             transitionProperty: "transform",
@@ -161,10 +164,19 @@ export function FlashcardsView({ body, className = "" }: FlashcardsViewProps) {
         {cards.length} {cards.length === 1 ? "card" : "cards"} · tap a card to turn it over
       </p>
 
-      {/* The row gap is deliberately larger than the column gap: an open
-          cover renders taller than its card, so stacked rows collide at a
-          gap sized only for closed ones. */}
-      <div className="grid grid-cols-1 gap-x-3 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">
+      {/* TWO COLUMNS AT MOST, and that is arithmetic rather than taste.
+          OutputView renders this inside a 680px column. Three 220px cards
+          plus their gaps need 684px, so at three columns the cards shrink
+          to fill their cells and the slack the swing depends on vanishes
+          entirely — measured at zero, with the cover landing 52px into its
+          left neighbour and the card 20px into its right one. Two columns
+          leave 114px of slack per cell, which is what the lid and the step
+          aside are spending.
+
+          The row gap is deliberately larger than the column gap for a
+          different reason: an open cover renders taller than its card, so
+          stacked rows collide at a gap sized only for closed ones. */}
+      <div className="grid grid-cols-1 gap-x-3 gap-y-14 sm:grid-cols-2">
         {cards.map((card, index) => (
           <FlashcardTile key={index} card={card} index={index} accent={accent} />
         ))}

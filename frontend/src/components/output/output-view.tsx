@@ -209,7 +209,22 @@ export function OutputView({ content, className = "" }: OutputViewProps) {
         </div>
       }
     >
-      <div className="max-w-[680px]">{renderBody(content.content)}</div>
+      {/* The content column, and the width every renderer is measured
+          against. It was 680px — the 64ch reading measure — which left the
+          card visibly narrower than history, folders and create, and gave
+          the flashcard grid too little room for its third column.
+
+          960 is a deliberate trade: prose runs nearer 88 characters a line
+          than the 64 the type scale specifies. Taken knowingly for a
+          consistent surface. If the long measure ever reads badly, the fix
+          is to cap the prose renderer alone rather than narrow the card —
+          the structured renderers genuinely want the width.
+
+          Pages that render output cap themselves at `max-w-output`, which
+          is sized so this lands on exactly 960. The cap stays here anyway,
+          so a consumer with a wider container cannot stretch the column
+          past the width the renderers were measured at. */}
+      <div className="max-w-wide">{renderBody(content.content)}</div>
     </Card>
   );
 }

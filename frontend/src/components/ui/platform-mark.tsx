@@ -19,6 +19,14 @@
 // sits behind the mark. The caller supplies that through the
 // `--xn-yt-knock` custom property, which falls back to the surface.
 //
+// The fallback is load-bearing, not defensive. A caller that sets the
+// property only on interaction — the platform picker sets it on hover,
+// focus and selection — leaves it undefined at rest, and `var()` with no
+// fallback is invalid at computed-value time. `fill` is inherited, so it
+// would take `none` from the svg above it and the triangle would simply
+// vanish, leaving a plain red rectangle. It fails to nothing rather than
+// to a wrong colour, which is what made it look like a missing asset.
+//
 // The newsletter glyph is drawn, not a brand mark: there is no company
 // called Newsletter. It is kept at the same weight as the four real
 // marks so it does not read as the odd one out.
@@ -56,7 +64,7 @@ export function PlatformMark({ platform }: { platform: SocialPlatform }) {
               fill="currentColor"
               d="M250.346 28.075A32.18 32.18 0 0 0 227.69 5.418C207.824 0 127.87 0 127.87 0S47.912.164 28.046 5.582A32.18 32.18 0 0 0 5.39 28.24c-6.009 35.298-8.34 89.084.165 122.97a32.18 32.18 0 0 0 22.656 22.657c19.866 5.418 99.822 5.418 99.822 5.418s79.955 0 99.82-5.418a32.18 32.18 0 0 0 22.657-22.657c6.338-35.348 8.291-89.1-.164-123.134"
             />
-            <path fill="var(--xn-yt-knock)" d="m102.421 128.06l66.328-38.418l-66.328-38.418z" />
+            <path fill="var(--xn-yt-knock, var(--xn-surface))" d="m102.421 128.06l66.328-38.418l-66.328-38.418z" />
           </g>
         </svg>
       );

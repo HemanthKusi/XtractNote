@@ -143,12 +143,39 @@ function FlashcardTile({
   // to whichever face becomes visible. A mouse click leaves focus alone
   // rather than yanking it onto an invisible element.
   const chaseFocus = useRef(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const toggle = () => {
     chaseFocus.current =
       document.activeElement === coverBtn.current ||
       document.activeElement === answerBtn.current;
     setOpen((o) => !o);
+  };
+
+  /**
+   * The MOUSE path, which has to tell a click apart from the end of a drag.
+   *
+   * Selecting text finishes with a click on the common ancestor, so reading
+   * an answer and dragging across it to copy would turn the card and destroy
+   * both the selection and the thing being read. That could not happen while
+   * the card was a `<button>` — prose inside a button is not something people
+   * try to select — and it became possible the moment it became a div holding
+   * real text.
+   *
+   * The check is scoped to a selection inside THIS card, so a selection
+   * somewhere else on the page does not make cards unresponsive.
+   */
+  const handleCardClick = () => {
+    const selection = window.getSelection();
+    if (
+      selection &&
+      !selection.isCollapsed &&
+      selection.anchorNode &&
+      cardRef.current?.contains(selection.anchorNode)
+    ) {
+      return;
+    }
+    toggle();
   };
 
   // AFTER commit, not from a rAF in the handler. A rAF fires before React has
@@ -182,7 +209,8 @@ function FlashcardTile({
           and the ring is drawn from focus-within so the card still reads as
           focused even though its control is invisible. */}
       <div
-        onClick={toggle}
+        ref={cardRef}
+        onClick={handleCardClick}
         className={[
           "grid min-h-[300px] w-full max-w-[280px] cursor-pointer text-left",
           // Perspective belongs on the parent of the rotating element.

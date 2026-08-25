@@ -132,7 +132,17 @@ export default function ShowcasePage() {
 
   return (
     <div className="min-h-screen bg-xn-bg text-xn-ink transition-colors duration-300">
-      <div className="max-w-[960px] mx-auto px-8 py-12">
+      {/* Mirrors the real output page's column exactly — `max-w-output` with
+          px-6 — rather than being a comfortable canvas. That chain is
+          1058 − 48 of page padding = 1010 for the panel, and the panel's own
+          border and p-6 take 50, leaving its contents 960: the width
+          OutputView actually gives a renderer.
+
+          It was `max-w-[960px] px-8`, which sounds like the same number and is
+          not. The panels came out at 846, and the flashcard grid drew TWO
+          columns where production draws three — a specimen showing a different
+          layout than the thing it stands in for. */}
+      <div className="max-w-output mx-auto px-6 py-12">
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between mb-12">
@@ -1003,7 +1013,7 @@ export default function ShowcasePage() {
               it sits inside OutputView&apos;s Card, so it looks plainer here.
             </p>
 
-            <div className="max-w-wide rounded-xn-md border border-xn-border bg-xn-surface p-6">
+            <div className="rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <FlashcardsView
                 body={{
                   kind: "flashcards",
@@ -1026,7 +1036,7 @@ export default function ShowcasePage() {
             </div>
 
             <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
-            <div className="max-w-wide rounded-xn-md border border-xn-border bg-xn-surface p-6">
+            <div className="rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <FlashcardsView body={{ kind: "flashcards", cards: [] }} />
             </div>
           </section>
@@ -1039,7 +1049,7 @@ export default function ShowcasePage() {
               OutputView&apos;s Card in the app.
             </p>
 
-            <div className="max-w-wide rounded-xn-md border border-xn-border bg-xn-surface p-6">
+            <div className="rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <QuizView
                 body={{
                   kind: "quiz",
@@ -1068,7 +1078,7 @@ export default function ShowcasePage() {
             </div>
 
             <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
-            <div className="max-w-wide rounded-xn-md border border-xn-border bg-xn-surface p-6">
+            <div className="rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <QuizView body={{ kind: "quiz", questions: [] }} />
             </div>
           </section>

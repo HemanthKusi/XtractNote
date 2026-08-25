@@ -1003,7 +1003,7 @@ export default function ShowcasePage() {
               it sits inside OutputView&apos;s Card, so it looks plainer here.
             </p>
 
-            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+            <div className="max-w-wide rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <FlashcardsView
                 body={{
                   kind: "flashcards",
@@ -1026,7 +1026,7 @@ export default function ShowcasePage() {
             </div>
 
             <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
-            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+            <div className="max-w-wide rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <FlashcardsView body={{ kind: "flashcards", cards: [] }} />
             </div>
           </section>
@@ -1039,7 +1039,7 @@ export default function ShowcasePage() {
               OutputView&apos;s Card in the app.
             </p>
 
-            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+            <div className="max-w-wide rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <QuizView
                 body={{
                   kind: "quiz",
@@ -1068,7 +1068,7 @@ export default function ShowcasePage() {
             </div>
 
             <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
-            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+            <div className="max-w-wide rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <QuizView body={{ kind: "quiz", questions: [] }} />
             </div>
           </section>

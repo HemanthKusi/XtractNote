@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { contentTypeColors } from "@/lib/constants/theme";
 import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
@@ -48,6 +48,47 @@ import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
 //      the room for the lid is made by the gesture rather than reserved as
 //      permanent dead space beside every card.
 //
+// ── The keyboard could not reach a long face ──
+// It used to be a fixed 300px with both faces scrolling inside it. Nothing
+// was clipped, but nothing could be reached either: `overflow-y-auto` on a
+// span INSIDE the button made the scroll box a CHILD of the focused
+// element, and arrow keys act on the nearest scrollable ANCESTOR. A mouse
+// user scrolled with the wheel; a keyboard user could not read a long
+// prompt at all. Issue #346, WCAG 2.1.1.
+//
+// The card is no longer a <button>. It is a div holding two visually
+// hidden buttons — one per face, only the visible one reachable — and the
+// scroll box is now an ANCESTOR of whichever button has focus, so arrows
+// scroll the text. One tab stop per card, and the ring is drawn from
+// focus-within because the real control is invisible.
+//
+// Four things there are load-bearing and each looks removable. They are
+// commented at their call sites rather than here, because that is where
+// someone will be standing when they consider deleting one:
+//
+//   - `relative` on each face, or the absolutely positioned button escapes
+//     the scroller and arrows scroll the page.
+//   - `tabIndex={-1}` on each face, or a scrolling card costs two tab stops
+//     while a short one costs one.
+//   - `outline` alongside `outline-2`, or the focus ring computes to
+//     outline-style:none and nothing is drawn.
+//   - focus moved in an EFFECT, not a rAF, or it lands before React has
+//     swapped the buttons and stays on the hidden one.
+//
+// Every one of those was a real defect found by testing the rendered page,
+// not by reading the code.
+//
+// ── Faces grow to a cap, then scroll ──
+// A face grows with its content up to MAX_FACE_PX and scrolls past it.
+// Both faces share a grid cell, so the card is as tall as its taller face
+// and the two never disagree about height.
+//
+// The cap is what keeps rows tidy, and it also removes a limit that existed
+// while cards grew without bound: perspective magnifies an open cover by a
+// PROPORTION of its height, so a tall enough card used to reach into the
+// row beneath — measured as going negative around 1000px. The cap makes
+// that unreachable rather than merely unlikely.
+//
 // ── The answer must stay hidden from screen readers too ──
 // It is in the DOM from the first paint, sitting under the cover. Without
 // aria-hidden tied to the open state, a screen reader would read every
@@ -61,7 +102,7 @@ import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
 
 /** How far the cover swings past its spine, and how far the card steps aside. */
 const SWING_DEG = -110;
-const STEP_PX = 32;
+const STEP_PX = 48;
 
 /**
  * The cover's swing. Also the duration of the quiz's explanation reveal —
@@ -73,6 +114,13 @@ const STEP_PX = 32;
  * reads as two unrelated products. If one changes, change both.
  */
 const DURATION_MS = 450;
+
+/**
+ * The cap a face grows to before it scrolls. Provisional — chosen from the
+ * specimen dial at /dev/flashcards, where 300 is the floor and this is
+ * roughly twice it, tidy in a row without truncating anything typical.
+ */
+const MAX_FACE_PX = 400;
 
 interface FlashcardsViewProps {
   body: FlashcardsBody;
@@ -89,23 +137,102 @@ function FlashcardTile({
   accent: string;
 }) {
   const [open, setOpen] = useState(false);
+  const coverBtn = useRef<HTMLButtonElement>(null);
+  const answerBtn = useRef<HTMLButtonElement>(null);
+  // Set only when the keyboard drove the turn, so focus follows the control
+  // to whichever face becomes visible. A mouse click leaves focus alone
+  // rather than yanking it onto an invisible element.
+  const chaseFocus = useRef(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const toggle = () => {
+    chaseFocus.current =
+      document.activeElement === coverBtn.current ||
+      document.activeElement === answerBtn.current;
+    setOpen((o) => !o);
+  };
+
+  /**
+   * The MOUSE path, which has to tell a click apart from the end of a drag.
+   *
+   * Selecting text finishes with a click on the common ancestor, so reading
+   * an answer and dragging across it to copy would turn the card and destroy
+   * both the selection and the thing being read. That could not happen while
+   * the card was a `<button>` — prose inside a button is not something people
+   * try to select — and it became possible the moment it became a div holding
+   * real text.
+   *
+   * The check is scoped to a selection that touches THIS card, so a
+   * selection somewhere else on the page does not make cards unresponsive.
+   *
+   * It asks whether the selection INTERSECTS the card rather than where the
+   * selection began. Testing `anchorNode` alone misses a drag that starts
+   * outside and releases inside — the anchor is external, the guard passes,
+   * and the card flips under the cursor. Testing both `anchorNode` and
+   * `focusNode` fixes that case but still misses a selection that spans the
+   * card with both of its ends beyond it, which is what dragging across a
+   * whole row does. `intersectsNode` answers the question actually being
+   * asked: does this selection touch this card at all.
+   */
+  const handleCardClick = () => {
+    const selection = window.getSelection();
+    const touchesThisCard =
+      selection !== null &&
+      !selection.isCollapsed &&
+      selection.rangeCount > 0 &&
+      cardRef.current !== null &&
+      selection.getRangeAt(0).intersectsNode(cardRef.current);
+
+    if (touchesThisCard) return;
+    toggle();
+  };
+
+  // AFTER commit, not from a rAF in the handler. A rAF fires before React has
+  // swapped the two buttons' tabIndex, so focus stays on the control that has
+  // just become hidden and unreachable — the state this whole design exists
+  // to avoid.
+  useEffect(() => {
+    if (!chaseFocus.current) return;
+    chaseFocus.current = false;
+    (open ? answerBtn : coverBtn).current?.focus();
+  }, [open]);
+
+  const faceBase = [
+    // `relative` is load-bearing. The hidden button inside is absolutely
+    // positioned (sr-only), and an absolutely positioned element takes its
+    // scroll context from its CONTAINING BLOCK, not its DOM parent. A static
+    // face establishes none, so the button escapes the scroller and arrow
+    // keys scroll the page instead of the text. The cover masked this for a
+    // while: its rotateY transform establishes a containing block by
+    // accident, so only the OPEN card was ever broken.
+    "relative col-start-1 row-start-1 flex flex-col overflow-y-auto",
+    "rounded-xn-md border border-xn-border p-4",
+  ].join(" ");
 
   return (
     // Centred rather than pinned: the slack sits either side at rest, and
     // the lid's room is opened by the card stepping across.
     <div className="flex justify-center">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-pressed={open}
-        aria-label={`Card ${index + 1}. ${open ? "Showing answer" : "Showing prompt"}. Activate to turn over.`}
+      {/* The click handler here is the MOUSE path only. The keyboard path is
+          the hidden button inside the visible face, which is a real <button>,
+          and the ring is drawn from focus-within so the card still reads as
+          focused even though its control is invisible. */}
+      <div
+        ref={cardRef}
+        onClick={handleCardClick}
         className={[
-          "relative block h-[300px] w-full max-w-[220px] text-left",
+          "grid min-h-[300px] w-full max-w-[280px] cursor-pointer text-left",
           // Perspective belongs on the parent of the rotating element.
           // Without it the cover does not swing, it squashes horizontally.
           "[perspective:2000px]",
           "transition-transform ease-xn hover:scale-[1.03]",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xn-ink",
+          // `outline` for the STYLE is not optional. `outline-2` sets width
+          // only; on :focus-visible the browser supplies the style, but this
+          // is :focus-within on a card that is not itself focused, so without
+          // it the ring computes to outline-style:none and nothing is drawn —
+          // which reads exactly like the keyboard being broken.
+          "rounded-xn-md focus-within:outline focus-within:outline-2",
+          "focus-within:outline-offset-2 focus-within:outline-xn-ink",
         ].join(" ")}
         style={{
           transitionDuration: `${DURATION_MS}ms`,
@@ -114,10 +241,34 @@ function FlashcardTile({
       >
         {/* The answer, lying under the cover from the start. */}
         <span
-          className="absolute inset-0 flex flex-col overflow-y-auto rounded-xn-md border border-xn-border p-4"
-          style={{ backgroundColor: `color-mix(in srgb, ${accent} 10%, var(--xn-surface))` }}
+          className={faceBase}
+          style={{
+            maxHeight: `${MAX_FACE_PX}px`,
+            backgroundColor: `color-mix(in srgb, ${accent} 10%, var(--xn-surface))`,
+          }}
+          // Out of sequential tab order. Browsers make a scrollable region
+          // focusable so a keyboard user can reach it, which would give an
+          // overflowing card TWO tab stops while a short one has one. The
+          // button inside already provides arrow scrolling, so the extra stop
+          // is redundant; -1 keeps the region programmatically focusable.
+          tabIndex={-1}
           aria-hidden={!open}
         >
+          <button
+            ref={answerBtn}
+            type="button"
+            tabIndex={open ? 0 : -1}
+            className="sr-only"
+            onClick={(e) => {
+              // Explicit rather than letting activation bubble to the card: an
+              // invisible control whose only route to its own behaviour runs
+              // through a parent is too easy to break silently.
+              e.stopPropagation();
+              toggle();
+            }}
+          >
+            {`Card ${index + 1}. Showing answer. Activate to turn back.`}
+          </button>
           <span className="mb-2 shrink-0 font-mono text-[11px]" style={{ color: accent }}>
             Answer
           </span>
@@ -127,17 +278,28 @@ function FlashcardTile({
         {/* The cover. transform-origin at the spine is the whole trick —
             about its middle it would read as a flip rather than an opening. */}
         <span
-          // overflow-y-auto, matching the answer: a long prompt would
-          // otherwise be clipped with no way to read the rest of it, and
-          // the front is generated text with no length guarantee.
-          className="absolute inset-0 flex origin-left flex-col overflow-y-auto rounded-xn-md border border-xn-border bg-xn-surface p-4 shadow-xn"
+          className={`${faceBase} origin-left bg-xn-surface shadow-xn`}
           style={{
+            maxHeight: `${MAX_FACE_PX}px`,
             transform: open ? `rotateY(${SWING_DEG}deg)` : "rotateY(0deg)",
             transitionProperty: "transform",
             transitionDuration: `${DURATION_MS}ms`,
           }}
+          tabIndex={-1}
           aria-hidden={open}
         >
+          <button
+            ref={coverBtn}
+            type="button"
+            tabIndex={open ? -1 : 0}
+            className="sr-only"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggle();
+            }}
+          >
+            {`Card ${index + 1}. Showing prompt. Activate to turn over.`}
+          </button>
           <span className="mb-2 shrink-0 font-mono text-[11px]" style={{ color: accent }}>
             {String(index + 1).padStart(2, "0")}
           </span>
@@ -145,7 +307,7 @@ function FlashcardTile({
             {card.front}
           </span>
         </span>
-      </button>
+      </div>
     </div>
   );
 }
@@ -205,10 +367,55 @@ export function FlashcardsView({ body, className = "" }: FlashcardsViewProps) {
           container is the smaller of the two, which costs nothing at every
           width where 310 fits.
 
-          The row gap is deliberately larger than the column gap for a
-          different reason: an open cover renders taller than its card, so
-          stacked rows collide at a gap sized only for closed ones. */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(310px,100%),1fr))] gap-x-3 gap-y-14">
+          ── The insets are measured, and none of them are decoration ──
+
+          An open cover reaches PAST its card on three sides: about 135px to
+          the left at this width and angle, and about 23px above and below,
+          because perspective magnifies whatever leans toward the viewer.
+          None of that is inside the card's own box, so the grid reserves it.
+
+          That 135 is MEASURED. The obvious model — width x |cos| x 1.115 —
+          says 96px for a 280px card at 110 degrees. Read off the rendered
+          cover, the magnification is about 1.404, not 1.115. Two attempts at
+          spacing this grid went the wrong way before that was checked, so
+          re-measure rather than re-derive if the angle or width changes.
+
+          `pt-12` / `pb-12` keep the covers off the count line above and
+          whatever follows below — measured at 23.4px of clearance each,
+          where before they poked into both.
+
+          `pl-[49px]` exists so the first card in a row has the same room to
+          open as the ones after it. Without it the leftmost cover sits hard
+          against the panel edge while its neighbours get the whole column
+          gap plus two lots of cell slack. Measured after: 50.3px to the
+          panel edge against 50.0px between cards — 0.3px apart.
+
+          49 is solved, not guessed, and it has to be: the inset also shrinks
+          every cell, which shrinks the between-card gap, so the two converge
+          at different rates. Adding the difference makes it worse.
+
+            inset = (W + (n+1)G - n*w - 2n*step) / (2n + 1)
+
+          W 960, n 2, G 12, w 280, step 48. The same formula returns 41 for a
+          300px card, which is the value that was arrived at by hand before
+          it existed — that agreement is why it is trusted here.
+
+          ── Why 280 and not 300 ──
+          The overhang scales WITH the card, so 20px off the width buys back
+          20px twice, once each side of the fold. Gaps went from 21px at 300
+          to 50px at 280, and the narrow-width clipping threshold dropped
+          from about 460px of content to about 380px. Two open columns need
+          135 + 280 + 135 + 280 + 48 = 878px of the 960 available; at 300 it
+          was 936 of 960, which left nothing for the gaps.
+
+          The row gap is larger than the column gap for a related reason:
+          an open cover renders taller than its card, so stacked rows
+          collide at a gap sized only for closed ones. 72px leaves 22.8px
+          between one row's covers and the next. */}
+      <div
+        className="grid grid-cols-[repeat(auto-fit,minmax(min(415px,100%),1fr))] gap-x-3 gap-y-[72px] pb-12 pl-[49px] pt-12"
+        data-deck
+      >
         {cards.map((card, index) => (
           <FlashcardTile key={index} card={card} index={index} accent={accent} />
         ))}

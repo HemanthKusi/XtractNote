@@ -331,9 +331,21 @@ export function QuizView({ body, className = "" }: QuizViewProps) {
           sidebar and several layers of padding, so the viewport says nothing
           useful about the width it actually gets — the same mistake that put
           three findings on the flashcard grid. Wrapping is driven by the real
-          container, needs no plugin, and stays correct if the chrome changes. */}
+          container, needs no plugin, and stays correct if the chrome changes.
+
+          The `min()` around the minimum is load-bearing, not decoration. A bare
+          `min-w-[360px]` is a hard floor: in a container narrower than that the
+          column refuses to shrink and simply overflows — 80px of it at 280px of
+          content — and the Card around this is `overflow-hidden`, so questions
+          and their answer controls are clipped rather than merely cramped.
+          Wrapping the floor in `min()` lets it collapse to the container when
+          the container is the smaller of the two, and costs nothing at every
+          width where 360 fits.
+
+          Same idiom as the flashcard grid's `minmax(min(310px, 100%), 1fr)`,
+          and the same bug it was written to fix. */}
       <div className="flex flex-wrap gap-6">
-        <div className="min-w-[360px] flex-1">
+        <div className="min-w-[min(360px,100%)] flex-1">
           <div className="flex flex-col gap-4">
             {questions.map((q, qi) => (
               <div key={qi} className="rounded-xn-md border border-xn-border bg-xn-bg-deep p-4">

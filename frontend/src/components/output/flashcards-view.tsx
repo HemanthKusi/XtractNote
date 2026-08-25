@@ -162,19 +162,28 @@ function FlashcardTile({
    * try to select — and it became possible the moment it became a div holding
    * real text.
    *
-   * The check is scoped to a selection inside THIS card, so a selection
-   * somewhere else on the page does not make cards unresponsive.
+   * The check is scoped to a selection that touches THIS card, so a
+   * selection somewhere else on the page does not make cards unresponsive.
+   *
+   * It asks whether the selection INTERSECTS the card rather than where the
+   * selection began. Testing `anchorNode` alone misses a drag that starts
+   * outside and releases inside — the anchor is external, the guard passes,
+   * and the card flips under the cursor. Testing both `anchorNode` and
+   * `focusNode` fixes that case but still misses a selection that spans the
+   * card with both of its ends beyond it, which is what dragging across a
+   * whole row does. `intersectsNode` answers the question actually being
+   * asked: does this selection touch this card at all.
    */
   const handleCardClick = () => {
     const selection = window.getSelection();
-    if (
-      selection &&
+    const touchesThisCard =
+      selection !== null &&
       !selection.isCollapsed &&
-      selection.anchorNode &&
-      cardRef.current?.contains(selection.anchorNode)
-    ) {
-      return;
-    }
+      selection.rangeCount > 0 &&
+      cardRef.current !== null &&
+      selection.getRangeAt(0).intersectsNode(cardRef.current);
+
+    if (touchesThisCard) return;
     toggle();
   };
 

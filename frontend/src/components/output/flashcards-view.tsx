@@ -102,7 +102,7 @@ import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
 
 /** How far the cover swings past its spine, and how far the card steps aside. */
 const SWING_DEG = -110;
-const STEP_PX = 32;
+const STEP_PX = 48;
 
 /**
  * The cover's swing. Also the duration of the quiz's explanation reveal —
@@ -116,10 +116,11 @@ const STEP_PX = 32;
 const DURATION_MS = 450;
 
 /**
- * The cap a face grows to before it scrolls. Provisional — to be settled
- * from the specimen dial at /dev/flashcards.
+ * The cap a face grows to before it scrolls. Provisional — chosen from the
+ * specimen dial at /dev/flashcards, where 300 is the floor and this is
+ * roughly twice it, tidy in a row without truncating anything typical.
  */
-const MAX_FACE_PX = 600;
+const MAX_FACE_PX = 400;
 
 interface FlashcardsViewProps {
   body: FlashcardsBody;
@@ -183,7 +184,7 @@ function FlashcardTile({
       <div
         onClick={toggle}
         className={[
-          "grid min-h-[300px] w-full max-w-[220px] cursor-pointer text-left",
+          "grid min-h-[300px] w-full max-w-[280px] cursor-pointer text-left",
           // Perspective belongs on the parent of the rotating element.
           // Without it the cover does not swing, it squashes horizontally.
           "[perspective:2000px]",
@@ -329,10 +330,55 @@ export function FlashcardsView({ body, className = "" }: FlashcardsViewProps) {
           container is the smaller of the two, which costs nothing at every
           width where 310 fits.
 
-          The row gap is deliberately larger than the column gap for a
-          different reason: an open cover renders taller than its card, so
-          stacked rows collide at a gap sized only for closed ones. */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(310px,100%),1fr))] gap-x-3 gap-y-14">
+          ── The insets are measured, and none of them are decoration ──
+
+          An open cover reaches PAST its card on three sides: about 135px to
+          the left at this width and angle, and about 23px above and below,
+          because perspective magnifies whatever leans toward the viewer.
+          None of that is inside the card's own box, so the grid reserves it.
+
+          That 135 is MEASURED. The obvious model — width x |cos| x 1.115 —
+          says 96px for a 280px card at 110 degrees. Read off the rendered
+          cover, the magnification is about 1.404, not 1.115. Two attempts at
+          spacing this grid went the wrong way before that was checked, so
+          re-measure rather than re-derive if the angle or width changes.
+
+          `pt-12` / `pb-12` keep the covers off the count line above and
+          whatever follows below — measured at 23.4px of clearance each,
+          where before they poked into both.
+
+          `pl-[49px]` exists so the first card in a row has the same room to
+          open as the ones after it. Without it the leftmost cover sits hard
+          against the panel edge while its neighbours get the whole column
+          gap plus two lots of cell slack. Measured after: 50.3px to the
+          panel edge against 50.0px between cards — 0.3px apart.
+
+          49 is solved, not guessed, and it has to be: the inset also shrinks
+          every cell, which shrinks the between-card gap, so the two converge
+          at different rates. Adding the difference makes it worse.
+
+            inset = (W + (n+1)G - n*w - 2n*step) / (2n + 1)
+
+          W 960, n 2, G 12, w 280, step 48. The same formula returns 41 for a
+          300px card, which is the value that was arrived at by hand before
+          it existed — that agreement is why it is trusted here.
+
+          ── Why 280 and not 300 ──
+          The overhang scales WITH the card, so 20px off the width buys back
+          20px twice, once each side of the fold. Gaps went from 21px at 300
+          to 50px at 280, and the narrow-width clipping threshold dropped
+          from about 460px of content to about 380px. Two open columns need
+          135 + 280 + 135 + 280 + 48 = 878px of the 960 available; at 300 it
+          was 936 of 960, which left nothing for the gaps.
+
+          The row gap is larger than the column gap for a related reason:
+          an open cover renders taller than its card, so stacked rows
+          collide at a gap sized only for closed ones. 72px leaves 22.8px
+          between one row's covers and the next. */}
+      <div
+        className="grid grid-cols-[repeat(auto-fit,minmax(min(415px,100%),1fr))] gap-x-3 gap-y-[72px] pb-12 pl-[49px] pt-12"
+        data-deck
+      >
         {cards.map((card, index) => (
           <FlashcardTile key={index} card={card} index={index} accent={accent} />
         ))}

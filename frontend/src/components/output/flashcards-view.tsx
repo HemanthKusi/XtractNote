@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { contentTypeColors } from "@/lib/constants/theme";
 import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
@@ -48,6 +48,47 @@ import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
 //      the room for the lid is made by the gesture rather than reserved as
 //      permanent dead space beside every card.
 //
+// ── The keyboard could not reach a long face ──
+// It used to be a fixed 300px with both faces scrolling inside it. Nothing
+// was clipped, but nothing could be reached either: `overflow-y-auto` on a
+// span INSIDE the button made the scroll box a CHILD of the focused
+// element, and arrow keys act on the nearest scrollable ANCESTOR. A mouse
+// user scrolled with the wheel; a keyboard user could not read a long
+// prompt at all. Issue #346, WCAG 2.1.1.
+//
+// The card is no longer a <button>. It is a div holding two visually
+// hidden buttons — one per face, only the visible one reachable — and the
+// scroll box is now an ANCESTOR of whichever button has focus, so arrows
+// scroll the text. One tab stop per card, and the ring is drawn from
+// focus-within because the real control is invisible.
+//
+// Four things there are load-bearing and each looks removable. They are
+// commented at their call sites rather than here, because that is where
+// someone will be standing when they consider deleting one:
+//
+//   - `relative` on each face, or the absolutely positioned button escapes
+//     the scroller and arrows scroll the page.
+//   - `tabIndex={-1}` on each face, or a scrolling card costs two tab stops
+//     while a short one costs one.
+//   - `outline` alongside `outline-2`, or the focus ring computes to
+//     outline-style:none and nothing is drawn.
+//   - focus moved in an EFFECT, not a rAF, or it lands before React has
+//     swapped the buttons and stays on the hidden one.
+//
+// Every one of those was a real defect found by testing the rendered page,
+// not by reading the code.
+//
+// ── Faces grow to a cap, then scroll ──
+// A face grows with its content up to MAX_FACE_PX and scrolls past it.
+// Both faces share a grid cell, so the card is as tall as its taller face
+// and the two never disagree about height.
+//
+// The cap is what keeps rows tidy, and it also removes a limit that existed
+// while cards grew without bound: perspective magnifies an open cover by a
+// PROPORTION of its height, so a tall enough card used to reach into the
+// row beneath — measured as going negative around 1000px. The cap makes
+// that unreachable rather than merely unlikely.
+//
 // ── The answer must stay hidden from screen readers too ──
 // It is in the DOM from the first paint, sitting under the cover. Without
 // aria-hidden tied to the open state, a screen reader would read every
@@ -74,6 +115,12 @@ const STEP_PX = 32;
  */
 const DURATION_MS = 450;
 
+/**
+ * The cap a face grows to before it scrolls. Provisional — to be settled
+ * from the specimen dial at /dev/flashcards.
+ */
+const MAX_FACE_PX = 600;
+
 interface FlashcardsViewProps {
   body: FlashcardsBody;
   className?: string;
@@ -89,23 +136,65 @@ function FlashcardTile({
   accent: string;
 }) {
   const [open, setOpen] = useState(false);
+  const coverBtn = useRef<HTMLButtonElement>(null);
+  const answerBtn = useRef<HTMLButtonElement>(null);
+  // Set only when the keyboard drove the turn, so focus follows the control
+  // to whichever face becomes visible. A mouse click leaves focus alone
+  // rather than yanking it onto an invisible element.
+  const chaseFocus = useRef(false);
+
+  const toggle = () => {
+    chaseFocus.current =
+      document.activeElement === coverBtn.current ||
+      document.activeElement === answerBtn.current;
+    setOpen((o) => !o);
+  };
+
+  // AFTER commit, not from a rAF in the handler. A rAF fires before React has
+  // swapped the two buttons' tabIndex, so focus stays on the control that has
+  // just become hidden and unreachable — the state this whole design exists
+  // to avoid.
+  useEffect(() => {
+    if (!chaseFocus.current) return;
+    chaseFocus.current = false;
+    (open ? answerBtn : coverBtn).current?.focus();
+  }, [open]);
+
+  const faceBase = [
+    // `relative` is load-bearing. The hidden button inside is absolutely
+    // positioned (sr-only), and an absolutely positioned element takes its
+    // scroll context from its CONTAINING BLOCK, not its DOM parent. A static
+    // face establishes none, so the button escapes the scroller and arrow
+    // keys scroll the page instead of the text. The cover masked this for a
+    // while: its rotateY transform establishes a containing block by
+    // accident, so only the OPEN card was ever broken.
+    "relative col-start-1 row-start-1 flex flex-col overflow-y-auto",
+    "rounded-xn-md border border-xn-border p-4",
+  ].join(" ");
 
   return (
     // Centred rather than pinned: the slack sits either side at rest, and
     // the lid's room is opened by the card stepping across.
     <div className="flex justify-center">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-pressed={open}
-        aria-label={`Card ${index + 1}. ${open ? "Showing answer" : "Showing prompt"}. Activate to turn over.`}
+      {/* The click handler here is the MOUSE path only. The keyboard path is
+          the hidden button inside the visible face, which is a real <button>,
+          and the ring is drawn from focus-within so the card still reads as
+          focused even though its control is invisible. */}
+      <div
+        onClick={toggle}
         className={[
-          "relative block h-[300px] w-full max-w-[220px] text-left",
+          "grid min-h-[300px] w-full max-w-[220px] cursor-pointer text-left",
           // Perspective belongs on the parent of the rotating element.
           // Without it the cover does not swing, it squashes horizontally.
           "[perspective:2000px]",
           "transition-transform ease-xn hover:scale-[1.03]",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xn-ink",
+          // `outline` for the STYLE is not optional. `outline-2` sets width
+          // only; on :focus-visible the browser supplies the style, but this
+          // is :focus-within on a card that is not itself focused, so without
+          // it the ring computes to outline-style:none and nothing is drawn —
+          // which reads exactly like the keyboard being broken.
+          "rounded-xn-md focus-within:outline focus-within:outline-2",
+          "focus-within:outline-offset-2 focus-within:outline-xn-ink",
         ].join(" ")}
         style={{
           transitionDuration: `${DURATION_MS}ms`,
@@ -114,10 +203,34 @@ function FlashcardTile({
       >
         {/* The answer, lying under the cover from the start. */}
         <span
-          className="absolute inset-0 flex flex-col overflow-y-auto rounded-xn-md border border-xn-border p-4"
-          style={{ backgroundColor: `color-mix(in srgb, ${accent} 10%, var(--xn-surface))` }}
+          className={faceBase}
+          style={{
+            maxHeight: `${MAX_FACE_PX}px`,
+            backgroundColor: `color-mix(in srgb, ${accent} 10%, var(--xn-surface))`,
+          }}
+          // Out of sequential tab order. Browsers make a scrollable region
+          // focusable so a keyboard user can reach it, which would give an
+          // overflowing card TWO tab stops while a short one has one. The
+          // button inside already provides arrow scrolling, so the extra stop
+          // is redundant; -1 keeps the region programmatically focusable.
+          tabIndex={-1}
           aria-hidden={!open}
         >
+          <button
+            ref={answerBtn}
+            type="button"
+            tabIndex={open ? 0 : -1}
+            className="sr-only"
+            onClick={(e) => {
+              // Explicit rather than letting activation bubble to the card: an
+              // invisible control whose only route to its own behaviour runs
+              // through a parent is too easy to break silently.
+              e.stopPropagation();
+              toggle();
+            }}
+          >
+            {`Card ${index + 1}. Showing answer. Activate to turn back.`}
+          </button>
           <span className="mb-2 shrink-0 font-mono text-[11px]" style={{ color: accent }}>
             Answer
           </span>
@@ -127,17 +240,28 @@ function FlashcardTile({
         {/* The cover. transform-origin at the spine is the whole trick —
             about its middle it would read as a flip rather than an opening. */}
         <span
-          // overflow-y-auto, matching the answer: a long prompt would
-          // otherwise be clipped with no way to read the rest of it, and
-          // the front is generated text with no length guarantee.
-          className="absolute inset-0 flex origin-left flex-col overflow-y-auto rounded-xn-md border border-xn-border bg-xn-surface p-4 shadow-xn"
+          className={`${faceBase} origin-left bg-xn-surface shadow-xn`}
           style={{
+            maxHeight: `${MAX_FACE_PX}px`,
             transform: open ? `rotateY(${SWING_DEG}deg)` : "rotateY(0deg)",
             transitionProperty: "transform",
             transitionDuration: `${DURATION_MS}ms`,
           }}
+          tabIndex={-1}
           aria-hidden={open}
         >
+          <button
+            ref={coverBtn}
+            type="button"
+            tabIndex={open ? -1 : 0}
+            className="sr-only"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggle();
+            }}
+          >
+            {`Card ${index + 1}. Showing prompt. Activate to turn over.`}
+          </button>
           <span className="mb-2 shrink-0 font-mono text-[11px]" style={{ color: accent }}>
             {String(index + 1).padStart(2, "0")}
           </span>
@@ -145,7 +269,7 @@ function FlashcardTile({
             {card.front}
           </span>
         </span>
-      </button>
+      </div>
     </div>
   );
 }

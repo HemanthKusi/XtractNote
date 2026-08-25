@@ -105,6 +105,23 @@
   --xn-danger: #C0392B;
   --xn-danger-soft: rgba(192, 57, 43, 0.12);
 
+  /* ── Semantic: success ──
+     Added for the quiz, where right and wrong need to read as
+     opposites. Deliberate exception to "format colours are the
+     only saturated thing on screen": red and green for wrong and
+     right are near-universal, and the alternative was marking
+     correctness in the quiz's own crimson — measured at 24° from
+     --xn-danger on the hue wheel, so the two states would have
+     been nearly the same colour.
+
+     Weight is matched to danger rather than chosen for looks, so
+     neither state shouts louder than the other: 5.01:1 here
+     against danger's 4.74:1 on --xn-bg-deep. Both clear 4.5:1.
+
+     Never the only signal — every use is paired with a glyph. */
+  --xn-success: #20744A;
+  --xn-success-soft: rgba(32, 116, 74, 0.12);
+
   /* ── Accent — transitional ──
      The terracotta is gone. This token is NOT deleted, because
      ~20 files still use bg-xn-accent / text-xn-accent, and a
@@ -181,9 +198,22 @@
     0 16px 15px rgba(0, 0, 0, 0.32),
     0 5px 9px rgba(0, 0, 0, 0.40);
 
-  /* Lifted for the dark ground — clears 4.5:1 on --xn-bg */
-  --xn-danger: #F1705E;
-  --xn-danger-soft: rgba(241, 112, 94, 0.16);
+  /* Lifted for the dark ground, then DELIBERATELY PULLED BACK.
+     These were #F1705E and #42AE78, at 6.75:1 and 7.06:1. On a
+     near-black ground that much saturation reads as alarm rather
+     than information — reviewed as "distracting" against a quiz
+     where most rows are one or the other.
+
+     Now 5.54:1 and 5.27:1: real headroom over the 4.5:1 floor,
+     matched to each other so neither state shouts louder, and
+     quiet enough to sit in a list. The fills drop from 0.16 to
+     0.12 alpha for the same reason, matching the light theme.
+
+     Contrast is a floor to clear, not a score to maximise. */
+  --xn-danger: #D4685A;
+  --xn-danger-soft: rgba(212, 104, 90, 0.12);
+  --xn-success: #3E9468;
+  --xn-success-soft: rgba(62, 148, 104, 0.12);
 }
 
 

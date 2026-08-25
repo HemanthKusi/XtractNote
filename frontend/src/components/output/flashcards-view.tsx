@@ -62,6 +62,16 @@ import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
 /** How far the cover swings past its spine, and how far the card steps aside. */
 const SWING_DEG = -110;
 const STEP_PX = 32;
+
+/**
+ * The cover's swing. Also the duration of the quiz's explanation reveal —
+ * the `unfold` animation in tailwind.config.ts is set to 450ms to match
+ * this deliberately.
+ *
+ * These are the only two places in the app where an interaction reveals
+ * content, and a reveal that takes a different length of time in each
+ * reads as two unrelated products. If one changes, change both.
+ */
 const DURATION_MS = 450;
 
 interface FlashcardsViewProps {

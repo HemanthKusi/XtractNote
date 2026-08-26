@@ -685,7 +685,9 @@ export default function ShowcasePage() {
             <p className="text-sm text-xn-ink-muted mb-4">
               This is how every in-app page looks. The sidebar and topbar stay
               fixed while the content area scrolls. Click the nav items to see
-              the active state change.
+              the active state change — the rows are real links, and this
+              preview cancels the navigation so they highlight in place.
+              Extension and Settings have no route yet, so they sit inert.
             </p>
 
             {/* Constrained container simulating a viewport.
@@ -703,9 +705,9 @@ export default function ShowcasePage() {
               {/* Main area — topbar + content */}
               <div className="flex-1 flex flex-col overflow-hidden">
 
-                {/* Topbar */}
+                {/* Topbar — the avatar takes no props; UserMenu fetches
+                    the signed-in user itself. */}
                 <Topbar
-                  userInitials="MK"
                   onSearchClick={() => toast.info("⌘K search modal coming soon!")}
                 />
 
@@ -719,8 +721,6 @@ export default function ShowcasePage() {
                     {previewPage === "create" && "Create New Content"}
                     {previewPage === "history" && "Your History"}
                     {previewPage === "folders" && "Your Folders"}
-                    {previewPage === "settings" && "Settings"}
-                    {previewPage === "extension" && "Browser Extension"}
                   </h2>
                   <p className="text-sm text-xn-ink-muted max-w-[500px] mb-6">
                     This is the content area. Each page renders its own content here

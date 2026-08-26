@@ -8,7 +8,6 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { AppShell } from "@/components/layout";
 import { HistoryCard } from "@/components/history/history-card";
 import { MoveToFolderModal } from "@/components/history/move-to-folder-modal";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -90,7 +89,7 @@ export default function FolderDetailPage({
   };
 
   return (
-    <AppShell activePage="folders">
+    <>
       {/* Matches the history page: this route lists the same rows, so it
           takes the same wider column. */}
       <div className="mx-auto max-w-wide">
@@ -210,7 +209,7 @@ export default function FolderDetailPage({
         onClose={() => setMovingItem(null)}
         onMoved={handleMoved}
       />
-    </AppShell>
+    </>
   );
 }
 

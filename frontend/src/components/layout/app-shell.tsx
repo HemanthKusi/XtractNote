@@ -24,56 +24,33 @@
 //     </flex column>
 //   </flex row>
 //
-// Usage:
-//   <AppShell activePage="home">
-//     <DashboardContent />
-//   </AppShell>
+// Rendered once by the (app) route group's layout, so every signed-in
+// route gets the same shell and no page assembles its own.
 //
-//   <AppShell activePage="history" topbarChildren={<Button>Export All</Button>}>
-//     <HistoryTable />
+// It takes only its content. The sidebar reads the current route to
+// highlight itself, and the topbar's user menu fetches the signed-in
+// user, so neither needs anything passed down.
+//
+// Usage:
+//   <AppShell>
+//     <DashboardContent />
 //   </AppShell>
 // ─────────────────────────────────────────────────────────────
 
 import { type ReactNode } from "react";
-import { Sidebar, type PageId } from "@/components/layout/sidebar";
+import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 
 // ── Props ───────────────────────────────────────────────────
 
 interface AppShellProps {
-  /** Which sidebar nav item is highlighted */
-  activePage?: PageId;
-  /** Called when a sidebar nav item is clicked */
-  onNavigate?: (page: PageId) => void;
-
-  /** User's initials for the topbar avatar */
-  userInitials?: string;
-  /** User's display name */
-  userName?: string;
-  /** User's profile image URL */
-  userImage?: string;
-
-  /** Called when the topbar search trigger is clicked */
-  onSearchClick?: () => void;
-  /** Extra elements in the topbar's right side (page-specific actions) */
-  topbarChildren?: ReactNode;
-
   /** The page content — rendered in the scrollable content area */
   children: ReactNode;
 }
 
 // ── Component ───────────────────────────────────────────────
 
-export function AppShell({
-  activePage = "home",
-  onNavigate,
-  userInitials = "MK",
-  userName,
-  userImage,
-  onSearchClick,
-  topbarChildren,
-  children,
-}: AppShellProps) {
+export function AppShell({ children }: AppShellProps) {
   return (
     // Outer container: full viewport height, flex row.
     // The sidebar sits on the left, everything else on the right.
@@ -81,11 +58,8 @@ export function AppShell({
 
       {/* ── Sidebar ──
           Fixed 232px width. Full height. Scrolls internally
-          if the folder list is long. */}
-      <Sidebar
-        activePage={activePage}
-        onNavigate={onNavigate}
-      />
+          if the folder list is long. Highlights itself from the URL. */}
+      <Sidebar />
 
       {/* ── Main Area ──
           Takes all remaining horizontal space (flex-1).
@@ -94,15 +68,10 @@ export function AppShell({
 
         {/* ── Topbar ──
             Fixed 56px height. Full width of the main area.
-            Stays pinned at the top while content scrolls below. */}
-        <Topbar
-          userInitials={userInitials}
-          userName={userName}
-          userImage={userImage}
-          onSearchClick={onSearchClick}
-        >
-          {topbarChildren}
-        </Topbar>
+            Stays pinned at the top while content scrolls below.
+            The search trigger has no handler yet — the ⌘K modal
+            is not built, so the button is present but does nothing. */}
+        <Topbar />
 
         {/* ── Content Area ──
             Fills all remaining vertical space (flex-1).

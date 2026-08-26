@@ -7,7 +7,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-import { AppShell } from "@/components/layout";
 import { HistoryCard } from "@/components/history/history-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/loading-skeleton";
@@ -80,7 +79,7 @@ type State =
     };
 
   return (
-    <AppShell activePage="history">
+    <>
       {/* Wider than the old reading column: these rows carry a 192px still
           plus a title, and 680px left the list looking cramped on any real
           display. */}
@@ -156,7 +155,7 @@ type State =
         onClose={() => setMovingItem(null)}
         onMoved={handleMoved}
       />
-    </AppShell>
+    </>
   );
 }
 

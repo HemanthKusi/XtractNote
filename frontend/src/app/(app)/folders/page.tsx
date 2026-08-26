@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { CreateFolderModal } from "@/components/folders/create-folder-modal";
-import { AppShell } from "@/components/layout";
 import { FolderCard } from "@/components/folders/folder-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/loading-skeleton";
@@ -69,7 +68,7 @@ export default function FoldersPage() {
   };
 
   return (
-    <AppShell activePage="folders">
+    <>
       {/* The same wider column the history list uses. The old 680px reading
           column left each folder about 95px wide at six tiles across. */}
       <div className="mx-auto max-w-wide">
@@ -162,6 +161,6 @@ export default function FoldersPage() {
         onClose={() => setCreateOpen(false)}
         onCreated={handleCreated}
       />
-    </AppShell>
+    </>
   );
 }

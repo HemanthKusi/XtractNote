@@ -299,6 +299,16 @@
      plays on its own: ambient movement that leaps at the start reads as
      a jump. Used by the cycling placeholder. */
   --xn-ease-smooth: cubic-bezier(0.4, 0.02, 0.2, 1);
+
+  /* Overshoots past its mark and settles back — it stands in for a spring
+     on properties CSS can transition, which is what "fluid" turned out to
+     mean here. --xn-ease-out and every expo curve land dead by comparison.
+
+     It lives here rather than only in the Tailwind token because a utility
+     class cannot carry a duration computed at runtime, and the components
+     that need this curve most build their transitions as strings. A class
+     serves markup; a variable serves both. */
+  --xn-ease-spring: cubic-bezier(0.34, 1.38, 0.5, 1);
 }
 
 

@@ -232,7 +232,13 @@ const config: Config = {
         // spring on properties CSS can transition — enough for a width
         // and an offset, and it avoids a runtime dependency whose only
         // job here was easing.
-        "xn-spring": "cubic-bezier(0.34, 1.38, 0.5, 1)",
+        //
+        // Points at the variable like its two neighbours rather than
+        // repeating the curve. It was the only easing token here holding
+        // its own literal, which meant anything building a transition as
+        // a string — a duration computed at runtime cannot be a utility
+        // class — had to copy the numbers instead of referring to them.
+        "xn-spring": "var(--xn-ease-spring)",
       },
 
       keyframes: {

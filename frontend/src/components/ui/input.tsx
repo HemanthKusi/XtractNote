@@ -3,80 +3,66 @@ import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
 // ─────────────────────────────────────────────────────────────
 // Input
 // ─────────────────────────────────────────────────────────────
-// Matches the hi-fi design's .hf-input + HFInput wrapper.
+// The wrapper is the visual field: it owns the background, border,
+// and focus ring. The <input> inside is stripped bare and only
+// handles text entry. That split is what lets a prefix icon and a
+// suffix button sit inside the same shape as the text.
 //
-// Structure:
-//   ┌──────────────────────────────────────────────┐
-//   │  [prefix]    input text here...    [suffix]  │
-//   └──────────────────────────────────────────────┘
+// ── How it behaves ──
+// A field does not lift the way a button does. A button rises because
+// you press it; a field is a container you put something into, and a
+// floating text box reads as draggable. So the resting state is flat —
+// surface fill, one clear border — and focus does the work: the border
+// goes to full ink and the halo appears around it.
 //
-// The outer div IS the visual input — it has the border, background,
-// and focus ring. The actual <input> inside is invisible (no border,
-// no background) and just handles text entry.
+// The halo is the same token the button uses on hover, so the two
+// agree without the field pretending to float.
 //
-// Three sizes:
-//   sm → Compact (topbar search, small forms)
-//   md → Standard (most form fields)
-//   lg → Hero (dashboard URL input — taller, more padding)
-//
-// Slots:
-//   prefix → Icon or label on the left (search icon, link icon)
-//   suffix → Button or hint on the right (paste button, ⌘K badge)
-//
-// States:
-//   error    → Red border + red focus ring
-//   disabled → 50% opacity, not interactive
+// Four sizes, because not every field carries the same weight:
+//   sm   → dense rows and toolbars
+//   md   → the workhorse (default)
+//   lg   → a primary form field
+//   hero → leads a page; see hero-input.tsx for the animated version
 // ─────────────────────────────────────────────────────────────
-
-// ── Size Definitions ────────────────────────────────────────
-// Each size defines classes for the wrapper, input text, and icon.
-// Heights: sm=32px, md=40px, lg=48px — matching the hi-fi spacing.
 
 const sizeClasses = {
   sm: {
-    wrapper: "h-8 text-xs gap-2 px-2.5",
-    input: "text-xs",
-    icon: "w-3.5 h-3.5",        // 14px icon
+    wrapper: "h-9 gap-2 px-2.5 rounded-xn-sm",
+    input: "text-sm",
+    icon: "w-4 h-4",
   },
   md: {
-    wrapper: "h-10 text-sm gap-2 px-3",
-    input: "text-sm",
-    icon: "w-4 h-4",            // 16px icon
+    wrapper: "h-11 gap-2.5 px-3.5 rounded-xn-md",
+    input: "text-ui",
+    icon: "w-[17px] h-[17px]",
   },
   lg: {
-    wrapper: "h-12 text-body gap-3 px-4",
+    wrapper: "h-14 gap-3 pl-[18px] pr-2 rounded-xn-lg",
     input: "text-body",
-    icon: "w-4.5 h-4.5",        // 18px icon
+    icon: "w-5 h-5",
+  },
+  hero: {
+    wrapper: "h-[68px] gap-3.5 pl-[22px] pr-2.5 rounded-xn-xl",
+    input: "text-h5",
+    icon: "w-[22px] h-[22px]",
   },
 } as const;
 
 type InputSize = keyof typeof sizeClasses;
 
-// ── Props ───────────────────────────────────────────────────
-// We extend InputHTMLAttributes so this component accepts every
-// native <input> prop (placeholder, value, onChange, type, etc.)
-// without us listing them manually.
-//
-// We Omit "size" because HTML inputs have a native `size` attribute
-// (number of visible characters) which conflicts with our visual
-// size prop. We also Omit "prefix" because it's not a native prop
-// but TypeScript complains about the name collision with some types.
-
 interface InputProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, "size" | "prefix"> {
-  /** Visual size: sm, md, lg */
+  /** Visual size: sm, md, lg, hero */
   size?: InputSize;
-  /** Element rendered before the input (e.g., search icon) */
+  /** Element rendered before the input (e.g. a search icon) */
   prefix?: ReactNode;
-  /** Element rendered after the input (e.g., button or ⌘K hint) */
+  /** Element rendered after the input (e.g. a button or a hint) */
   suffix?: ReactNode;
-  /** Show red error border and focus ring */
+  /** Show the error border and error focus ring */
   error?: boolean;
-  /** Additional classes on the outer wrapper div */
+  /** Additional classes on the outer wrapper */
   wrapperClassName?: string;
 }
-
-// ── Component ───────────────────────────────────────────────
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
   (
@@ -92,66 +78,38 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     },
     ref
   ) => {
-    // Get the class definitions for the chosen size
     const s = sizeClasses[size];
 
-    // ── Wrapper Classes ──
-    // The wrapper is the visual "input" that the user sees.
-    // It has the background, border, rounded corners, and focus ring.
     const wrapperClasses = [
-      // Layout
-      "flex items-center",
+      "flex items-center w-full",
+      "bg-xn-surface border",
 
-      // Background — uses the surface color from the theme
-      "bg-xn-surface",
+      // Only the properties that change are transitioned.
+      "transition-[border-color,box-shadow] duration-xn ease-xn",
 
-      // Border — switches between error (red) and default
-      "border rounded-xn-md",
-      error ? "border-[#D44060]" : "border-xn-border",
-
-      // Focus ring — appears on the wrapper when the input inside is focused.
-      // focus-within: targets the parent when any child has focus.
       error
-        ? "focus-within:outline-2 focus-within:outline-[#D44060] focus-within:outline-offset-[-1px]"
-        : "focus-within:outline-2 focus-within:outline-xn-accent focus-within:outline-offset-[-1px]",
+        ? [
+            "border-xn-danger",
+            "focus-within:shadow-[0_0_0_4px_var(--xn-danger-soft)]",
+          ].join(" ")
+        : [
+            "border-xn-border-strong hover:border-xn-ink-soft",
+            "focus-within:border-xn-ink focus-within:shadow-xn-ring",
+          ].join(" "),
 
-      // Smooth border color transition on hover/focus
-      "transition-colors duration-150",
-
-      // Disabled state
-      disabled ? "opacity-50 cursor-not-allowed" : "",
-
-      // Size-specific height, padding, font size
+      disabled ? "opacity-45 cursor-not-allowed" : "",
       s.wrapper,
-
-      // Allow parent to add extra classes
       wrapperClassName,
     ]
       .filter(Boolean)
       .join(" ");
 
-    // ── Input Element Classes ──
-    // The actual <input> is stripped of all visual styling.
-    // It's transparent — the wrapper provides all the visuals.
     const inputClasses = [
-      // Take up all remaining space between prefix and suffix
       "flex-1 min-w-0",
-
-      // Remove all visual styling from the native input
-      "bg-transparent",
-      "border-none outline-none",
-
-      // Text colors — ink for typed text, ink-soft for placeholder
-      "text-xn-ink",
-      "placeholder:text-xn-ink-soft",
-
-      // Disabled cursor
+      "bg-transparent border-none outline-none",
+      "text-xn-ink placeholder:text-xn-ink-soft",
       disabled ? "cursor-not-allowed" : "",
-
-      // Size-specific font size
       s.input,
-
-      // Allow parent to add extra classes to the input itself
       className,
     ]
       .filter(Boolean)
@@ -159,10 +117,6 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
 
     return (
       <div className={wrapperClasses}>
-        {/* ── Prefix Slot ──
-            Renders to the left of the input text.
-            Typically an icon (search, link, etc.)
-            The [&>svg] selector ensures any SVG icon fills the container. */}
         {prefix && (
           <span
             className={`inline-flex shrink-0 text-xn-ink-soft [&>svg]:w-full [&>svg]:h-full ${s.icon}`}
@@ -171,22 +125,9 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           </span>
         )}
 
-        {/* ── The Actual Input ──
-            ref is forwarded here so parent components can call
-            inputRef.current.focus() or read inputRef.current.value */}
-        <input
-          ref={ref}
-          disabled={disabled}
-          className={inputClasses}
-          {...rest}
-        />
+        <input ref={ref} disabled={disabled} className={inputClasses} {...rest} />
 
-        {/* ── Suffix Slot ──
-            Renders to the right of the input text.
-            Can be a Button, a keyboard hint badge, a clear icon, etc. */}
-        {suffix && (
-          <span className="inline-flex shrink-0">{suffix}</span>
-        )}
+        {suffix && <span className="inline-flex shrink-0">{suffix}</span>}
       </div>
     );
   }

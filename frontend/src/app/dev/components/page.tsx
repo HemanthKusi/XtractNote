@@ -10,6 +10,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HeroInput } from "@/components/ui/hero-input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Avatar } from "@/components/ui/avatar";
@@ -241,7 +243,7 @@ export default function ShowcasePage() {
             <div className="flex flex-wrap gap-3">
               <Button>Default</Button>
               <Button variant="primary">Primary</Button>
-              <Button variant="accent">Accent</Button>
+              <Button variant="primary">Accent</Button>
               <Button variant="ghost">Ghost</Button>
               <Button variant="danger">Danger</Button>
             </div>
@@ -253,7 +255,7 @@ export default function ShowcasePage() {
               <Button size="lg">Large</Button>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Button icon={<SparkIcon />} variant="accent">Generate</Button>
+              <Button icon={<SparkIcon />} variant="primary">Generate</Button>
               <Button icon={<PlusIcon />} kbd="⌘N">Create</Button>
               <Button variant="ghost" kbd="⌘K">Search Library</Button>
             </div>
@@ -270,7 +272,7 @@ export default function ShowcasePage() {
             <div className="flex gap-3">
               <Button disabled>Default</Button>
               <Button variant="primary" disabled>Primary</Button>
-              <Button variant="accent" disabled>Accent</Button>
+              <Button variant="primary" disabled>Accent</Button>
             </div>
           </SubSection>
         </Section>
@@ -283,15 +285,55 @@ export default function ShowcasePage() {
             <Input
               placeholder="https://youtube.com/watch?v=..."
               prefix={<LinkIcon />}
-              suffix={<Button size="sm" variant="accent">Extract</Button>}
+              suffix={<Button size="sm" variant="primary">Extract</Button>}
             />
             <Input size="sm" placeholder="Small input" prefix={<SearchIcon />} />
-            <Input size="lg" placeholder="Large hero input" prefix={<LinkIcon />} />
+            <Input size="lg" placeholder="Large form field" prefix={<LinkIcon />} />
+            <Input size="hero" placeholder="Hero size, static" prefix={<LinkIcon />} />
             <div>
               <Input placeholder="Paste YouTube URL" prefix={<LinkIcon />} error defaultValue="not-a-valid-url" />
-              <p className="text-xs text-[#D44060] mt-1.5">Please enter a valid YouTube URL</p>
+              <p className="text-xs text-xn-danger mt-1.5">Please enter a valid YouTube URL</p>
             </div>
             <Input placeholder="Disabled input" disabled />
+          </div>
+        </Section>
+
+        {/* ── Hero input ──
+            Type something and press Enter to watch the text dissolve.
+            The placeholder cycles while the field is idle and stops the
+            moment the caret lands. */}
+        <Section title="Hero Input — rotating placeholders and vanish">
+          <div className="max-w-2xl space-y-3">
+            <p className="text-sm text-xn-ink-muted">
+              Type a few words and press Enter. The placeholder cycles only while
+              the field is idle and unfocused.
+            </p>
+            <HeroInput
+              placeholders={[
+                "Paste a YouTube link…",
+                "Or type a topic to search",
+                "youtube.com/watch?v=…",
+                "How does attention residue work?",
+              ]}
+              prefix={<LinkIcon />}
+              suffix={<Button variant="primary">Extract</Button>}
+              onSubmit={(v) => toast.success(`Submitted: ${v}`)}
+            />
+          </div>
+        </Section>
+
+        {/* ── Search input ──
+            Click the pill: it expands and slides right while the bubble
+            stays behind, stretching apart inside the gooey filter. */}
+        <Section title="Search Input — expand and separate">
+          <div className="space-y-3">
+            <p className="text-sm text-xn-ink-muted">
+              Click the pill. It widens and slides away from the bubble, and the
+              two stretch like liquid before they part.
+            </p>
+            <SearchInput
+              onSubmit={(v) => toast.success(`Searched: ${v}`)}
+            />
           </div>
         </Section>
 
@@ -862,7 +904,7 @@ export default function ShowcasePage() {
                 title="No content generated yet"
                 description="Start by pasting a YouTube URL to generate your first piece of content. You can create blog posts, study notes, summaries, and more."
                 action={
-                  <Button variant="accent" icon={<SparkIcon />}>
+                  <Button variant="primary" icon={<SparkIcon />}>
                     Create Content
                   </Button>
                 }
@@ -962,7 +1004,7 @@ export default function ShowcasePage() {
                 size="lg"
                 placeholder="https://youtube.com/watch?v=..."
                 prefix={<LinkIcon />}
-                suffix={<Button variant="accent" icon={<SparkIcon />}>Extract</Button>}
+                suffix={<Button variant="primary" icon={<SparkIcon />}>Extract</Button>}
               />
               <p className="text-xs text-xn-ink-soft mt-3">
                 Supports standard links, shorts, and youtu.be URLs

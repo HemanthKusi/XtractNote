@@ -91,6 +91,20 @@ const config: Config = {
         xn:         "var(--xn-elev-2)",
         "xn-lg":    "var(--xn-elev-3)",
         "xn-hover": "var(--xn-elev-hover)",
+
+        // ── Interactive states ──
+        // Elevation and halo composed once here rather than spelled out
+        // as arbitrary values in every component. A control lifts into
+        // -lift on hover, and -press removes the elevation entirely while
+        // the halo contracts, so it reads as being pushed into the
+        // surface rather than merely dropping.
+        "xn-lift":    "0 0 0 var(--xn-halo-size) var(--xn-halo), var(--xn-elev-2)",
+        "xn-lift-lg": "0 0 0 var(--xn-halo-size) var(--xn-halo), var(--xn-elev-3)",
+        "xn-press":   "0 0 0 var(--xn-halo-size-press) var(--xn-halo-press)",
+
+        // The halo alone, with no elevation. Fields use this on focus:
+        // they do not lift, so they get the ring without the shadow.
+        "xn-ring":    "0 0 0 var(--xn-halo-size) var(--xn-halo)",
       },
 
       // ────────────────────────────────────────────────────────
@@ -213,6 +227,18 @@ const config: Config = {
       transitionTimingFunction: {
         "xn":        "var(--xn-ease-out)",
         "xn-in-out": "var(--xn-ease-in-out)",
+
+        // Overshoots slightly before settling. It stands in for a
+        // spring on properties CSS can transition — enough for a width
+        // and an offset, and it avoids a runtime dependency whose only
+        // job here was easing.
+        //
+        // Points at the variable like its two neighbours rather than
+        // repeating the curve. It was the only easing token here holding
+        // its own literal, which meant anything building a transition as
+        // a string — a duration computed at runtime cannot be a utility
+        // class — had to copy the numbers instead of referring to them.
+        "xn-spring": "var(--xn-ease-spring)",
       },
 
       keyframes: {
@@ -231,6 +257,25 @@ const config: Config = {
         "shimmer": {
           from: { backgroundPosition: "-200% 0" },
           to:   { backgroundPosition: "200% 0" },
+        },
+
+        // A cycling label. The two lines travel a full line-height in
+        // the same direction, so together they read as one strip of
+        // text advancing upward rather than two things crossfading.
+        //
+        // The distance is a percentage, not pixels, so it stays correct
+        // at any font size — and the opacity is held until the line is
+        // most of the way through its travel, which is what stops it
+        // looking like a fade with some movement attached.
+        "rise-in": {
+          "0%":   { opacity: "0", transform: "translateY(100%)" },
+          "55%":  { opacity: "0.85" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "rise-out": {
+          "0%":   { opacity: "1", transform: "translateY(0)" },
+          "45%":  { opacity: "0.5" },
+          "100%": { opacity: "0", transform: "translateY(-100%)" },
         },
 
         // The quiz explanation arriving. `fade-in` was tried first and
@@ -252,6 +297,13 @@ const config: Config = {
         "slide-in-right": "slide-in-right var(--xn-dur-base) var(--xn-ease-out)",
         "scale-in":       "scale-in var(--xn-dur-fast) var(--xn-ease-out)",
         "shimmer":        "shimmer 1.5s infinite linear",
+        // Slower than a UI transition on purpose: this is ambient text
+        // being read, not a response to an action, and a short travel
+        // was over before the eye could follow it. Eased at both ends
+        // rather than fast-out, because movement that starts abruptly
+        // reads as a jump when nobody asked for it.
+        "rise-in":        "rise-in 560ms var(--xn-ease-smooth) both",
+        "rise-out":       "rise-out 560ms var(--xn-ease-smooth) both",
 
         // 450ms, matching the flashcard cover's swing exactly
         // (`DURATION_MS` in flashcards-view.tsx). The two structured
@@ -269,6 +321,7 @@ const config: Config = {
         // If one of these changes, change both.
         "unfold":         "unfold 450ms var(--xn-ease-out) both",
       },
+
     },
   },
 

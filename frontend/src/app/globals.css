@@ -97,6 +97,28 @@
     0 16px 15px rgba(19, 22, 26, 0.08),
     0 5px 9px rgba(19, 22, 26, 0.09);
 
+  /* ── Halo ──
+     A tight ring of the element's own tone that appears on hover and
+     contracts on press. It is meant to read as the near field of the
+     shadow, not as a second ring competing with it — so if a control
+     ever looks busy, these are the values to turn down, and turning
+     them down here changes every control at once.
+
+     Strength is deliberately one decision in one place.
+
+     ⚠ The two themes carry DIFFERENT alphas on purpose, and the dark
+     one is lower. That looks wrong in the file and is right on screen:
+     measured in perceptual lightness, the same alpha lifts roughly a
+     third harder against a near-black ground than a near-white one.
+     These two values both shift the ring about 8.7 ΔL* off their own
+     background, so the ring reads the same weight in both themes.
+     Matching the numbers would make light look weak — which is exactly
+     the bug this replaced. */
+  --xn-halo: rgba(19, 22, 26, 0.11);
+  --xn-halo-press: rgba(19, 22, 26, 0.15);
+  --xn-halo-size: 4px;
+  --xn-halo-size-press: 2px;
+
   /* ── Semantic: danger ──
      New. §8 recorded "no semantic danger token" as a real gap:
      the create route borrows the accent for error states. Now
@@ -198,6 +220,12 @@
     0 16px 15px rgba(0, 0, 0, 0.32),
     0 5px 9px rgba(0, 0, 0, 0.40);
 
+  /* Lower than light, and deliberately so — see the note beside the
+     light values. A light ring on near-black lifts harder per unit of
+     alpha, so it needs less of it to read as the same weight. */
+  --xn-halo: rgba(241, 243, 241, 0.082);
+  --xn-halo-press: rgba(241, 243, 241, 0.112);
+
   /* Lifted for the dark ground, then DELIBERATELY PULLED BACK.
      These were #F1705E and #42AE78, at 6.75:1 and 7.06:1. On a
      near-black ground that much saturation reads as alarm rather
@@ -265,6 +293,22 @@
   --xn-dur-slow: 320ms;
   --xn-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --xn-ease-in-out: cubic-bezier(0.5, 0, 0.2, 1);
+
+  /* Eased at both ends, and gently. --xn-ease-out starts fast, which is
+     right for something answering a click and wrong for something that
+     plays on its own: ambient movement that leaps at the start reads as
+     a jump. Used by the cycling placeholder. */
+  --xn-ease-smooth: cubic-bezier(0.4, 0.02, 0.2, 1);
+
+  /* Overshoots past its mark and settles back — it stands in for a spring
+     on properties CSS can transition, which is what "fluid" turned out to
+     mean here. --xn-ease-out and every expo curve land dead by comparison.
+
+     It lives here rather than only in the Tailwind token because a utility
+     class cannot carry a duration computed at runtime, and the components
+     that need this curve most build their transitions as strings. A class
+     serves markup; a variable serves both. */
+  --xn-ease-spring: cubic-bezier(0.34, 1.38, 0.5, 1);
 }
 
 

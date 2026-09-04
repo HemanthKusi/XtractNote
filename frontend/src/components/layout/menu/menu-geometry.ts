@@ -186,21 +186,30 @@ export function stepFrom(mode: MenuMode): MenuMode {
 // ── Motion ──────────────────────────────────────────────────
 
 /**
- * SearchInput's own curve — `ease-xn-spring`. The DURATION is no longer its
- * 460ms; see MORPH_MS.
+ * SearchInput's own curve. The DURATION is no longer its 460ms; see MORPH_MS.
  *
  * This is what "fluid" actually was, and why nothing here felt like it until
  * the shipped component was read: the curve OVERSHOOTS and settles back.
  * Expo-out does not, and neither does `--xn-ease-out`; both land dead. A
  * control that springs past its mark and returns reads as something with mass.
  *
- * The token lives in tailwind.config on the core-components branch as
- * `ease-xn-spring`. It is inlined here as a literal because that branch is not
- * merged — the design-token guard would fail a class naming it, correctly.
+ * ── Why the numbers still appear below ──
+ *
+ * CSS gets the variable: this menu builds its transitions as strings with
+ * durations computed at runtime, which no utility class can express, so
+ * `var(--xn-ease-spring)` is how the curve reaches them.
+ *
+ * GSAP cannot use that. CustomEase needs the four control points as numbers to
+ * build its path, and reading them back out of a computed style at module scope
+ * would mean parsing a string that does not exist until a document does. So the
+ * numbers survive here for that one consumer, and only that one.
+ *
+ * They are therefore written twice on purpose — once in globals.css for CSS,
+ * once here for GSAP. If the curve ever changes, both move together.
  */
 export const MORPH_CUBIC = "0.34, 1.38, 0.5, 1";
 export const MORPH_EASE_ID = "xnSpring";
-export const MORPH_CSS_EASE = `cubic-bezier(${MORPH_CUBIC})`;
+export const MORPH_CSS_EASE = "var(--xn-ease-spring)";
 
 /**
  * 560ms, chosen at review rather than inherited.

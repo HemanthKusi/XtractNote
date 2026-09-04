@@ -17,7 +17,8 @@ import { Toggle } from "@/components/ui/toggle";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Modal } from "@/components/ui/modal";
 import { Logo } from "@/components/layout/logo";
-import { Sidebar } from "@/components/layout/sidebar";
+import { MenuShell } from "@/components/layout/menu";
+import { HEADER_H } from "@/components/layout/menu/menu-geometry";
 import { Topbar } from "@/components/layout/topbar";
 import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
@@ -454,7 +455,7 @@ export default function ShowcasePage() {
               />
             </div>
           </SubSection>
-          <SubSection title="Sidebar Usage Context">
+          <SubSection title="Usage Card Context">
             <Card variant="flat" padding="md" className="max-w-[200px]">
               <p className="font-mono text-nano text-xn-ink-soft uppercase tracking-wide">Free plan</p>
               <p className="font-semibold text-sm mt-0.5">10 / 30 generations</p>
@@ -508,7 +509,7 @@ export default function ShowcasePage() {
               <Logo variant="square" size={40} color="#f3ebd9" />
             </div>
           </SubSection>
-          <SubSection title="In Context (Sidebar Header)">
+          <SubSection title="In Context (Shell Header)">
             <div className="w-[232px] bg-xn-bg border-r border-xn-border p-4 rounded-xn-md">
               <Logo size={22} showWordmark />
             </div>
@@ -680,39 +681,45 @@ export default function ShowcasePage() {
             ══════════════════════════════════════════════════════ */}
 
         {/* ── AppShell Preview ── */}
-        <Section title="AppShell (Sidebar + Topbar + Content)">
+        <Section title="AppShell (Menu + Topbar + Content)">
           <SubSection title="Full Layout Preview">
             <p className="text-sm text-xn-ink-muted mb-4">
-              This is how every in-app page looks. The sidebar and topbar stay
-              fixed while the content area scrolls. Click the nav items to see
-              the active state change — the rows are real links, and this
-              preview cancels the navigation so they highlight in place.
-              Extension and Settings have no route yet, so they sit inert.
+              This is how every in-app page looks. The menu floats over the
+              content in all three of its modes and the content reserves its
+              width, so nothing ever runs underneath. Click the nav rows to see
+              the active state change — they are real links, and this preview
+              cancels the navigation so they highlight in place. Extension and
+              Settings have no route yet, so they sit inert.
             </p>
 
-            {/* Constrained container simulating a viewport.
-                We can't use the actual AppShell here because it uses h-screen.
-                Instead we manually assemble the same flex layout inside a
-                fixed-height box. This is the same structure AppShell renders. */}
-            <div className="h-[500px] border border-xn-border rounded-xn-xl overflow-hidden flex bg-xn-bg">
+            {/* Constrained container simulating a viewport. We can't use the
+                actual AppShell here because it uses h-screen, so the header is
+                assembled the same way and the rest is the shipped MenuShell —
+                the part with real behaviour is the real component. */}
+            <div className="relative h-[500px] flex flex-col border border-xn-border rounded-xn-xl overflow-hidden bg-xn-bg">
 
-              {/* Sidebar — same component, works inside the constrained box */}
-              <Sidebar
+              {/* Header band — the logo keeps the corner, the topbar fills the
+                  rest, exactly as AppShell arranges them. */}
+              <header className="flex shrink-0" style={{ height: HEADER_H }}>
+                <div className="flex w-[188px] shrink-0 items-center border-b border-xn-border bg-xn-bg pl-4">
+                  <Logo size={22} showWordmark />
+                </div>
+                <div className="min-w-0 flex-1">
+                  {/* The avatar takes no props; UserMenu fetches the signed-in
+                      user itself. */}
+                  <Topbar
+                    onSearchClick={() => toast.info("⌘K search modal coming soon!")}
+                  />
+                </div>
+              </header>
+
+              {/* shellHeight is passed only here: the menu measures the viewport
+                  in the app, and this box is not the viewport. */}
+              <MenuShell
                 activePage={previewPage}
                 onNavigate={(page) => setPreviewPage(page)}
-              />
-
-              {/* Main area — topbar + content */}
-              <div className="flex-1 flex flex-col overflow-hidden">
-
-                {/* Topbar — the avatar takes no props; UserMenu fetches
-                    the signed-in user itself. */}
-                <Topbar
-                  onSearchClick={() => toast.info("⌘K search modal coming soon!")}
-                />
-
-                {/* Content area — scrollable sample content */}
-                <main className="flex-1 overflow-y-auto px-8 py-6">
+                shellHeight={500}
+              >
                   <p className="eyebrow mb-2">
                     {previewPage.toUpperCase()} PAGE
                   </p>
@@ -747,15 +754,14 @@ export default function ShowcasePage() {
                       </div>
                     ))}
                   </div>
-                </main>
-              </div>
+              </MenuShell>
             </div>
           </SubSection>
 
           <SubSection title="Individual Components">
             <div className="flex gap-3">
               <span className="font-mono text-micro text-xn-ink-soft bg-xn-surface-alt border border-xn-border rounded-xn-sm px-2 py-1">
-                Sidebar — 232px × full height
+                Menu — floats, 232 / 64 / 64px
               </span>
               <span className="font-mono text-micro text-xn-ink-soft bg-xn-surface-alt border border-xn-border rounded-xn-sm px-2 py-1">
                 Topbar — full width × 56px

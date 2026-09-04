@@ -42,6 +42,8 @@ import gsap from "gsap";
 import { CustomEase } from "gsap/CustomEase";
 import { useGSAP } from "@gsap/react";
 
+import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
+
 import { MENU_ICONS, PanelArrowIcon } from "./menu-icons";
 import {
   BEAT,
@@ -82,18 +84,6 @@ if (!CustomEase.get(MORPH_EASE_ID)) {
   // CustomEase takes the overshoot in its stride; the control point above 1 is
   // the entire point of the curve.
   CustomEase.create(MORPH_EASE_ID, `M0,0 C${MORPH_CUBIC.split(", ").join(",")} 1,1`);
-}
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return reduced;
 }
 
 /**
@@ -362,7 +352,7 @@ export interface AppMenuProps {
 
 export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeight }: AppMenuProps) {
   const pathname = usePathname();
-  const reduced = usePrefersReducedMotion();
+  const reduced = useReducedMotion();
   const viewportHeight = useShellHeight();
   const height = shellHeight ?? viewportHeight;
 

@@ -48,6 +48,21 @@ export function MenuShell({
 
   return (
     <>
+      {/* The menu comes FIRST in the DOM, and that is about the keyboard rather
+          than about layout. It is absolutely positioned, so its order here
+          costs nothing visually — but DOM order is tab order and reading order,
+          and with the content first a keyboard user had to pass through every
+          control on the page before reaching the navigation. The sidebar this
+          replaced was the first child of the shell and did not have that
+          problem; putting the menu back in front restores it. */}
+      <AppMenu
+        mode={mode}
+        onModeChange={setMode}
+        activePage={activePage}
+        onNavigate={onNavigate}
+        shellHeight={shellHeight}
+      />
+
       <div
         className="flex-1 overflow-hidden"
         style={{
@@ -57,14 +72,6 @@ export function MenuShell({
       >
         <main className="h-full overflow-y-auto px-8 py-6">{children}</main>
       </div>
-
-      <AppMenu
-        mode={mode}
-        onModeChange={setMode}
-        activePage={activePage}
-        onNavigate={onNavigate}
-        shellHeight={shellHeight}
-      />
     </>
   );
 }

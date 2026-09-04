@@ -490,15 +490,7 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
       </div>
 
       {/* Content layer: rows and glyphs, unfiltered, on identical geometry. */}
-      <nav
-        ref={bodyContent}
-        aria-label="Main"
-        onClick={() => {
-          if (collapsed) onModeChange(stepFrom(mode));
-        }}
-        className="absolute z-30"
-        style={{ cursor: collapsed ? "pointer" : "default" }}
-      >
+      <nav ref={bodyContent} aria-label="Main" className="absolute z-30">
         <div
           ref={rowsRef}
           aria-hidden={collapsed}
@@ -564,6 +556,35 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
             );
           })}
         </div>
+
+        {/* The button's face, and the control that reopens it — the same
+            element, because the collapsed menu IS the button.
+
+            It carries the same glyph the close bar carries, so pressing one and
+            seeing the other reads as a single icon continuing its move rather
+            than two icons swapping.
+
+            A real <button> rather than a click handler on the nav: the nav is
+            not focusable and has no keyboard behaviour, so collapsing the menu
+            with a keyboard used to strand it — the rows go aria-hidden and
+            nothing focusable could bring them back. tabIndex tracks the mode so
+            an invisible control is never in the tab order. */}
+        <button
+          type="button"
+          aria-label="Open menu"
+          aria-hidden={!collapsed}
+          tabIndex={collapsed ? 0 : -1}
+          onClick={() => onModeChange(stepFrom(mode))}
+          className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-full"
+          style={{
+            color: ON_INK,
+            opacity: collapsed ? 1 : 0,
+            pointerEvents: collapsed ? "auto" : "none",
+            transition: `opacity ${MORPH_MS * 0.4}ms ${MORPH_CSS_EASE}`,
+          }}
+        >
+          <MenuGlyph open={!collapsed} size={ICON * 1.5} ms={MORPH_MS} />
+        </button>
       </nav>
 
       {/* The close's own face, riding its bubble. */}
@@ -571,6 +592,8 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
         ref={closeContent}
         type="button"
         aria-label="Collapse menu"
+        aria-hidden={collapsed}
+        tabIndex={collapsed ? -1 : 0}
         onClick={() => onModeChange("floating")}
         className="absolute z-30 flex cursor-pointer items-center overflow-hidden rounded-full"
         style={{

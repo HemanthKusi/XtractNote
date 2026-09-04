@@ -514,11 +514,20 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
 
       {/* Content layer: rows and glyphs, unfiltered, on identical geometry. */}
       <nav ref={bodyContent} aria-label="Main" className="absolute z-30">
+        {/* `inert`, not aria-hidden plus pointer-events.
+
+            Those two hide the rows from the pointer and from assistive
+            technology but leave every one of them in the TAB ORDER — the arrow
+            and all four links stayed reachable while collapsed and invisible,
+            and activating a link would have navigated. Neither aria-hidden,
+            pointer-events nor opacity removes anything from the tab order;
+            `inert` does all three jobs at once and is the only one that does
+            the third. */}
         <div
           ref={rowsRef}
-          aria-hidden={collapsed}
+          inert={collapsed}
           className="flex flex-col"
-          style={{ padding: PAD, gap: ROW_GAP, pointerEvents: collapsed ? "none" : "auto" }}
+          style={{ padding: PAD, gap: ROW_GAP }}
         >
           {/* The arrow leads the list, pushed right and carrying no label — its
               direction already says what it does. In the dock there is no right

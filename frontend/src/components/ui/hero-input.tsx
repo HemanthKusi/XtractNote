@@ -59,8 +59,17 @@ interface Particle {
   r: number;
 }
 
-const CANVAS_W = 800;
-const CANVAS_H = 200;
+/**
+ * The dissolve is drawn at twice the field's size and displayed at half, so it
+ * keeps its detail on a high-density screen.
+ *
+ * The canvas used to be a fixed 800 x 200, which meant a fixed 400 CSS px of
+ * coverage against a field that is fluid: anything past 400px was clipped out
+ * of the particle data and never dissolved, and a field narrower than that had
+ * the effect spill past its edge. Measuring the input instead makes the two
+ * agree at any width.
+ */
+const CANVAS_SCALE = 2;
 
 export function HeroInput({
   placeholders,
@@ -144,22 +153,27 @@ export function HeroInput({
     const styles = getComputedStyle(input);
     const fontSize = parseFloat(styles.fontSize);
 
-    canvas.width = CANVAS_W;
-    canvas.height = CANVAS_H;
-    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    // Sized from the field it covers, not from a constant. The element is
+    // displayed at scale-50 from its left edge, so a bitmap of twice the
+    // field's box lands exactly on the field at any width.
+    const box = input.getBoundingClientRect();
+    const w = Math.max(1, Math.ceil(box.width * CANVAS_SCALE));
+    const h = Math.max(1, Math.ceil(box.height * CANVAS_SCALE));
 
-    // Drawn at twice the size and displayed at half, so the dissolve
-    // keeps its detail on a high-density screen.
-    ctx.font = `${fontSize * 2}px ${styles.fontFamily}`;
+    canvas.width = w;
+    canvas.height = h;
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.font = `${fontSize * CANVAS_SCALE}px ${styles.fontFamily}`;
     ctx.fillStyle = styles.color;
     ctx.textBaseline = "middle";
-    ctx.fillText(input.value, 0, CANVAS_H / 2);
+    ctx.fillText(input.value, 0, h / 2);
 
-    const { data } = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+    const { data } = ctx.getImageData(0, 0, w, h);
     const found: Particle[] = [];
-    for (let y = 0; y < CANVAS_H; y++) {
-      for (let x = 0; x < CANVAS_W; x++) {
-        if (data[(y * CANVAS_W + x) * 4 + 3] > 40) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (data[(y * w + x) * 4 + 3] > 40) {
           found.push({ x, y, r: 1 });
         }
       }
@@ -212,7 +226,9 @@ export function HeroInput({
           }
           particlesRef.current = next;
 
-          ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+          // The canvas is sized per dissolve now, so clear what it actually
+          // is rather than what it used to be assumed to be.
+          ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
           const styles = inputRef.current
             ? getComputedStyle(inputRef.current)
             : null;

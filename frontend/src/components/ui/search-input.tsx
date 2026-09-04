@@ -188,7 +188,17 @@ export function SearchInput({
               onBlur={collapse}
               className={[
                 "min-w-0 flex-1 appearance-none bg-transparent text-ui",
-                "border-none outline-none focus-visible:outline-none",
+                "border-none outline-none",
+                // The shape is NOT a sufficient focus indicator once there is
+                // a value, because collapse() keeps the field open when it has
+                // one — so an expanded field can be unfocused, and tabbing back
+                // into it changed nothing visible.
+                //
+                // The ring goes on the input rather than the pill, which keeps
+                // the note above honest: nothing rings the shape while it is
+                // mid-stretch. Page colour, because this sits on ink.
+                "focus-visible:outline focus-visible:outline-2",
+                "focus-visible:outline-offset-2 focus-visible:outline-[color:var(--xn-bg)]",
                 "text-xn-bg placeholder:text-xn-bg/70",
               ].join(" ")}
             />

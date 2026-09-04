@@ -94,7 +94,16 @@ function useIconLoop(build: Build, playing: boolean, reduced?: boolean, speed = 
 
   useGSAP(
     () => {
-      if (!ref.current || reduced) return;
+      if (!ref.current) return;
+      // Reduced motion has to STOP a loop, not merely decline to start one.
+      // Returning early here left an already-running infinite timeline playing,
+      // so an icon kept spinning after the preference was turned on mid-hover.
+      // pause(0) lands on the cycle's first frame, which is the rest pose by
+      // construction — every icon's cycle begins and ends there.
+      if (reduced) {
+        tl.current?.pause(0);
+        return;
+      }
       if (!tl.current) tl.current = build(ref.current).pause();
       const t = tl.current;
       // Retunes an existing loop in place — no rebuild, and it takes effect

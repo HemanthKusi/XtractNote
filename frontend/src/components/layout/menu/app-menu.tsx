@@ -379,12 +379,35 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
   const closeBlob = useRef<HTMLDivElement>(null);
   const bodyContent = useRef<HTMLDivElement>(null);
   const closeContent = useRef<HTMLButtonElement>(null);
+  const openContent = useRef<HTMLButtonElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const didInit = useRef(false);
 
   const collapsed = mode === "floating";
   const rail = mode === "rail";
   const open = !collapsed;
+
+  /**
+   * Hand focus to whichever control takes over the job.
+   *
+   * Collapsing and reopening are done by two different buttons, and each one
+   * goes `aria-hidden` and out of the tab order the moment it does its job. A
+   * keyboard user activating one was therefore left holding focus on an element
+   * that had just become invisible and hidden from assistive technology — and
+   * aria-hidden on the focused element is precisely the thing not to do.
+   *
+   * The guard matters: focus only moves when the control that just went hidden
+   * was the one holding it. A mode change from anywhere else — the foot arrow,
+   * or a future caller — must not yank focus away from wherever the user was.
+   */
+  const wasCollapsed = useRef(collapsed);
+  useEffect(() => {
+    if (wasCollapsed.current === collapsed) return;
+    wasCollapsed.current = collapsed;
+    const leaving = collapsed ? closeContent.current : openContent.current;
+    const arriving = collapsed ? openContent.current : closeContent.current;
+    if (document.activeElement === leaving) arriving?.focus();
+  }, [collapsed]);
 
   useGSAP(
     () => {
@@ -570,6 +593,7 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
             nothing focusable could bring them back. tabIndex tracks the mode so
             an invisible control is never in the tab order. */}
         <button
+          ref={openContent}
           type="button"
           aria-label="Open menu"
           aria-hidden={!collapsed}

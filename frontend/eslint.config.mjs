@@ -13,6 +13,8 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypeScript from "eslint-config-next/typescript";
 
+import noUnresolvedStyleVar from "./eslint-rules/no-unresolved-style-var.mjs";
+
 const config = [
   // Generated output and dependencies. Kept in its own object so it applies
   // globally rather than to a single config block.
@@ -43,6 +45,31 @@ const config = [
      */
     settings: {
       react: { version: "18.3" },
+    },
+  },
+
+  {
+    /**
+     * Project-local rules, defined in `eslint-rules/` and registered inline.
+     * Flat config takes a plugin as a plain object, so a rule the project needs
+     * for itself does not have to become a published package first.
+     */
+    plugins: {
+      xn: { rules: { "no-unresolved-style-var": noUnresolvedStyleVar } },
+    },
+    rules: {
+      /**
+       * A style reference that resolves to nothing generates nothing, fails
+       * silently, and is indistinguishable from working code. It has cost this
+       * project four bugs — two design decisions argued over effects that never
+       * rendered, one focus indicator that left a WCAG failure, and a brand mark
+       * that shipped without its logo.
+       *
+       * This catches the fourth shape: `var()` with no fallback in a paint
+       * attribute. See the rule file for why it is a rule rather than a
+       * selector.
+       */
+      "xn/no-unresolved-style-var": "error",
     },
   },
 
@@ -107,6 +134,24 @@ const config = [
        * Revisit if a genuine render cascade ever appears.
        */
       "react-hooks/set-state-in-effect": "off",
+    },
+  },
+
+  {
+    /**
+     * Build tooling, not shipped code. `no-console` exists to keep logging out
+     * of the product; a command-line check whose entire output IS its report is
+     * the one place printing to stdout is the point. Scoped to these two
+     * directories rather than weakening the rule everywhere.
+     *
+     * This block must stay LAST. Flat config resolves in order and the later
+     * object wins, so placing it above the block that sets `no-console` would
+     * see the exception silently overridden — which is exactly what happened on
+     * the first attempt.
+     */
+    files: ["scripts/**/*.mjs", "eslint-rules/**/*.mjs"],
+    rules: {
+      "no-console": "off",
     },
   },
 ];

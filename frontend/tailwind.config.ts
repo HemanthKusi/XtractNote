@@ -38,6 +38,13 @@ const config: Config = {
           danger:          "var(--xn-danger)",
           "danger-soft":   "var(--xn-danger-soft)",
 
+          // Success is the quiz's counterpart to danger. Weight-matched to
+          // it in both themes so right and wrong read as equal opposites
+          // rather than one shouting over the other. Always paired with a
+          // glyph — colour is never the only signal.
+          success:         "var(--xn-success)",
+          "success-soft":  "var(--xn-success-soft)",
+
           // Transitional: resolves to ink. Kept only because a
           // number of components still reference it — see the note
           // in globals.css.
@@ -190,6 +197,19 @@ const config: Config = {
         "measure": "var(--xn-measure)", // 64ch — generated content
         "content": "680px",             // legacy reading column
         "wide":    "960px",
+
+        // The page column for routes that render generated output.
+        //
+        // 1058 is derived, not chosen: 960 (`wide`) of content, plus the
+        // 24px padding and 1px border the output Card puts on each side,
+        // plus the 24px the page itself pads by. Cap a page here and the
+        // content column inside its card lands on `wide` exactly.
+        //
+        // That 960 matters because the flashcard grid's column count is
+        // measured against it — three 312px columns with the covers
+        // clearing each other. Change this and the content width moves,
+        // so re-measure rather than assuming the grid still fits.
+        "output":  "1058px",
       },
 
       // ────────────────────────────────────────────────────────
@@ -251,6 +271,20 @@ const config: Config = {
           "45%":  { opacity: "0.5" },
           "100%": { opacity: "0", transform: "translateY(-100%)" },
         },
+
+        // The quiz explanation arriving. `fade-in` was tried first and
+        // read as nothing happening — 4px of travel at 200ms is below the
+        // threshold where an appearance registers as an event rather than
+        // a repaint. This unfolds: it drops in from above while expanding
+        // from the top edge, so the block reads as opening out of the
+        // option that was just answered.
+        //
+        // scaleY needs its origin at the top or it grows from the middle
+        // and reads as a pop rather than an unfold.
+        "unfold": {
+          from: { opacity: "0", transform: "translateY(-10px) scaleY(0.94)" },
+          to:   { opacity: "1", transform: "translateY(0) scaleY(1)" },
+        },
       },
       animation: {
         "fade-in":        "fade-in var(--xn-dur-base) var(--xn-ease-out)",
@@ -264,6 +298,22 @@ const config: Config = {
         // reads as a jump when nobody asked for it.
         "rise-in":        "rise-in 560ms var(--xn-ease-smooth) both",
         "rise-out":       "rise-out 560ms var(--xn-ease-smooth) both",
+
+        // 450ms, matching the flashcard cover's swing exactly
+        // (`DURATION_MS` in flashcards-view.tsx). The two structured
+        // renderers are the only places in the app where content is
+        // revealed by an interaction, and a reveal that takes a different
+        // length of time in each reads as two unrelated products. Started
+        // at 320ms, which was fine on its own and wrong next to the
+        // flashcards.
+        //
+        // Well over the base duration either way: the travel here is
+        // longer than a fade, and the same speed over a longer distance
+        // reads as hurried. The motion policy treats duration as a
+        // default, not a cap.
+        //
+        // If one of these changes, change both.
+        "unfold":         "unfold 450ms var(--xn-ease-out) both",
       },
 
     },

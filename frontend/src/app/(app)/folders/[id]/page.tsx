@@ -8,7 +8,6 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { AppShell } from "@/components/layout";
 import { HistoryCard } from "@/components/history/history-card";
 import { MoveToFolderModal } from "@/components/history/move-to-folder-modal";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -90,8 +89,10 @@ export default function FolderDetailPage({
   };
 
   return (
-    <AppShell activePage="folders">
-      <div className="mx-auto max-w-content">
+    <>
+      {/* Matches the history page: this route lists the same rows, so it
+          takes the same wider column. */}
+      <div className="mx-auto max-w-wide">
         {/* Back link */}
         <Link
           href={ROUTES.FOLDERS}
@@ -112,13 +113,20 @@ export default function FolderDetailPage({
               </div>
             </div>
             <div className="space-y-3">
+              {/* Mirrors the row's real geometry so nothing jumps on load. */}
               {[0, 1, 2].map((i) => (
-                <div key={i} className="flex gap-4 rounded-xn-lg border border-xn-border p-4">
-                  <Skeleton className="h-[68px] w-[120px] shrink-0 rounded-xn-md" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
+                <div
+                  key={i}
+                  className="flex h-[136px] overflow-hidden rounded-xn-lg border border-xn-border"
+                >
+                  <Skeleton className="w-[4px] shrink-0 rounded-none" />
+                  <div className="hidden shrink-0 items-center p-3.5 lg:flex">
+                    <Skeleton className="h-[108px] w-[192px] rounded-xn-md" />
+                  </div>
+                  <div className="flex-1 self-center space-y-2 pl-4 pr-4 lg:pl-0">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-5 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
                   </div>
                 </div>
               ))}
@@ -201,7 +209,7 @@ export default function FolderDetailPage({
         onClose={() => setMovingItem(null)}
         onMoved={handleMoved}
       />
-    </AppShell>
+    </>
   );
 }
 

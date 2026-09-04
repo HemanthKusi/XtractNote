@@ -19,7 +19,8 @@ import { Toggle } from "@/components/ui/toggle";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Modal } from "@/components/ui/modal";
 import { Logo } from "@/components/layout/logo";
-import { Sidebar } from "@/components/layout/sidebar";
+import { MenuShell } from "@/components/layout/menu";
+import { HEADER_H } from "@/components/layout/menu/menu-geometry";
 import { Topbar } from "@/components/layout/topbar";
 import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
@@ -134,7 +135,17 @@ export default function ShowcasePage() {
 
   return (
     <div className="min-h-screen bg-xn-bg text-xn-ink transition-colors duration-300">
-      <div className="max-w-[960px] mx-auto px-8 py-12">
+      {/* Mirrors the real output page's column exactly — `max-w-output` with
+          px-6 — rather than being a comfortable canvas. That chain is
+          1058 − 48 of page padding = 1010 for the panel, and the panel's own
+          border and p-6 take 50, leaving its contents 960: the width
+          OutputView actually gives a renderer.
+
+          It was `max-w-[960px] px-8`, which sounds like the same number and is
+          not. The panels came out at 846, and the flashcard grid drew TWO
+          columns where production draws three — a specimen showing a different
+          layout than the thing it stands in for. */}
+      <div className="max-w-output mx-auto px-6 py-12">
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between mb-12">
@@ -486,7 +497,7 @@ export default function ShowcasePage() {
               />
             </div>
           </SubSection>
-          <SubSection title="Sidebar Usage Context">
+          <SubSection title="Usage Card Context">
             <Card variant="flat" padding="md" className="max-w-[200px]">
               <p className="font-mono text-nano text-xn-ink-soft uppercase tracking-wide">Free plan</p>
               <p className="font-semibold text-sm mt-0.5">10 / 30 generations</p>
@@ -540,7 +551,7 @@ export default function ShowcasePage() {
               <Logo variant="square" size={40} color="#f3ebd9" />
             </div>
           </SubSection>
-          <SubSection title="In Context (Sidebar Header)">
+          <SubSection title="In Context (Shell Header)">
             <div className="w-[232px] bg-xn-bg border-r border-xn-border p-4 rounded-xn-md">
               <Logo size={22} showWordmark />
             </div>
@@ -712,37 +723,45 @@ export default function ShowcasePage() {
             ══════════════════════════════════════════════════════ */}
 
         {/* ── AppShell Preview ── */}
-        <Section title="AppShell (Sidebar + Topbar + Content)">
+        <Section title="AppShell (Menu + Topbar + Content)">
           <SubSection title="Full Layout Preview">
             <p className="text-sm text-xn-ink-muted mb-4">
-              This is how every in-app page looks. The sidebar and topbar stay
-              fixed while the content area scrolls. Click the nav items to see
-              the active state change.
+              This is how every in-app page looks. The menu floats over the
+              content in all three of its modes and the content reserves its
+              width, so nothing ever runs underneath. Click the nav rows to see
+              the active state change — they are real links, and this preview
+              cancels the navigation so they highlight in place. Extension and
+              Settings have no route yet, so they sit inert.
             </p>
 
-            {/* Constrained container simulating a viewport.
-                We can't use the actual AppShell here because it uses h-screen.
-                Instead we manually assemble the same flex layout inside a
-                fixed-height box. This is the same structure AppShell renders. */}
-            <div className="h-[500px] border border-xn-border rounded-xn-xl overflow-hidden flex bg-xn-bg">
+            {/* Constrained container simulating a viewport. We can't use the
+                actual AppShell here because it uses h-screen, so the header is
+                assembled the same way and the rest is the shipped MenuShell —
+                the part with real behaviour is the real component. */}
+            <div className="relative h-[500px] flex flex-col border border-xn-border rounded-xn-xl overflow-hidden bg-xn-bg">
 
-              {/* Sidebar — same component, works inside the constrained box */}
-              <Sidebar
+              {/* Header band — the logo keeps the corner, the topbar fills the
+                  rest, exactly as AppShell arranges them. */}
+              <header className="flex shrink-0" style={{ height: HEADER_H }}>
+                <div className="flex w-[188px] shrink-0 items-center border-b border-xn-border bg-xn-bg pl-4">
+                  <Logo size={22} showWordmark />
+                </div>
+                <div className="min-w-0 flex-1">
+                  {/* The avatar takes no props; UserMenu fetches the signed-in
+                      user itself. */}
+                  <Topbar
+                    onSearchClick={() => toast.info("⌘K search modal coming soon!")}
+                  />
+                </div>
+              </header>
+
+              {/* shellHeight is passed only here: the menu measures the viewport
+                  in the app, and this box is not the viewport. */}
+              <MenuShell
                 activePage={previewPage}
                 onNavigate={(page) => setPreviewPage(page)}
-              />
-
-              {/* Main area — topbar + content */}
-              <div className="flex-1 flex flex-col overflow-hidden">
-
-                {/* Topbar */}
-                <Topbar
-                  userInitials="MK"
-                  onSearchClick={() => toast.info("⌘K search modal coming soon!")}
-                />
-
-                {/* Content area — scrollable sample content */}
-                <main className="flex-1 overflow-y-auto px-8 py-6">
+                shellHeight={500}
+              >
                   <p className="eyebrow mb-2">
                     {previewPage.toUpperCase()} PAGE
                   </p>
@@ -751,8 +770,6 @@ export default function ShowcasePage() {
                     {previewPage === "create" && "Create New Content"}
                     {previewPage === "history" && "Your History"}
                     {previewPage === "folders" && "Your Folders"}
-                    {previewPage === "settings" && "Settings"}
-                    {previewPage === "extension" && "Browser Extension"}
                   </h2>
                   <p className="text-sm text-xn-ink-muted max-w-[500px] mb-6">
                     This is the content area. Each page renders its own content here
@@ -779,15 +796,14 @@ export default function ShowcasePage() {
                       </div>
                     ))}
                   </div>
-                </main>
-              </div>
+              </MenuShell>
             </div>
           </SubSection>
 
           <SubSection title="Individual Components">
             <div className="flex gap-3">
               <span className="font-mono text-micro text-xn-ink-soft bg-xn-surface-alt border border-xn-border rounded-xn-sm px-2 py-1">
-                Sidebar — 232px × full height
+                Menu — floats, 232 / 64 / 64px
               </span>
               <span className="font-mono text-micro text-xn-ink-soft bg-xn-surface-alt border border-xn-border rounded-xn-sm px-2 py-1">
                 Topbar — full width × 56px
@@ -1045,7 +1061,7 @@ export default function ShowcasePage() {
               it sits inside OutputView&apos;s Card, so it looks plainer here.
             </p>
 
-            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+            <div className="rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <FlashcardsView
                 body={{
                   kind: "flashcards",
@@ -1068,7 +1084,7 @@ export default function ShowcasePage() {
             </div>
 
             <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
-            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+            <div className="rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <FlashcardsView body={{ kind: "flashcards", cards: [] }} />
             </div>
           </section>
@@ -1081,7 +1097,7 @@ export default function ShowcasePage() {
               OutputView&apos;s Card in the app.
             </p>
 
-            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+            <div className="rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <QuizView
                 body={{
                   kind: "quiz",
@@ -1110,7 +1126,7 @@ export default function ShowcasePage() {
             </div>
 
             <p className="mb-2 mt-6 text-[13px] text-xn-ink-muted">Empty state</p>
-            <div className="max-w-[680px] rounded-xn-md border border-xn-border bg-xn-bg-card p-6">
+            <div className="rounded-xn-md border border-xn-border bg-xn-surface p-6">
               <QuizView body={{ kind: "quiz", questions: [] }} />
             </div>
           </section>

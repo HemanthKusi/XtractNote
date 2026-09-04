@@ -4,14 +4,13 @@
 // origin-aware back target, and hands everything to SavedContentEditor, which
 // owns all loading, state, and the view/edit/copy/export/delete lifecycle.
 //
-// Wraps content in AppShell (sidebar + topbar), matching every other page in
-// the (app) group — the group itself provides no layout, so each page wraps
-// its own.
+// The sidebar and topbar come from the group's layout. No nav row is
+// highlighted here on purpose: a saved item is reachable from both History
+// and Folders, and the Back link below already says which.
 
 "use client";
 
 import { use } from "react";
-import { AppShell } from "@/components/layout";
 import { SavedContentEditor } from "@/components/output/saved-content-editor";
 
 interface OutputPageProps {
@@ -40,9 +39,5 @@ export default function OutputPage({ params, searchParams }: OutputPageProps) {
   const backHref = safeBackHref(from);
   const backLabel = backLabelFor(backHref);
 
-  return (
-    <AppShell>
-      <SavedContentEditor id={id} backHref={backHref} backLabel={backLabel} />
-    </AppShell>
-  );
+  return <SavedContentEditor id={id} backHref={backHref} backLabel={backLabel} />;
 }

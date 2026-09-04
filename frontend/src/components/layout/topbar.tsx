@@ -19,9 +19,11 @@
 // modal in a later phase. This is the command palette pattern
 // used by Notion, Linear, and Vercel.
 //
+// The avatar takes nothing: UserMenu fetches the signed-in user itself.
+//
 // Usage:
-//   <Topbar userName="Mohan" userInitials="MK" />
-//   <Topbar userName="Mohan" userInitials="MK" onSearchClick={openSearch}>
+//   <Topbar />
+//   <Topbar onSearchClick={openSearch}>
 //     <Button size="sm">Extra Action</Button>
 //   </Topbar>
 // ─────────────────────────────────────────────────────────────
@@ -51,12 +53,6 @@ const BellIcon = () => (
 // ── Props ───────────────────────────────────────────────────
 
 interface TopbarProps {
-  /** User's display name (shown as tooltip or later in dropdown) */
-  userName?: string;
-  /** User's initials for the avatar (e.g., "MK") */
-  userInitials?: string;
-  /** User's profile image URL */
-  userImage?: string;
   /** Called when the search trigger is clicked */
   onSearchClick?: () => void;
   /** Extra elements rendered before the bell icon (e.g., action buttons) */

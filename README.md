@@ -10,8 +10,8 @@ XtractNote uses a LangGraph multi-agent pipeline to transform YouTube videos int
 Frontend (Next.js + React)  ←→  Backend (Python + FastAPI + LangGraph)  ←→  Supabase (Auth + DB)
 ```
 
-- **Frontend:** Next.js 14, TypeScript, Tailwind CSS, shadcn/ui
-- **Backend:** Python 3.11+, FastAPI, LangGraph, LangChain
+- **Frontend:** Next.js 16, TypeScript, Tailwind CSS, shadcn/ui
+- **Backend:** Python 3.13, FastAPI, LangGraph, LangChain
 - **Database:** Supabase (PostgreSQL + Auth + Storage)
 - **AI:** OpenAI / Anthropic Claude (swappable via env variable)
 
@@ -32,7 +32,7 @@ Frontend (Next.js + React)  ←→  Backend (Python + FastAPI + LangGraph)  ←�
 ### Prerequisites
 
 - Node.js 18+ (`node --version`)
-- Python 3.11+ (`python --version`)
+- Python 3.13 (`python --version`) — not 3.14, which has no `pydantic-core` wheels
 - Git (`git --version`)
 - A Supabase account (free at supabase.com)
 - An OpenAI or Anthropic API key (at least one)
@@ -82,6 +82,7 @@ See `.env.example` for all required values.
 xtractnote/
 ├── frontend/          # Next.js + React + TypeScript
 ├── backend/           # Python + FastAPI + LangGraph
+├── extension/         # Chrome extension — Vite + React + TypeScript
 ├── database/          # SQL migration files
 ├── .github/workflows/ # CI/CD pipelines
 └── .env.example       # Environment variable template

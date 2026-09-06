@@ -53,9 +53,18 @@ skills-lock.json
 
 # ── Root-level local tooling (never committed) ──
 .mcp.json
-/package.json
-/package-lock.json
 /node_modules/
+
+# A package manifest at the repository root is deliberately NOT ignored.
+# The apps each own their manifest; one up here means two lockfiles in the
+# tree, and the frontend's bundler then resolves its workspace root to the
+# whole repository instead of to the app. It keeps working — and exhausts
+# memory the moment a route compiles.
+#
+# One was created here as a side effect of installing local tooling, ignored
+# alongside it, and therefore stayed invisible for three weeks. Leaving these
+# paths tracked means a stray root manifest shows up in `git status` the day
+# it appears rather than as a crash later.
 
 # ── TypeScript / Next build artifacts (generated, never committed) ──
 *.tsbuildinfo

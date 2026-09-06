@@ -56,10 +56,41 @@ const variantClasses = {
     "active:bg-xn-surface-alt active:shadow-xn-press",
   ].join(" "),
 
+  // ── Solid, not tinted ──
+  //
+  // This was `bg-xn-danger-soft` with danger-coloured text: a 12%-alpha wash
+  // and a 30% border. Beside a `default` button it read as the quieter of the
+  // two, which is backwards for the only variant whose job is to make someone
+  // stop and think. A destructive confirmation that looks lighter than
+  // "Keep generating" is a mis-click waiting to happen.
+  //
+  // ── Why the TOKEN was left alone ──
+  //
+  // --xn-danger is a STATUS colour, and globals.css records the reasoning:
+  // danger and success are "matched to each other so neither state shouts
+  // louder, and quiet enough to sit in a list", with "contrast is a floor to
+  // clear, not a score to maximise". That is correct for error text and
+  // error borders, which is what the token is for. Raising its saturation to
+  // make one button louder would break a pairing that was deliberately tuned.
+  //
+  // Filling with it instead gets the weight from the treatment rather than
+  // from the hue, so the status colour keeps its quiet job.
+  //
+  // ── Why the fill is its own token, not --xn-danger ──
+  //
+  // The first attempt filled with --xn-danger and labelled it --xn-bg, which
+  // works on light and falls apart on dark. Dark's status red is LIGHT (59%
+  // lightness) because it has to read as text on a near-black ground; filled,
+  // it carries a light label at only 3.18:1, so the label has to go dark — and
+  // a pale salmon block with dark ink reads as anything but dangerous.
+  //
+  // --xn-danger-solid is a fill in both themes, deepened on dark so the label
+  // stays light where a dark UI expects it. Measured: 6.19:1 light, 5.35:1
+  // dark, both AA for normal text.
   danger: [
-    "bg-xn-danger-soft border-xn-danger/30 text-xn-danger",
-    "shadow-xn-1",
-    "hover:shadow-xn-lift",
+    "bg-xn-danger-solid border-xn-danger-solid text-xn-danger-on-solid",
+    "shadow-xn",
+    "hover:shadow-xn-lift-lg",
     "active:shadow-xn-press",
   ].join(" "),
 } as const;

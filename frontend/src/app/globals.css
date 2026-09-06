@@ -127,6 +127,16 @@
   --xn-danger: #C0392B;
   --xn-danger-soft: rgba(192, 57, 43, 0.12);
 
+  /* The FILL for a destructive action, and its label.
+     Separate from --xn-danger above, which is a status colour tuned to sit
+     quietly in a list beside --xn-success. A button that has to stop someone
+     needs weight the status colour must not have, and taking it from a fill
+     rather than from more saturation lets both keep their own job.
+     On light the status red doubles as the fill: #C0392B under a near-white
+     label measures 6.19:1. The dark theme cannot do the same — see below. */
+  --xn-danger-solid: #C0392B;
+  --xn-danger-on-solid: #f8f9f7;
+
   /* ── Semantic: success ──
      Added for the quiz, where right and wrong need to read as
      opposites. Deliberate exception to "format colours are the
@@ -240,6 +250,19 @@
      Contrast is a floor to clear, not a score to maximise. */
   --xn-danger: #D4685A;
   --xn-danger-soft: rgba(212, 104, 90, 0.12);
+
+  /* The dark theme CANNOT reuse its status red as a fill, and the numbers say
+     why. #D4685A is light (59% lightness) because it has to read as text on a
+     near-black ground. Filled, it takes a light label at only 3.18:1 — a
+     fail — so it would need dark ink, and a pale salmon block carrying dark
+     text is the opposite of what a destructive control should feel like here.
+
+     #B3382C is the same hue family (5 deg against 7) at almost the same
+     saturation (61% against 59%), dropped to 44% lightness so it can carry
+     the light label at 5.35:1 and still clear 3:1 against the page for a
+     non-text element. The status colour above is untouched. */
+  --xn-danger-solid: #B3382C;
+  --xn-danger-on-solid: #f1f3f1;
   --xn-success: #3E9468;
   --xn-success-soft: rgba(62, 148, 104, 0.12);
 }

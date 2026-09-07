@@ -37,6 +37,10 @@ const config: Config = {
           // accent standing in for error states.
           danger:          "var(--xn-danger)",
           "danger-soft":   "var(--xn-danger-soft)",
+          // Fill + label for a destructive action. Kept apart from the status
+          // red so a loud button cannot drag the quiet list colour with it.
+          "danger-solid":    "var(--xn-danger-solid)",
+          "danger-on-solid": "var(--xn-danger-on-solid)",
 
           // Success is the quiz's counterpart to danger. Weight-matched to
           // it in both themes so right and wrong read as equal opposites

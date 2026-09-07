@@ -196,33 +196,48 @@ export function Modal({
       >
         {/* ── Header ── */}
         {(title || description) && (
-          <div className="px-6 pt-5 pb-0">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                {title && (
-                  <h2
-                    id="modal-title"
-                    className="text-h3 font-semibold text-xn-ink"
-                  >
-                    {title}
-                  </h2>
-                )}
-                {description && (
-                  <p
-                    id="modal-desc"
-                    className="text-sm text-xn-ink-muted mt-1"
-                  >
-                    {description}
-                  </p>
-                )}
-              </div>
+          <div className="px-7 pt-7 pb-0">
+            {/* ── The pairing, and why it changed ──
+                Title was text-h3 — 36px, the page-title step — with a 14px
+                description under it. In a 384px box that is a 2.6x jump
+                between the two things a dialog says, and it read as a shout
+                followed by a mumble.
+                h5 (21px) over ui (15px) is 1.4x. The title is still
+                unmistakably the heading — it is the only one in a focused
+                box, so it does not have to win on size — and the description
+                comes up to the chrome step, where interface prose belongs.
 
-              {/* Close button — always visible in the top-right corner */}
+                ── Why the description is no longer beside the close button ──
+                It used to live in the same flex column as the title, sharing
+                a row with the close button. The button is 28px plus a 16px
+                gap, so EVERY line of the description wrapped 44px early —
+                including the lines well below the button, where nothing was
+                in the way. On a short title that is invisible; on two
+                sentences of prose it is a ragged column with dead space down
+                its right side.
+                Only the title shares the row now. The description spans the
+                full width underneath, which is the width it was always
+                supposed to have. */}
+            <div className="flex items-start justify-between gap-4">
+              {title && (
+                <h2
+                  id="modal-title"
+                  className="min-w-0 flex-1 text-h4 font-semibold text-xn-ink"
+                >
+                  {title}
+                </h2>
+              )}
+
+              {/* Close button — always visible in the top-right corner.
+                  `ml-auto` rather than relying on justify-between: `title` is
+                  optional, and with a description-only modal this row has a
+                  single child, which justify-between puts on the LEFT. The
+                  empty flex-1 column used to hold it right by accident. */}
               <button
                 onClick={onClose}
                 className={[
                   "inline-flex items-center justify-center",
-                  "w-7 h-7 rounded-xn-sm shrink-0",
+                  "ml-auto w-7 h-7 rounded-xn-sm shrink-0",
                   "text-xn-ink-soft",
                   "hover:bg-xn-surface-alt hover:text-xn-ink",
                   "transition-colors duration-150",
@@ -233,18 +248,28 @@ export function Modal({
                 <CloseIcon />
               </button>
             </div>
+
+            {description && (
+              <p id="modal-desc" className="mt-3 text-body text-xn-ink-muted">
+                {description}
+              </p>
+            )}
           </div>
         )}
 
         {/* ── Body ── */}
-        {children && (
-          <div className="px-6 py-4">{children}</div>
-        )}
+        {children && <div className="px-7 py-5">{children}</div>}
 
         {/* ── Footer ──
-            Typically holds Cancel + Confirm buttons, right-aligned. */}
+            Typically holds Cancel + Confirm buttons, right-aligned.
+
+            The generous pt is what stops a confirmation feeling squeezed: with
+            no children, the footer sits directly under the description, and a
+            2-unit gap put the buttons almost against the prose. The dialog is
+            short by nature, so its height has to come from spacing rather than
+            from content. */}
         {footer && (
-          <div className="px-6 pb-5 pt-2 flex items-center justify-end gap-2">
+          <div className="px-7 pb-7 pt-6 flex items-center justify-end gap-2">
             {footer}
           </div>
         )}

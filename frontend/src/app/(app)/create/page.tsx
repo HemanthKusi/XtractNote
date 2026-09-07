@@ -5,7 +5,7 @@
 //
 // The full create flow lives here:
 //   input -> extractVideoId
-//         -> (looks like a URL)  -> fetchVideoMetadata -> VideoPreviewCard
+//         -> (looks like a URL)  -> fetchVideoMetadata -> SourcePanel
 //         -> (not a URL, a topic)-> searchVideos -> SearchResults
 //                                -> (Use this video) -> fetchVideoMetadata -> …
 //         -> (Continue) -> fetchTranscript
@@ -51,14 +51,15 @@ import {
   type GenerateFailReason,
   type SocialPlatform,
 } from "@/lib/content/types";
-import { VideoPreviewCard } from "@/components/create/video-preview-card";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
+import { CreateHero } from "@/components/create/create-hero";
+import { GeneratingPanel } from "@/components/create/generating-panel";
 import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
 import { SearchResults } from "@/components/create/search-results";
+import { SourcePanel } from "@/components/create/source-panel";
 import { OutputView } from "@/components/output/output-view";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/shared/toast-provider";
 
 // ── Friendly copy for every failure reason ──────────────────
@@ -176,7 +177,6 @@ type Status =
 
 export default function CreatePage() {
   const toast = useToast();
-  const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>({ phase: "idle" });
   // Transient UI choices in the picker — not flow phases, so they live apart.
   const [selectedType, setSelectedType] =
@@ -235,10 +235,6 @@ export default function CreatePage() {
     setStatus({ phase: "search-results", query, results: result.data });
   }
 
-  // Thin wrapper so existing callers (Go button, Enter key) stay unchanged.
-  function handleSubmit() {
-    void startFromInput(input);
-  }
 
   // ── Prefill from URL params (extension deep-link) ─────────────
   // The extension opens /create?v=<canonical watch url>&action=<type>.
@@ -264,10 +260,13 @@ export default function CreatePage() {
       setSelectedType(action);
     }
 
-    // Auto-load the video. Seed the input for consistency (though it's hidden
-    // once the preview loads) and run the same submit path a manual paste uses.
+    // Auto-load the video through the same submit path a manual paste uses.
+    //
+    // This used to seed a page-level `input` state as well, "for consistency".
+    // That stopped meaning anything when the field became the hero input,
+    // which owns its own value — the page cannot write into it, so the seed
+    // set a variable nothing read and nothing displayed.
     if (v) {
-      setInput(v);
       void startFromInput(v);
     }
     // Mount-only: reads window.location once. startFromInput is stable enough
@@ -452,34 +451,17 @@ export default function CreatePage() {
     // their columns off the viewport, not this container, so their layout
     // is unchanged and only the tiles get marginally wider.
     <div className="mx-auto max-w-output px-6 py-10">
-      {/* Heading */}
-      <header className="mb-6">
-        <h1 className="font-serif text-h2 text-xn-ink">Create</h1>
-        <p className="mt-1 text-body text-xn-ink-muted">
-          Paste a YouTube link or search a topic to turn it into something you
-          can keep.
-        </p>
-      </header>
-
-      {/* Input + submit (hidden once a video is loaded) */}
+      {/* ── The head of the page, while there is no video yet ──
+          Once metadata loads the field is hidden, and the source itself
+          becomes the thing the page is about — so the "Create" title goes
+          with the field rather than sitting above a video it does not
+          describe. */}
       {showInput && (
-        <>
-          <div className="flex items-center gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSubmit();
-              }}
-              placeholder="Paste a YouTube link or search a topic…"
-              disabled={isBusy}
-              className="flex-1"
-            />
-            <Button variant="primary" onClick={handleSubmit} disabled={isBusy}>
-              {isLoading ? "Fetching…" : isSearching ? "Searching…" : "Go"}
-            </Button>
-          </div>
-
+        <CreateHero
+          onSubmit={(value) => void startFromInput(value)}
+          error={status.phase === "error"}
+          disabled={isBusy}
+        >
           {isLoading && (
             <div className="mt-3 flex items-center gap-2 text-sm text-xn-ink-muted">
               <Spinner />
@@ -488,12 +470,12 @@ export default function CreatePage() {
           )}
 
           {status.phase === "error" && (
-            <div className="mt-3 flex items-start gap-2 text-sm text-xn-accent">
+            <p className="mt-3 flex items-start gap-2 text-sm text-xn-danger">
               <AlertIcon />
               <span>{status.message}</span>
-            </div>
+            </p>
           )}
-        </>
+        </CreateHero>
       )}
 
       {/* ── Topic search: skeletons while searching, cards/empty when done ── */}
@@ -510,15 +492,27 @@ export default function CreatePage() {
         </div>
       )}
 
-      {/* Topic search error (input stays above so they can edit + retry) */}
+      {/* Topic search error (the field stays above so they can edit + retry) */}
       {status.phase === "search-error" && (
         <div className="mt-4">
-          <div className="flex items-start gap-2 text-sm text-xn-accent">
+          <p className="flex items-start gap-2 text-sm text-xn-danger">
             <AlertIcon />
             <span>{status.message}</span>
-          </div>
+          </p>
           <div className="mt-3">
-            <Button variant="primary" onClick={handleSubmit}>
+            {/* Retry from the PHASE, not from the field.
+                The field empties itself on submit — that is what the hero
+                input does — so by the time this button exists the page's
+                `input` is "". Reading it sent an empty string through
+                extractVideoId, which reports "empty" and rendered "Paste a
+                YouTube link or search a topic to get started" in place of
+                actually rerunning the search.
+                `search-error` already carries the query that failed, which
+                is the only value here that cannot have been cleared. */}
+            <Button
+              variant="primary"
+              onClick={() => void startFromInput(status.query)}
+            >
               Try again
             </Button>
           </div>
@@ -528,53 +522,49 @@ export default function CreatePage() {
       {/* Preview + transcript/generation stages (shown once metadata loads) */}
       {meta && (
         <>
-          <VideoPreviewCard
-            meta={meta}
-            actions={
-              <>
-                <Button
-                  variant="ghost"
-                  onClick={handleChange}
-                  disabled={status.phase === "transcribing" || isGenerating}
-                >
-                  Change
-                </Button>
+          <h2 className="mb-4 text-h5 text-xn-ink">Using this video</h2>
 
-                {/* The right-hand action depends on the stage. Once we're past
-                    transcript fetch (generation stages), the preview's primary
-                    action is retired — the Generate button lives by the picker. */}
-                {!inGenerationStage && (
-                  <Button
-                    variant="primary"
-                    onClick={handleContinue}
-                    disabled={status.phase === "transcribing"}
-                  >
-                    {status.phase === "transcribing"
-                      ? "Preparing…"
-                      : status.phase === "transcript-error"
-                        ? "Try again"
-                        : "Continue"}
-                  </Button>
-                )}
-              </>
+          <SourcePanel
+            meta={meta}
+            onChange={handleChange}
+            busy={status.phase === "transcribing" || isGenerating}
+            // ── Continue is load-bearing, so it stays ──
+            //
+            // The design merges "source ready" into "choose a format", and in
+            // the specimen that was free because nothing was wired. Here this
+            // button calls handleContinue, which FETCHES THE TRANSCRIPT — the
+            // two phases are separated by a network call and a `transcribing`
+            // state between them. Removing it would mean fetching on arrival,
+            // which is a behaviour change, not a visual one.
+            primary={
+              !inGenerationStage ? (
+                <Button
+                  variant="primary"
+                  onClick={handleContinue}
+                  disabled={status.phase === "transcribing"}
+                >
+                  {status.phase === "transcribing"
+                    ? "Preparing…"
+                    : status.phase === "transcript-error"
+                      ? "Try again"
+                      : "Continue"}
+                </Button>
+              ) : undefined
+            }
+            status={
+              status.phase === "transcribing" ? (
+                <span className="flex items-center gap-2 text-sm text-xn-ink-muted">
+                  <Spinner />
+                  Fetching the transcript…
+                </span>
+              ) : status.phase === "transcript-error" ? (
+                <span className="flex items-start gap-2 text-sm text-xn-danger">
+                  <AlertIcon />
+                  {status.message}
+                </span>
+              ) : undefined
             }
           />
-
-          {/* Transcript loading row */}
-          {status.phase === "transcribing" && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-xn-ink-muted">
-              <Spinner />
-              <span>Fetching the transcript…</span>
-            </div>
-          )}
-
-          {/* Transcript error row (preview stays put above) */}
-          {status.phase === "transcript-error" && (
-            <div className="mt-3 flex items-start gap-2 text-sm text-xn-accent">
-              <AlertIcon />
-              <span>{status.message}</span>
-            </div>
-          )}
 
           {/* ── Generation stage ── */}
           {inGenerationStage && (
@@ -582,8 +572,8 @@ export default function CreatePage() {
               {/* Picker is hidden once output is shown, to keep focus on result */}
               {status.phase !== "output" && (
                 <>
-                  <h2 className="mb-1 font-serif text-h3 text-xn-ink">
-                    Choose a format
+                  <h2 className="mb-1 text-h5 text-xn-ink">
+                    What should it become?
                   </h2>
                   <p className="mb-4 text-sm text-xn-ink-muted">
                     Transcript ready — {status.transcript.segmentCount} lines ·{" "}
@@ -608,32 +598,34 @@ export default function CreatePage() {
                     className="mt-5"
                   />
 
-                  <div className="mt-5 flex items-center gap-3">
-                    <Button
-                      variant="primary"
-                      onClick={handleGenerate}
-                      disabled={!selectedType || needsPlatform || isGenerating}
-                    >
-                      {isGenerating
-                        ? "Generating…"
-                        : status.phase === "generate-error"
+                  {/* The wait replaces the button row rather than sitting
+                      beside it. A disabled Generate next to a spinner asks
+                      the user to keep looking at a control they cannot use;
+                      once the run starts, the run is the only thing on the
+                      page that matters. */}
+                  {isGenerating && selectedType ? (
+                    <div className="mt-6">
+                      <GeneratingPanel type={selectedType} />
+                    </div>
+                  ) : (
+                    <div className="mt-5 flex items-center gap-3">
+                      <Button
+                        variant="primary"
+                        onClick={handleGenerate}
+                        disabled={!selectedType || needsPlatform}
+                      >
+                        {status.phase === "generate-error"
                           ? "Try again"
                           : "Generate"}
-                    </Button>
-
-                    {isGenerating && (
-                      <div className="flex items-center gap-2 text-sm text-xn-ink-muted">
-                        <Spinner />
-                        <span>Working through the transcript…</span>
-                      </div>
-                    )}
-                  </div>
+                      </Button>
+                    </div>
+                  )}
 
                   {status.phase === "generate-error" && (
-                    <div className="mt-3 flex items-start gap-2 text-sm text-xn-accent">
+                    <p className="mt-3 flex items-start gap-2 text-sm text-xn-danger">
                       <AlertIcon />
                       <span>{status.message}</span>
-                    </div>
+                    </p>
                   )}
                 </>
               )}

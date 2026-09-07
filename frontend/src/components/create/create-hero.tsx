@@ -41,10 +41,17 @@ const PLACEHOLDERS = [
 ];
 
 interface CreateHeroProps {
-  /** Called with the field's value on submit. */
+  /**
+   * Called with the field's value on submit.
+   *
+   * The value arrives as an argument rather than through mirrored state, and
+   * that is load-bearing. HeroInput clears itself once a submit is handed
+   * over, so any copy the page kept in its own state is empty by the time
+   * anything downstream reads it — which is exactly how the search retry came
+   * to submit an empty string. Whatever needs the text must take it from here,
+   * or from the phase that stored it.
+   */
   onSubmit: (value: string) => void;
-  /** Mirrors the field's value up to the page on every keystroke. */
-  onValueChange: (value: string) => void;
   /** Draws the error border and ring. */
   error?: boolean;
   /** Blocks input while a lookup or a search is in flight. */
@@ -55,7 +62,6 @@ interface CreateHeroProps {
 
 export function CreateHero({
   onSubmit,
-  onValueChange,
   error = false,
   disabled = false,
   children,
@@ -73,7 +79,6 @@ export function CreateHero({
         placeholders={PLACEHOLDERS}
         prefix={<LinkGlyph />}
         onSubmit={onSubmit}
-        onValueChange={onValueChange}
         error={error}
         disabled={disabled}
       />

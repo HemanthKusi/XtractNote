@@ -63,7 +63,6 @@ export default function DevCreateRoutePage() {
         {(state === "hero" || state === "hero-error") && (
           <CreateHero
             onSubmit={() => {}}
-            onValueChange={() => {}}
             error={state === "hero-error"}
           >
             {state === "hero-error" && (

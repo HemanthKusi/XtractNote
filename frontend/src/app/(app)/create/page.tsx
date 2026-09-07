@@ -177,7 +177,6 @@ type Status =
 
 export default function CreatePage() {
   const toast = useToast();
-  const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>({ phase: "idle" });
   // Transient UI choices in the picker — not flow phases, so they live apart.
   const [selectedType, setSelectedType] =
@@ -236,10 +235,6 @@ export default function CreatePage() {
     setStatus({ phase: "search-results", query, results: result.data });
   }
 
-  // Thin wrapper so existing callers (Go button, Enter key) stay unchanged.
-  function handleSubmit() {
-    void startFromInput(input);
-  }
 
   // ── Prefill from URL params (extension deep-link) ─────────────
   // The extension opens /create?v=<canonical watch url>&action=<type>.
@@ -265,10 +260,13 @@ export default function CreatePage() {
       setSelectedType(action);
     }
 
-    // Auto-load the video. Seed the input for consistency (though it's hidden
-    // once the preview loads) and run the same submit path a manual paste uses.
+    // Auto-load the video through the same submit path a manual paste uses.
+    //
+    // This used to seed a page-level `input` state as well, "for consistency".
+    // That stopped meaning anything when the field became the hero input,
+    // which owns its own value — the page cannot write into it, so the seed
+    // set a variable nothing read and nothing displayed.
     if (v) {
-      setInput(v);
       void startFromInput(v);
     }
     // Mount-only: reads window.location once. startFromInput is stable enough
@@ -461,7 +459,6 @@ export default function CreatePage() {
       {showInput && (
         <CreateHero
           onSubmit={(value) => void startFromInput(value)}
-          onValueChange={setInput}
           error={status.phase === "error"}
           disabled={isBusy}
         >
@@ -503,7 +500,19 @@ export default function CreatePage() {
             <span>{status.message}</span>
           </p>
           <div className="mt-3">
-            <Button variant="primary" onClick={handleSubmit}>
+            {/* Retry from the PHASE, not from the field.
+                The field empties itself on submit — that is what the hero
+                input does — so by the time this button exists the page's
+                `input` is "". Reading it sent an empty string through
+                extractVideoId, which reports "empty" and rendered "Paste a
+                YouTube link or search a topic to get started" in place of
+                actually rerunning the search.
+                `search-error` already carries the query that failed, which
+                is the only value here that cannot have been cleared. */}
+            <Button
+              variant="primary"
+              onClick={() => void startFromInput(status.query)}
+            >
               Try again
             </Button>
           </div>

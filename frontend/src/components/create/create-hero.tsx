@@ -28,6 +28,7 @@
 // See the create-route issue for what unblocks them.
 // ─────────────────────────────────────────────────────────────
 
+import { Button } from "@/components/ui/button";
 import { HeroInput } from "@/components/ui/hero-input";
 
 // Cycled while the field is idle and empty. Two link shapes and two topic
@@ -71,16 +72,24 @@ export function CreateHero({
       <header className="mb-6">
         <h1 className="text-h3 text-xn-ink">Create</h1>
         <p className="mt-2 text-body text-xn-ink-muted">
-          Paste a link, or search a topic.
+          Paste a link, search a topic, or start from something below.
         </p>
       </header>
 
+      {/* The submit button lives in the field's suffix slot, which is what
+          that slot is for — HeroInput renders a <form>, so this is a real
+          submit and Enter works without a key handler. */}
       <HeroInput
         placeholders={PLACEHOLDERS}
         prefix={<LinkGlyph />}
         onSubmit={onSubmit}
         error={error}
         disabled={disabled}
+        suffix={
+          <Button type="submit" variant="primary" size="md" disabled={disabled}>
+            Convert
+          </Button>
+        }
       />
 
       {children}

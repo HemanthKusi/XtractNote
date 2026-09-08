@@ -13,5 +13,5 @@
 // verifiable when a frame never arrives.
 
 export { AppMenu, type AppMenuProps } from "./app-menu";
-export { MenuShell } from "./menu-shell";
+export { MenuShell, MAIN_CONTENT_ID } from "./menu-shell";
 export { MENU_ENTRIES, pageForPathname, reservedFor, type MenuMode, type PageId } from "./menu-geometry";

@@ -31,6 +31,16 @@ import { useState, type ReactNode } from "react";
 import { AppMenu } from "./app-menu";
 import { MORPH_CSS_EASE, MORPH_MS, reservedFor, type MenuMode, type PageId } from "./menu-geometry";
 
+/**
+ * The content landmark's id, and the skip link's target.
+ *
+ * Exported rather than written out in both places because a link whose target
+ * has drifted fails in total silence — the browser does nothing, and nothing
+ * says why. Importing it means the pair can only break by deleting one end,
+ * which the compiler reports.
+ */
+export const MAIN_CONTENT_ID = "main-content";
+
 export function MenuShell({
   children,
   activePage,
@@ -70,7 +80,23 @@ export function MenuShell({
           transition: `padding-left ${MORPH_MS}ms ${MORPH_CSS_EASE}`,
         }}
       >
-        <main className="h-full overflow-y-auto px-8 py-6">{children}</main>
+        {/* `tabIndex={-1}` is what makes the skip link work, and it is not
+            optional. An id alone moves the browser's reading position without
+            moving keyboard focus, so the next Tab resumes from the header and
+            the link looks broken while appearing to be wired.
+
+            The outline is suppressed because focus arrives here only from that
+            link — `tabIndex={-1}` keeps <main> out of the tab sequence, so it
+            is never navigated TO and a ring around the whole scroll container
+            would read as a rendering fault. The indicator that has to be
+            visible is the skip link's own, in AppShell. */}
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className="h-full overflow-y-auto px-8 py-6 focus:outline-none"
+        >
+          {children}
+        </main>
       </div>
     </>
   );

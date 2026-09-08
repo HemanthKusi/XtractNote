@@ -236,6 +236,31 @@ export default function CreatePage() {
     results: SearchResultVideo[];
   } | null>(null);
 
+  /**
+   * Which run the page is currently interested in.
+   *
+   * ── The bug this exists to stop ──
+   *
+   * Every async step here ends in setStatus, and every one of those used to
+   * fire unconditionally. So: start a generation, cancel it, and when the
+   * request eventually resolved it called setStatus({ phase: "output" }) and
+   * threw the user into a result they had abandoned. The same held for a
+   * search that landed after a link was pasted, and for an error from a run
+   * nobody was waiting on any more.
+   *
+   * Bumping this invalidates everything in flight. Each async handler takes a
+   * token before its first await and checks it after every one; a token that
+   * no longer matches means the user has moved on and the result is dropped.
+   *
+   * A ref rather than state on purpose — it must be readable inside a closure
+   * that started several awaits ago, and reading state there gives the value
+   * from the render that began the run, which is exactly the stale value the
+   * guard is trying to detect.
+   */
+  const runRef = useRef(0);
+  const beginRun = () => ++runRef.current;
+  const isStale = (token: number) => runRef.current !== token;
+
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState("");
 
@@ -243,6 +268,10 @@ export default function CreatePage() {
   // set `input` (e.g. the prefill effect) can pass the value directly without
   // waiting for the async state update to land.
   async function startFromInput(rawInput: string) {
+    // Every submit supersedes whatever was already running: a slow search must
+    // not land on top of a link pasted after it, and vice versa.
+    const run = beginRun();
+
     // Step 1 — extract the ID on the client (instant, no network).
     const extracted = extractVideoId(rawInput);
 
@@ -254,6 +283,7 @@ export default function CreatePage() {
       setLastSearch(null);
       setStatus({ phase: "loading" });
       const result = await fetchVideoMetadata(extracted.videoId);
+      if (isStale(run)) return;
       if (!result.ok) {
         setStatus({ phase: "error", message: ERROR_MESSAGES[result.reason] });
         return;
@@ -275,6 +305,7 @@ export default function CreatePage() {
     const query = rawInput.trim();
     setStatus({ phase: "searching", query });
     const result = await searchVideos(query);
+    if (isStale(run)) return;
     if (!result.ok) {
       setStatus({
         phase: "search-error",
@@ -348,8 +379,13 @@ export default function CreatePage() {
       void startFromInput(v);
     }
     // Mount-only: reads window.location once, and re-running it would re-fetch
-    // a video the user may have already moved on from. The empty deps array is
-    // the behaviour, not an oversight.
+    // a video the user may have already moved on from. startFromInput is
+    // recreated every render, so listing it would defeat exactly that — the
+    // empty deps array is the behaviour, not an oversight.
+    //
+    // Silenced rather than left as a warning: three warnings in this project
+    // are deliberate and a fourth blending in is how a real one gets missed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // A search result was picked — feed its videoId into the SAME metadata step
@@ -363,8 +399,11 @@ export default function CreatePage() {
    * recommendation tiles, so no entry into the flow can drift from another.
    */
   async function handleUseSearchResult(videoId: string) {
+    const run = beginRun();
     setStatus({ phase: "loading" });
     const result = await fetchVideoMetadata(videoId);
+    // Clicking a second result, or typing something new, invalidates this one.
+    if (isStale(run)) return;
     if (!result.ok) {
       setStatus({ phase: "error", message: ERROR_MESSAGES[result.reason] });
       return;
@@ -385,6 +424,8 @@ export default function CreatePage() {
    * lastSearch is the search being edited — returning to it is harmless.
    */
   function handleChange() {
+    // Anything in flight belongs to the video being replaced.
+    beginRun();
     setSelectedType(null);
     setSelectedPlatform(null);
 
@@ -415,22 +456,25 @@ export default function CreatePage() {
   /**
    * Abandon a run in progress — back to the picker, video intact.
    *
-   * ── This does not stop the work ──
+   * ── This does not stop the work, but it does drop the result ──
    *
-   * generateContent is a plain awaited call with no abort signal, so the
-   * request keeps running and its result is simply dropped when it lands in a
-   * phase that no longer wants it. The user gets what they asked for (the
-   * screen goes away, nothing is saved) but the tokens are still spent, which
-   * is why the confirmation says the credits are not refunded.
+   * An earlier version of this comment claimed the result "is simply dropped
+   * when it lands in a phase that no longer wants it". That was false when it
+   * was written: nothing checked. The in-flight call resolved and set the
+   * output phase regardless, throwing the user into a result they had just
+   * abandoned. beginRun() below is what makes the claim true.
    *
-   * A real cancel needs an AbortController through the API layer at minimum,
-   * and server-side cancellation once generation is async. Recorded rather
-   * than hidden: a Cancel button that quietly does half the job is worse than
-   * one that says what it does.
+   * What is still true: generateContent has no abort signal, so the request
+   * keeps running and the tokens are spent either way, which is why the
+   * confirmation says the credits are not refunded. A real cancel needs an
+   * AbortController through the API layer at minimum, and server-side
+   * cancellation once generation is async.
    */
   function handleCancelGeneration() {
     const current = status;
     if (current.phase !== "generating") return;
+    // Invalidate the run in flight so its completion cannot come back.
+    beginRun();
     setStatus({ phase: "picking", meta: current.meta });
   }
 
@@ -447,6 +491,9 @@ export default function CreatePage() {
     if (selectedType === "social" && !selectedPlatform) return;
 
     const { meta } = base;
+    // Taken BEFORE the first await. Cancelling, or starting anything else,
+    // bumps the counter and every check below then drops this run's results.
+    const run = beginRun();
     setStatus({ phase: "generating", meta, contentType: selectedType });
 
     // ── The transcript is fetched HERE now ──
@@ -456,6 +503,7 @@ export default function CreatePage() {
     // wait, in the place a wait is expected — and the generation screen shows
     // "Reading the transcript" as a real step rather than a decorative one.
     const transcriptResult = await fetchTranscript(meta.videoId);
+    if (isStale(run)) return;
     if (!transcriptResult.ok) {
       setStatus({
         phase: "generate-error",
@@ -476,6 +524,9 @@ export default function CreatePage() {
       selectedType,
       platform,
     );
+    // The important one. Without it a cancelled run still resolved and threw
+    // the user into the output screen for content they had abandoned.
+    if (isStale(run)) return;
     if (!result.ok) {
       setStatus({
         phase: "generate-error",
@@ -496,10 +547,16 @@ export default function CreatePage() {
     // Guard: don't double-save the same result.
     if (saveState === "saving" || saveState === "saved") return;
 
+    const run = beginRun();
     setSaveState("saving");
     setSaveError("");
 
     const result = await saveGeneratedContent(current.meta, current.result);
+    // Leaving the output — "Generate another", or changing the video — while a
+    // save is in flight would otherwise land "Saved ✓" and a toast on whatever
+    // is on screen by then. The row is still written either way; what is
+    // dropped is only the confirmation, which now has nowhere to belong.
+    if (isStale(run)) return;
     if (!result.ok) {
       setSaveState("idle");
       setSaveError(ERROR_MESSAGES[result.reason]);
@@ -515,6 +572,8 @@ export default function CreatePage() {
     // Reuse the transcript — back to the picker, no re-fetch.
     const current = status;
     if (current.phase !== "output") return;
+    // A save may still be in flight for the result being left behind.
+    beginRun();
     setSelectedType(null);
     setSelectedPlatform(null);
     // Back to the picker. The transcript is refetched on the next generate

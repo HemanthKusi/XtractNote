@@ -6,9 +6,12 @@
 // The results area for topic search. Given the results array (and a
 // `loading` flag), it renders exactly one of:
 //
-//   1. loading           → a few skeleton rows shaped like the real cards
+//   1. loading           → skeletons shaped like the real grid items
 //   2. results.length 0  → the "No videos matched…" empty state
-//   3. results present   → a paginated list of SearchResultCard
+//   3. results present   → a paginated GRID of VideoGridItem, the same
+//                          component the create page uses for its curated
+//                          recommendations, because a result and a suggestion
+//                          are the same kind of thing
 //
 // Pagination is COUNT-DRIVEN and client-side: totalPages = ceil(n / PAGE_SIZE),
 // so 30 results form 3 pages today and 100 would form 10 pages later with no
@@ -23,15 +26,27 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton, SkeletonText } from "@/components/ui/loading-skeleton";
 import type { SearchResultVideo } from "@/lib/youtube/search-types";
-import { SearchResultCard } from "./search-result-card";
+import { formatViewCount } from "@/lib/youtube/format";
+import { VideoGridItem } from "./video-grid-item";
 
 // How many results per page. The only place the page size is defined —
 // pagination math derives everything else from it and results.length.
-const PAGE_SIZE = 10;
+//
+// ── Why 12 and not 10 ──
+//
+// Results are a grid now, not a list. At the ~3 columns this content area
+// gives, 10 items are three full rows plus a single orphan — a row with one
+// tile in it and two columns of empty space, which reads as a rendering
+// fault rather than as the end of a page.
+//
+// 12 divides evenly by 2, 3, 4 and 6, so every column count this container
+// can produce ends on a full row. With the 30 results the search returns
+// that is 12 / 12 / 6 across three pages: the last is short, which is
+// unavoidable and reads as "the end", not as a gap.
+const PAGE_SIZE = 12;
 
 // How many skeleton rows to show while a search is in flight. Fewer than a
 // full page — enough to signal "loading" without a towering column.
@@ -74,31 +89,28 @@ interface SearchResultsProps {
 }
 
 // ── Loading skeleton row ────────────────────────────────────
-// Mirrors SearchResultCard's shape (same Card shell, same horizontal layout)
-// so the swap from loading to loaded doesn't reflow. Sizes are passed to
-// Skeleton as PROPS (not Tailwind classes), which is how Skeleton reads them.
+// Mirrors VideoGridItem's shape — thumbnail on top at the same 158px, then
+// the title, channel and meta lines beneath — so the swap from loading to
+// loaded does not reflow. It used to mirror the wide card this replaced; a
+// skeleton shaped like the previous layout is worse than none, because it
+// promises a shape the page will not deliver.
+//
+// Sizes are passed to Skeleton as PROPS, not Tailwind classes, which is how
+// Skeleton reads them.
 function ResultRowSkeleton() {
   return (
-    <Card variant="default" padding="none">
-      <div className="flex flex-col gap-3 p-3 sm:flex-row sm:gap-4">
-        {/* Thumbnail block — wrapper controls responsive width, Skeleton fills it */}
-        <div className="w-full shrink-0 sm:w-60">
-          <Skeleton width="100%" height={135} />
-        </div>
-
-        {/* Text lines */}
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <Skeleton width="80%" height={18} />
-          <Skeleton width="45%" height={13} />
-          <div className="mt-1">
-            <SkeletonText lines={2} lineHeight={12} gap={8} />
-          </div>
-          <div className="mt-auto pt-3">
-            <Skeleton width={120} height={30} rounded="9999px" />
-          </div>
-        </div>
+    <div className="flex flex-col">
+      <Skeleton width="100%" height={158} />
+      <div className="mt-2.5">
+        <SkeletonText lines={2} lineHeight={16} gap={6} />
       </div>
-    </Card>
+      <div className="mt-2">
+        <Skeleton width="55%" height={13} />
+      </div>
+      <div className="mt-1.5">
+        <Skeleton width="35%" height={11} />
+      </div>
+    </div>
   );
 }
 
@@ -115,8 +127,13 @@ export function SearchResults({
 
   // 1. Loading — skeleton rows, no pagination.
   if (loading) {
+    // Same grid as the loaded state, for the same reason the skeleton matches
+    // the item: the two have to occupy the same shape or the swap reflows.
     return (
-      <div className={`flex flex-col gap-3 ${className}`} aria-busy="true">
+      <div
+        className={`grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-x-5 gap-y-7 ${className}`}
+        aria-busy="true"
+      >
         {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
           <ResultRowSkeleton key={i} />
         ))}
@@ -164,13 +181,30 @@ export function SearchResults({
         {results.length === 1 ? "" : "s"} for “{query}”
       </p>
 
-      {/* The current page of cards. */}
-      <div className="flex flex-col gap-3">
+      {/* ── The current page of results, as a grid ──
+          Was a vertical stack of wide cards. A result and a recommendation
+          are the same kind of thing — a video you might pick — and giving
+          them different layouts drew a distinction that does not exist, so
+          both now use VideoGridItem.
+
+          Container-derived columns, never viewport breakpoints: the app
+          shell's menu alone moves this column by 168px, so any `md:` here
+          fires at a width the content area never actually has.
+
+          What the swap gives up: the per-result "Watch on YouTube" link that
+          SearchResultCard carried. The whole tile is the action now, and the
+          source panel offers that link once a video is chosen. */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-x-5 gap-y-7">
         {pageItems.map((video) => (
-          <SearchResultCard
+          <VideoGridItem
             key={video.videoId}
-            video={video}
-            onUse={onUse}
+            videoId={video.videoId}
+            title={video.title}
+            channel={video.channel}
+            thumbnailUrl={video.thumbnailUrl}
+            durationSeconds={video.durationSeconds}
+            meta={formatViewCount(video.viewCount)}
+            onSelect={() => onUse(video.videoId)}
           />
         ))}
       </div>

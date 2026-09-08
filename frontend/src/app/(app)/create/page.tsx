@@ -8,7 +8,7 @@
 //         -> (looks like a URL)  -> fetchVideoMetadata -> SourcePanel
 //         -> (not a URL, a topic)-> searchVideos -> SearchResults
 //                                -> (Use this video) -> fetchVideoMetadata -> …
-//         -> (Continue) -> fetchTranscript
+//         -> fetchTranscript (no confirmation step)
 //         -> (pick a type) -> [if social: pick a platform] -> generateContent
 //                          -> OutputView
 //
@@ -24,6 +24,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   extractVideoId,
@@ -56,8 +57,14 @@ import { CreateHero } from "@/components/create/create-hero";
 import { GeneratingPanel } from "@/components/create/generating-panel";
 import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
 import { SearchResults } from "@/components/create/search-results";
+import { DraftsBand } from "@/components/create/drafts-band";
 import { SourcePanel } from "@/components/create/source-panel";
+import { VideoGridItem } from "@/components/create/video-grid-item";
 import { OutputView } from "@/components/output/output-view";
+import { fetchDrafts, type HistoryItem } from "@/lib/api/history";
+import { contentTypeColors } from "@/lib/constants/theme";
+import { ROUTES } from "@/lib/constants/routes";
+import { RECOMMENDED_VIDEOS } from "@/lib/constants/recommended-videos";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/shared/toast-provider";
@@ -132,7 +139,7 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
 };
 
 // ── A small, explicit state machine ─────────────────────────
-// Metadata stage (idle/loading/ready/error) + topic-search stage
+// Metadata stage (idle/loading/error) + topic-search stage
 // (searching/search-results/search-error) + transcript stage
 // (transcribing/transcript-error) + generation stage
 // (picking/generating/output). Every stage past metadata carries `meta`,
@@ -142,30 +149,50 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
 // The chosen content type and social platform are NOT phases — they're
 // transient picker state (selectedType / selectedPlatform below), the same
 // way selectedType always has been.
+// ── There is no "ready" phase, deliberately ──
+//
+// There used to be: metadata loaded, and the page asked "continue with this
+// video?" before fetching the transcript. That confirmation confirmed nothing.
+// Clicking a search result IS the choice, and pasting a link is more specific
+// still — the user named one video. Worse, the screen it interrupted already
+// carries a "Change video" control, so the flow asked a question whose answer
+// was available one step later anyway.
+//
+// Metadata now runs straight into the transcript fetch, so `loading` leads to
+// `transcribing` with nothing in between. `transcript-error` keeps its own
+// retry, which is the only place that fetch is triggered by a person.
 type Status =
   | { phase: "idle" }
   | { phase: "loading" }
-  | { phase: "ready"; meta: VideoMeta }
   | { phase: "error"; message: string }
   // Topic search
   | { phase: "searching"; query: string }
   | { phase: "search-results"; query: string; results: SearchResultVideo[] }
   | { phase: "search-error"; query: string; message: string }
-  // Transcript
-  | { phase: "transcribing"; meta: VideoMeta }
-  | { phase: "transcript-error"; meta: VideoMeta; message: string }
-  // Generation
-  | { phase: "picking"; meta: VideoMeta; transcript: Transcript }
+  // ── The transcript is fetched inside GENERATION, not before it ──
+  //
+  // It used to have its own phase between metadata and the picker, so the
+  // user watched a spinner before they were allowed to choose anything. The
+  // wait bought them nothing: the transcript does not change which formats
+  // are available, and every format needs the same one.
+  //
+  // Moving it into generation puts the whole wait in the one place a wait is
+  // expected. The picker now appears the moment metadata lands, and "Reading
+  // the transcript" becomes a genuine step in the pipeline the generation
+  // screen shows rather than something that already happened offscreen.
+  //
+  // A transcript failure therefore surfaces as a generation failure. That is
+  // correct: from the user's side the thing that failed IS the generation,
+  // and ERROR_MESSAGES already carries every transcript reason.
+  | { phase: "picking"; meta: VideoMeta }
   | {
       phase: "generating";
       meta: VideoMeta;
-      transcript: Transcript;
       contentType: GeneratableContentType;
     }
   | {
       phase: "generate-error";
       meta: VideoMeta;
-      transcript: Transcript;
       message: string;
     }
   | {
@@ -177,6 +204,7 @@ type Status =
 
 export default function CreatePage() {
   const toast = useToast();
+  const router = useRouter();
   const [status, setStatus] = useState<Status>({ phase: "idle" });
   // Transient UI choices in the picker — not flow phases, so they live apart.
   const [selectedType, setSelectedType] =
@@ -188,6 +216,51 @@ export default function CreatePage() {
 
   // Save state for the output stage. Transient UI, so it lives apart from the
   // flow machine (like selectedType). Reset whenever a new result appears.
+  // Unfinished work for the "pick up where you left off" band. Empty until
+  // generation starts writing status 'draft' — see fetchDrafts. The band
+  // renders nothing on an empty list, so a failed fetch degrades to the same
+  // thing as no drafts, which is why the error is swallowed rather than
+  // surfaced: a suggestion band cannot be worth an error message on the page
+  // the user came here to use.
+  const [drafts, setDrafts] = useState<HistoryItem[]>([]);
+
+  // Refresh rotates the curated list. It is deterministic (no Math.random at
+  // render) so the server and client agree on first paint.
+  const [shuffle, setShuffle] = useState(0);
+
+  // The last search, kept so "Change video" can return to its results rather
+  // than to an empty field. Cleared by a pasted link, which names one video
+  // and therefore has no list to go back to.
+  const [lastSearch, setLastSearch] = useState<{
+    query: string;
+    results: SearchResultVideo[];
+  } | null>(null);
+
+  /**
+   * Which run the page is currently interested in.
+   *
+   * ── The bug this exists to stop ──
+   *
+   * Every async step here ends in setStatus, and every one of those used to
+   * fire unconditionally. So: start a generation, cancel it, and when the
+   * request eventually resolved it called setStatus({ phase: "output" }) and
+   * threw the user into a result they had abandoned. The same held for a
+   * search that landed after a link was pasted, and for an error from a run
+   * nobody was waiting on any more.
+   *
+   * Bumping this invalidates everything in flight. Each async handler takes a
+   * token before its first await and checks it after every one; a token that
+   * no longer matches means the user has moved on and the result is dropped.
+   *
+   * A ref rather than state on purpose — it must be readable inside a closure
+   * that started several awaits ago, and reading state there gives the value
+   * from the render that began the run, which is exactly the stale value the
+   * guard is trying to detect.
+   */
+  const runRef = useRef(0);
+  const beginRun = () => ++runRef.current;
+  const isStale = (token: number) => runRef.current !== token;
+
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState("");
 
@@ -195,18 +268,27 @@ export default function CreatePage() {
   // set `input` (e.g. the prefill effect) can pass the value directly without
   // waiting for the async state update to land.
   async function startFromInput(rawInput: string) {
+    // Every submit supersedes whatever was already running: a slow search must
+    // not land on top of a link pasted after it, and vice versa.
+    const run = beginRun();
+
     // Step 1 — extract the ID on the client (instant, no network).
     const extracted = extractVideoId(rawInput);
 
-    // Step 1a — it's a real YouTube video URL: the original flow, unchanged.
+    // Step 1a — a real YouTube video URL.
     if (extracted.ok) {
+      // A link names exactly one video, so any remembered search is no longer
+      // what the user is working from. Dropping it here is what makes "Change
+      // video" return to the field rather than to stale results.
+      setLastSearch(null);
       setStatus({ phase: "loading" });
       const result = await fetchVideoMetadata(extracted.videoId);
+      if (isStale(run)) return;
       if (!result.ok) {
         setStatus({ phase: "error", message: ERROR_MESSAGES[result.reason] });
         return;
       }
-      setStatus({ phase: "ready", meta: result.data });
+      setStatus({ phase: "picking", meta: result.data });
       return;
     }
 
@@ -223,6 +305,7 @@ export default function CreatePage() {
     const query = rawInput.trim();
     setStatus({ phase: "searching", query });
     const result = await searchVideos(query);
+    if (isStale(run)) return;
     if (!result.ok) {
       setStatus({
         phase: "search-error",
@@ -232,9 +315,35 @@ export default function CreatePage() {
       return;
     }
     // Success — may be an empty array; SearchResults shows its empty state.
+    // Remembered so "Change video" can return to these rather than to a blank
+    // field: a search produced a LIST, and discarding it would make the user
+    // run the same query again to see the other nine results.
+    setLastSearch({ query, results: result.data });
     setStatus({ phase: "search-results", query, results: result.data });
   }
 
+
+  // Load unfinished work once, on mount. Not awaited by anything and not
+  // gated on a phase — the band it feeds only renders on idle, and a list
+  // that arrives late simply appears.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const result = await fetchDrafts();
+      if (live && result.ok) setDrafts(result.data);
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // The curated list, rotated by Refresh. Rotation rather than a random
+  // shuffle so the order is a pure function of a counter — a Math.random here
+  // would differ between the server render and the client's first, which is
+  // a hydration mismatch.
+  const recommendations = RECOMMENDED_VIDEOS.map(
+    (_, index, all) => all[(index + shuffle) % all.length]
+  );
 
   // ── Prefill from URL params (extension deep-link) ─────────────
   // The extension opens /create?v=<canonical watch url>&action=<type>.
@@ -269,28 +378,66 @@ export default function CreatePage() {
     if (v) {
       void startFromInput(v);
     }
-    // Mount-only: reads window.location once. startFromInput is stable enough
-    // for this one-shot use; we intentionally don't want it re-running.
+    // Mount-only: reads window.location once, and re-running it would re-fetch
+    // a video the user may have already moved on from. startFromInput is
+    // recreated every render, so listing it would defeat exactly that — the
+    // empty deps array is the behaviour, not an oversight.
+    //
+    // Silenced rather than left as a warning: three warnings in this project
+    // are deliberate and a fourth blending in is how a real one gets missed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // A search result was picked — feed its videoId into the SAME metadata step
   // the URL path uses, so it lands in the identical preview → transcript →
   // generate flow.
+  /**
+   * Metadata is in — go straight for the transcript.
+   *
+   * The single path from "we know which video" to "the user can choose a
+   * format", shared by the pasted-link route, the search-result route and the
+   * recommendation tiles, so no entry into the flow can drift from another.
+   */
   async function handleUseSearchResult(videoId: string) {
+    const run = beginRun();
     setStatus({ phase: "loading" });
     const result = await fetchVideoMetadata(videoId);
+    // Clicking a second result, or typing something new, invalidates this one.
+    if (isStale(run)) return;
     if (!result.ok) {
       setStatus({ phase: "error", message: ERROR_MESSAGES[result.reason] });
       return;
     }
-    setStatus({ phase: "ready", meta: result.data });
+    // Straight to the picker. No confirmation, and no transcript wait.
+    setStatus({ phase: "picking", meta: result.data });
   }
 
+  /**
+   * "Change video" — back to wherever the current video was chosen FROM.
+   *
+   * A search produced a list of candidates, so returning to a blank field
+   * would make the user re-run the identical query to reach the other results
+   * they were just looking at. A pasted link produced exactly one video, so
+   * there is nothing to return to and the field is the right destination.
+   *
+   * Also serves as "Edit search" from the results and empty states, where
+   * lastSearch is the search being edited — returning to it is harmless.
+   */
   function handleChange() {
-    // Back to the input (keep the text so they can edit it). Also serves as
-    // "Edit search" from the results/empty state.
+    // Anything in flight belongs to the video being replaced.
+    beginRun();
     setSelectedType(null);
     setSelectedPlatform(null);
+
+    if (lastSearch) {
+      setStatus({
+        phase: "search-results",
+        query: lastSearch.query,
+        results: lastSearch.results,
+      });
+      return;
+    }
+
     setStatus({ phase: "idle" });
   }
 
@@ -302,29 +449,33 @@ export default function CreatePage() {
     if (type !== "social") setSelectedPlatform(null);
   }
 
-  async function handleContinue() {
-    // Valid from "ready" (first try) or "transcript-error" (retry).
+  // The transcript retry lived here. It is gone with the phase it served:
+  // the fetch now happens inside handleGenerate, so retrying it is retrying
+  // the generation, and `generate-error` already has that button.
+
+  /**
+   * Abandon a run in progress — back to the picker, video intact.
+   *
+   * ── This does not stop the work, but it does drop the result ──
+   *
+   * An earlier version of this comment claimed the result "is simply dropped
+   * when it lands in a phase that no longer wants it". That was false when it
+   * was written: nothing checked. The in-flight call resolved and set the
+   * output phase regardless, throwing the user into a result they had just
+   * abandoned. beginRun() below is what makes the claim true.
+   *
+   * What is still true: generateContent has no abort signal, so the request
+   * keeps running and the tokens are spent either way, which is why the
+   * confirmation says the credits are not refunded. A real cancel needs an
+   * AbortController through the API layer at minimum, and server-side
+   * cancellation once generation is async.
+   */
+  function handleCancelGeneration() {
     const current = status;
-    const meta =
-      current.phase === "ready" || current.phase === "transcript-error"
-        ? current.meta
-        : null;
-    if (!meta) return;
-
-    // Fetch the transcript — preview stays visible, Continue shows a spinner.
-    setStatus({ phase: "transcribing", meta });
-    const result = await fetchTranscript(meta.videoId);
-    if (!result.ok) {
-      setStatus({
-        phase: "transcript-error",
-        meta,
-        message: ERROR_MESSAGES[result.reason],
-      });
-      return;
-    }
-
-    // Success — transcript ready; move to format selection.
-    setStatus({ phase: "picking", meta, transcript: result.data });
+    if (current.phase !== "generating") return;
+    // Invalidate the run in flight so its completion cannot come back.
+    beginRun();
+    setStatus({ phase: "picking", meta: current.meta });
   }
 
   async function handleGenerate() {
@@ -339,8 +490,29 @@ export default function CreatePage() {
     // but guard here too so no other path can generate social without it.
     if (selectedType === "social" && !selectedPlatform) return;
 
-    const { meta, transcript } = base;
-    setStatus({ phase: "generating", meta, transcript, contentType: selectedType });
+    const { meta } = base;
+    // Taken BEFORE the first await. Cancelling, or starting anything else,
+    // bumps the counter and every check below then drops this run's results.
+    const run = beginRun();
+    setStatus({ phase: "generating", meta, contentType: selectedType });
+
+    // ── The transcript is fetched HERE now ──
+    //
+    // It used to be a phase of its own before the picker, which made the user
+    // wait before they were allowed to choose anything. Both waits are now one
+    // wait, in the place a wait is expected — and the generation screen shows
+    // "Reading the transcript" as a real step rather than a decorative one.
+    const transcriptResult = await fetchTranscript(meta.videoId);
+    if (isStale(run)) return;
+    if (!transcriptResult.ok) {
+      setStatus({
+        phase: "generate-error",
+        meta,
+        message: ERROR_MESSAGES[transcriptResult.reason],
+      });
+      return;
+    }
+    const transcript = transcriptResult.data;
 
     // Only send a platform for social — computed explicitly so a leftover
     // value can't ride along with another type.
@@ -352,11 +524,13 @@ export default function CreatePage() {
       selectedType,
       platform,
     );
+    // The important one. Without it a cancelled run still resolved and threw
+    // the user into the output screen for content they had abandoned.
+    if (isStale(run)) return;
     if (!result.ok) {
       setStatus({
         phase: "generate-error",
         meta,
-        transcript,
         message: ERROR_MESSAGES[result.reason],
       });
       return;
@@ -373,10 +547,16 @@ export default function CreatePage() {
     // Guard: don't double-save the same result.
     if (saveState === "saving" || saveState === "saved") return;
 
+    const run = beginRun();
     setSaveState("saving");
     setSaveError("");
 
     const result = await saveGeneratedContent(current.meta, current.result);
+    // Leaving the output — "Generate another", or changing the video — while a
+    // save is in flight would otherwise land "Saved ✓" and a toast on whatever
+    // is on screen by then. The row is still written either way; what is
+    // dropped is only the confirmation, which now has nowhere to belong.
+    if (isStale(run)) return;
     if (!result.ok) {
       setSaveState("idle");
       setSaveError(ERROR_MESSAGES[result.reason]);
@@ -392,13 +572,14 @@ export default function CreatePage() {
     // Reuse the transcript — back to the picker, no re-fetch.
     const current = status;
     if (current.phase !== "output") return;
+    // A save may still be in flight for the result being left behind.
+    beginRun();
     setSelectedType(null);
     setSelectedPlatform(null);
-    setStatus({
-      phase: "picking",
-      meta: current.meta,
-      transcript: current.transcript,
-    });
+    // Back to the picker. The transcript is refetched on the next generate
+    // rather than carried — one extra call, in exchange for the picker no
+    // longer being a phase that has to hold a payload it does not use.
+    setStatus({ phase: "picking", meta: current.meta });
   }
 
   const isLoading = status.phase === "loading";
@@ -417,9 +598,6 @@ export default function CreatePage() {
 
   // The video preview is shown for every stage past metadata.
   const meta =
-    status.phase === "ready" ||
-    status.phase === "transcribing" ||
-    status.phase === "transcript-error" ||
     status.phase === "picking" ||
     status.phase === "generating" ||
     status.phase === "generate-error" ||
@@ -475,6 +653,57 @@ export default function CreatePage() {
               <span>{status.message}</span>
             </p>
           )}
+
+          {/* ── The body of the idle page ──
+              Inside CreateHero's children, so it sits under the field and
+              disappears with it the moment a video resolves.
+
+              Only on `idle` and `error` — not while a search runs or its
+              results are up. Those replace this: the user has already said
+              what they want, and a wall of unrelated suggestions beneath
+              their own results is noise. */}
+          {(status.phase === "idle" || status.phase === "error") && (
+            <>
+              {/* Unfinished work first, then suggestions — your own things
+                  before ours. Renders nothing at all when there are no
+                  drafts, rather than an empty state. */}
+              <DraftsBand
+                drafts={drafts}
+                onOpen={(id) => router.push(ROUTES.output(id))}
+              />
+
+              {/* A curated list, not a recommender. The heading says "worth
+                  converting" rather than "picked for you" because nothing
+                  here is personalised and the copy must not imply it is. */}
+              <section className="mt-10">
+                <div className="mb-4 flex items-baseline justify-between gap-4">
+                  <h2 className="text-h5 text-xn-ink">Worth converting</h2>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setShuffle((n) => n + 1)}
+                    icon={<RefreshGlyph />}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-x-5 gap-y-7">
+                  {recommendations.map((video) => (
+                    <VideoGridItem
+                      key={video.videoId}
+                      videoId={video.videoId}
+                      title={video.title}
+                      channel={video.channel}
+                      durationSeconds={video.durationSeconds}
+                      // The same handler a search result uses, so every entry
+                      // into the flow converges on one path.
+                      onSelect={() => void handleUseSearchResult(video.videoId)}
+                    />
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
         </CreateHero>
       )}
 
@@ -519,52 +748,28 @@ export default function CreatePage() {
         </div>
       )}
 
-      {/* Preview + transcript/generation stages (shown once metadata loads) */}
-      {meta && (
+      {/* ── While generating, the panel IS the page ──
+          It carries its own source card, its own progress and its own way
+          out, so rendering the standard source header above it would show
+          the same video twice. */}
+      {status.phase === "generating" && (
+        <GeneratingPanel
+          meta={status.meta}
+          type={status.contentType}
+          onCancel={handleCancelGeneration}
+        />
+      )}
+
+      {/* Preview + picker (shown once metadata loads, except while generating) */}
+      {meta && status.phase !== "generating" && (
         <>
           <h2 className="mb-4 text-h5 text-xn-ink">Using this video</h2>
 
-          <SourcePanel
-            meta={meta}
-            onChange={handleChange}
-            busy={status.phase === "transcribing" || isGenerating}
-            // ── Continue is load-bearing, so it stays ──
-            //
-            // The design merges "source ready" into "choose a format", and in
-            // the specimen that was free because nothing was wired. Here this
-            // button calls handleContinue, which FETCHES THE TRANSCRIPT — the
-            // two phases are separated by a network call and a `transcribing`
-            // state between them. Removing it would mean fetching on arrival,
-            // which is a behaviour change, not a visual one.
-            primary={
-              !inGenerationStage ? (
-                <Button
-                  variant="primary"
-                  onClick={handleContinue}
-                  disabled={status.phase === "transcribing"}
-                >
-                  {status.phase === "transcribing"
-                    ? "Preparing…"
-                    : status.phase === "transcript-error"
-                      ? "Try again"
-                      : "Continue"}
-                </Button>
-              ) : undefined
-            }
-            status={
-              status.phase === "transcribing" ? (
-                <span className="flex items-center gap-2 text-sm text-xn-ink-muted">
-                  <Spinner />
-                  Fetching the transcript…
-                </span>
-              ) : status.phase === "transcript-error" ? (
-                <span className="flex items-start gap-2 text-sm text-xn-danger">
-                  <AlertIcon />
-                  {status.message}
-                </span>
-              ) : undefined
-            }
-          />
+          {/* No primary action. "Continue" used to sit here asking to confirm
+              a video the user had just chosen, and the transcript wait it
+              triggered now happens inside generation — so the card is the
+              subject and its own two controls, nothing more. */}
+          <SourcePanel meta={meta} onChange={handleChange} busy={isGenerating} />
 
           {/* ── Generation stage ── */}
           {inGenerationStage && (
@@ -572,14 +777,15 @@ export default function CreatePage() {
               {/* Picker is hidden once output is shown, to keep focus on result */}
               {status.phase !== "output" && (
                 <>
-                  <h2 className="mb-1 text-h5 text-xn-ink">
+                  {/* The transcript stats that used to sit here are gone with
+                      the phase that fetched them. At this point the transcript
+                      has not been read yet, so "Transcript ready — 412 lines"
+                      would be describing something that does not exist. It was
+                      also answering a question nobody asked: the line count is
+                      not how anyone chooses between a summary and flashcards. */}
+                  <h2 className="mb-4 text-h5 text-xn-ink">
                     What should it become?
                   </h2>
-                  <p className="mb-4 text-sm text-xn-ink-muted">
-                    Transcript ready — {status.transcript.segmentCount} lines ·{" "}
-                    {status.transcript.language}
-                    {status.transcript.isGenerated ? " (auto-generated)" : ""}.
-                  </p>
 
                   <ContentTypePicker
                     selected={selectedType}
@@ -598,25 +804,27 @@ export default function CreatePage() {
                     className="mt-5"
                   />
 
-                  {/* The wait replaces the button row rather than sitting
-                      beside it. A disabled Generate next to a spinner asks
-                      the user to keep looking at a control they cannot use;
-                      once the run starts, the run is the only thing on the
-                      page that matters. */}
-                  {isGenerating && selectedType ? (
-                    <div className="mt-6">
-                      <GeneratingPanel type={selectedType} />
-                    </div>
-                  ) : (
+                  {/* The generating screen is no longer rendered from inside
+                      the picker — it replaces the whole page, above. This
+                      branch only ever shows the button now. */}
+                  {(
                     <div className="mt-5 flex items-center gap-3">
+                      {/* "Make study notes", not "Generate" — the specimen's
+                          copy, and it names the thing rather than the act.
+                          Falls back to "Pick a format" while nothing is
+                          chosen, so the disabled button says WHY it is
+                          disabled instead of just being grey. */}
                       <Button
                         variant="primary"
+                        size="lg"
                         onClick={handleGenerate}
                         disabled={!selectedType || needsPlatform}
                       >
                         {status.phase === "generate-error"
                           ? "Try again"
-                          : "Generate"}
+                          : selectedType
+                            ? `Make ${contentTypeColors[selectedType].label.toLowerCase()}`
+                            : "Pick a format"}
                       </Button>
                     </div>
                   )}
@@ -683,6 +891,26 @@ function Spinner() {
       strokeWidth="2.4"
     >
       <path d="M12 3a9 9 0 1 0 9 9" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function RefreshGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5"
+      aria-hidden="true"
+    >
+      <path d="M20 11a8 8 0 0 0-13.7-5.7L3 8.5" />
+      <path d="M3 4v4.5h4.5" />
+      <path d="M4 13a8 8 0 0 0 13.7 5.7L21 15.5" />
+      <path d="M21 20v-4.5h-4.5" />
     </svg>
   );
 }

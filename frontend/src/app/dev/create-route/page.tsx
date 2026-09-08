@@ -17,6 +17,8 @@ import { useState } from "react";
 import { CreateHero } from "@/components/create/create-hero";
 import { GeneratingPanel } from "@/components/create/generating-panel";
 import { SourcePanel } from "@/components/create/source-panel";
+import { VideoGridItem } from "@/components/create/video-grid-item";
+import { RECOMMENDED_VIDEOS } from "@/lib/constants/recommended-videos";
 import { AppShell } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import type { ContentType } from "@/lib/constants/theme";
@@ -61,15 +63,32 @@ export default function DevCreateRoutePage() {
         </div>
 
         {(state === "hero" || state === "hero-error") && (
-          <CreateHero
-            onSubmit={() => {}}
-            error={state === "hero-error"}
-          >
+          <CreateHero onSubmit={() => {}} error={state === "hero-error"}>
             {state === "hero-error" && (
               <p className="mt-3 text-sm text-xn-danger">
                 That doesn&apos;t look like a YouTube link.
               </p>
             )}
+
+            {/* Mirrors the idle body the route renders, so it can be seen.
+                Kept in step with page.tsx by hand — if the two drift, this
+                harness is the one that is wrong. */}
+            <section className="mt-10">
+              <h2 className="mb-4 text-h5 text-xn-ink">Worth converting</h2>
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-x-5 gap-y-7">
+                {RECOMMENDED_VIDEOS.map((video) => (
+                  <VideoGridItem
+                    key={video.videoId}
+                    videoId={video.videoId}
+                    title={video.title}
+                    channel={video.channel}
+                    durationSeconds={video.durationSeconds}
+                    onSelect={() => {}}
+                  />
+                ))}
+              </div>
+            </section>
+
           </CreateHero>
         )}
 
@@ -96,7 +115,9 @@ export default function DevCreateRoutePage() {
           </>
         )}
 
-        {state === "generating" && <GeneratingPanel type={type} />}
+        {state === "generating" && (
+          <GeneratingPanel meta={META} type={type} onCancel={() => {}} />
+        )}
       </div>
     </AppShell>
   );

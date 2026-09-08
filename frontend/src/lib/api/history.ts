@@ -227,7 +227,10 @@ export async function fetchContentById(id: string): Promise<ContentDetailResult>
  * HistoryItem mapping, so callers (history page + folder detail) reuse
  * HistoryCard unchanged. RLS scopes results to the user either way.
  */
-async function runHistoryQuery(folderId?: string): Promise<HistoryResult> {
+async function runHistoryQuery(
+  folderId?: string,
+  status?: "draft" | "saved"
+): Promise<HistoryResult> {
   const supabase = createClient();
 
   const {
@@ -243,6 +246,7 @@ async function runHistoryQuery(folderId?: string): Promise<HistoryResult> {
       .order("created_at", { ascending: false });
 
     if (folderId) query = query.eq("folder_id", folderId);
+    if (status) query = query.eq("status", status);
 
     const { data, error } = await query;
     if (error || !data) return { ok: false, reason: "fetch-failed" };
@@ -251,4 +255,31 @@ async function runHistoryQuery(folderId?: string): Promise<HistoryResult> {
   } catch {
     return { ok: false, reason: "network" };
   }
+}
+
+/**
+ * Unfinished work — the create page's "pick up where you left off" band.
+ *
+ * ── This returns an empty list today, and that is correct ──
+ *
+ * `generated_content.status` carries 'draft' and DEFAULTS to it, but
+ * `saveGeneratedContent` writes "saved" explicitly on every insert, so no row
+ * has ever been a draft. This query is therefore right and empty rather than
+ * wrong and full, and the band that renders it hides itself when the list is
+ * empty — so the page shows nothing rather than a fabricated one.
+ *
+ * It starts returning rows the moment generation writes 'draft', with no
+ * change here. That write is the actual unblock, and it is deliberately NOT
+ * done as part of a visual pass: it changes when content is persisted, which
+ * is data behaviour.
+ *
+ * ── Why the status filter is on the shared reader ──
+ *
+ * The decision recorded for History is that drafts appear in its main list
+ * WITH A TAG, and that History gains a filter to see them alone. That filter
+ * is this parameter. Adding it here rather than in a second bespoke query is
+ * what stops the two lists drifting apart.
+ */
+export async function fetchDrafts(): Promise<HistoryResult> {
+  return runHistoryQuery(undefined, "draft");
 }

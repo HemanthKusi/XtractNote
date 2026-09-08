@@ -24,6 +24,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   extractVideoId,
@@ -62,6 +63,7 @@ import { VideoGridItem } from "@/components/create/video-grid-item";
 import { OutputView } from "@/components/output/output-view";
 import { fetchDrafts, type HistoryItem } from "@/lib/api/history";
 import { contentTypeColors } from "@/lib/constants/theme";
+import { ROUTES } from "@/lib/constants/routes";
 import { RECOMMENDED_VIDEOS } from "@/lib/constants/recommended-videos";
 
 import { Button } from "@/components/ui/button";
@@ -202,6 +204,7 @@ type Status =
 
 export default function CreatePage() {
   const toast = useToast();
+  const router = useRouter();
   const [status, setStatus] = useState<Status>({ phase: "idle" });
   // Transient UI choices in the picker — not flow phases, so they live apart.
   const [selectedType, setSelectedType] =
@@ -605,7 +608,10 @@ export default function CreatePage() {
               {/* Unfinished work first, then suggestions — your own things
                   before ours. Renders nothing at all when there are no
                   drafts, rather than an empty state. */}
-              <DraftsBand drafts={drafts} />
+              <DraftsBand
+                drafts={drafts}
+                onOpen={(id) => router.push(ROUTES.output(id))}
+              />
 
               {/* A curated list, not a recommender. The heading says "worth
                   converting" rather than "picked for you" because nothing

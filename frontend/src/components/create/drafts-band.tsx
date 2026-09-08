@@ -47,7 +47,22 @@ const COLLAPSED = 3;
  */
 const THUMB = { w: 128, h: 72 } as const;
 
-export function DraftsBand({ drafts }: { drafts: HistoryItem[] }) {
+interface DraftsBandProps {
+  drafts: HistoryItem[];
+  /**
+   * Called with the draft's id when a row is activated.
+   *
+   * Required, not optional. HistoryCard makes its equivalent optional and can
+   * afford to — it is a card that still reads as content without a handler.
+   * These rows are buttons that say "Resume", and a button making a promise
+   * it cannot keep is worse than no button: it takes focus, announces itself
+   * to a screen reader as actionable, and then does nothing. Making the prop
+   * required means the compiler refuses to let that ship.
+   */
+  onOpen: (id: string) => void;
+}
+
+export function DraftsBand({ drafts, onOpen }: DraftsBandProps) {
   const [open, setOpen] = useState(false);
 
   // The whole point: no drafts, no band.
@@ -66,7 +81,8 @@ export function DraftsBand({ drafts }: { drafts: HistoryItem[] }) {
           <li key={draft.id} className="border-b border-xn-border last:border-b-0">
             <button
               type="button"
-              className="group flex w-full items-center gap-4 px-3 py-3 text-left transition-colors duration-xn ease-xn hover:bg-xn-surface-alt"
+              onClick={() => onOpen(draft.id)}
+              className="group flex w-full items-center gap-4 px-3 py-3 text-left transition-colors duration-xn ease-xn hover:bg-xn-surface-alt focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-xn-ink"
             >
               <div style={{ width: THUMB.w }} className="shrink-0">
                 <VideoThumbnail

@@ -21,6 +21,7 @@
 // Structure:
 //
 //   <relative column, full height>
+//     <a>       skip to content              ← first in DOM, hidden until focused
 //     <header>  logo | Topbar                ← fixed 56px, full width
 //     <MenuShell>                            ← padded content + the floating menu
 //       {children}
@@ -49,7 +50,7 @@
 import { type ReactNode } from "react";
 
 import { Logo } from "@/components/layout/logo";
-import { MenuShell } from "@/components/layout/menu";
+import { MAIN_CONTENT_ID, MenuShell } from "@/components/layout/menu";
 import { HEADER_H } from "@/components/layout/menu/menu-geometry";
 import { Topbar } from "@/components/layout/topbar";
 
@@ -66,6 +67,28 @@ export function AppShell({ children }: AppShellProps) {
   return (
     // Full viewport height, and the positioning context the menu anchors to.
     <div className="relative flex h-screen flex-col overflow-hidden">
+      {/* ── Skip to content ──
+          First in the DOM because DOM order is tab order, and that is the
+          whole mechanism: this has to be reachable before the nine controls
+          it exists to bypass — three in the topbar, six in the menu.
+
+          `sr-only` already positions absolutely, so `focus:not-sr-only` alone
+          would return it to static and push the header down. `focus:absolute`
+          puts it back over the header, which is why both appear. */}
+      <a
+        href={`#${MAIN_CONTENT_ID}`}
+        className={[
+          "sr-only",
+          "focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50",
+          "focus:rounded-xn-md focus:border focus:border-xn-border-strong",
+          "focus:bg-xn-surface focus:px-3 focus:py-2",
+          "focus:text-ui focus:text-xn-ink focus:no-underline",
+          "focus:shadow-xn-ring",
+        ].join(" ")}
+      >
+        Skip to content
+      </a>
+
       {/* ── Header band ──
           The logo keeps the corner; the topbar fills the rest. Both carry the
           same bottom border so the line reads as one continuous rule rather

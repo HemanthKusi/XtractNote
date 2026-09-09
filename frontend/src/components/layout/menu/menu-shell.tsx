@@ -31,6 +31,16 @@ import { useState, type ReactNode } from "react";
 import { AppMenu } from "./app-menu";
 import { MORPH_CSS_EASE, MORPH_MS, reservedFor, type MenuMode, type PageId } from "./menu-geometry";
 
+/**
+ * The content landmark's id, and the skip link's target.
+ *
+ * Exported rather than written out in both places because a link whose target
+ * has drifted fails in total silence — the browser does nothing, and nothing
+ * says why. Importing it means the pair can only break by deleting one end,
+ * which the compiler reports.
+ */
+export const MAIN_CONTENT_ID = "main-content";
+
 export function MenuShell({
   children,
   activePage,
@@ -70,7 +80,46 @@ export function MenuShell({
           transition: `padding-left ${MORPH_MS}ms ${MORPH_CSS_EASE}`,
         }}
       >
-        <main className="h-full overflow-y-auto px-8 py-6">{children}</main>
+        {/* `tabIndex={-1}` is what makes the skip link work, and it is not
+            optional. An id alone moves the browser's reading position without
+            moving keyboard focus, so the next Tab resumes from the header and
+            the link looks broken while appearing to be wired.
+
+            ── Why this is focusable AND shows a ring ──
+
+            It first shipped with `focus:outline-none`, on the reasoning that
+            `tabIndex={-1}` keeps <main> out of the tab sequence so it is never
+            navigated TO, which makes suppressing the indicator not a WCAG
+            2.4.7 failure. That is true and it answered the wrong question.
+
+            What a sighted keyboard user actually experiences: they Tab, see
+            "Skip to content", press Enter — and the link disappears, because
+            it goes back to sr-only on blur. Nothing else changes. The one
+            control whose whole job is to move them somewhere gives no sign it
+            did anything.
+
+            So the ring stays, and it is deliberately quiet rather than the
+            accent: inset by 2px so it draws inside the scroll container
+            instead of tracing the viewport edge, in a muted ink that clears
+            the 3:1 a focus indicator needs without a near-black rectangle
+            snapping around the whole page. It is momentary — the next Tab
+            moves focus into the content and takes it away.
+
+            `focus:outline` is doing real work and is not redundant with
+            `focus:outline-2`. In this Tailwind version those utilities are
+            split: `outline-2` emits `outline-width` alone, the arbitrary
+            colour emits `outline-color` alone, and NEITHER sets a style — so
+            without the bare `outline` the default `outline-style: none`
+            stands and the ring paints nothing at all. Read out of the built
+            CSS, not assumed; it is the same silent-nothing failure that
+            `outline-none` produces, which is what this replaced. */}
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className="h-full overflow-y-auto px-8 py-6 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-[color:var(--xn-ink-muted)]"
+        >
+          {children}
+        </main>
       </div>
     </>
   );

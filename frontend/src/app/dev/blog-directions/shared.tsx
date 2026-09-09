@@ -702,13 +702,26 @@ function scrollerFor(start: Element | null): HTMLElement | null {
  *
  * The decision is `activeSectionFor`; this part only measures and feeds it.
  *
- * ── Why positions are re-measured on every frame rather than cached ──
+ * ── What triggers a re-measure ──
  *
- * Section tops move after first paint for reasons that do not fire a resize:
- * a webfont swapping, a thumbnail arriving and pushing content down, the
- * source pane being toggled. A cache invalidated by `resize` alone would be
- * wrong in exactly those cases, and wrong quietly. Six `getBoundingClientRect`
- * calls inside a rAF are not worth optimising away to avoid that.
+ * Scrolling, and a ResizeObserver on both the scroller and its content.
+ *
+ * Scroll alone is not enough, and the gap was found in review. Section tops
+ * move whenever the column reflows, and the things that reflow it here fire
+ * no event at all: collapsing the live menu changes the content padding, the
+ * source pane opening or closing changes the grid, a webfont swaps, a
+ * thumbnail lands. After any of those the active section stays whatever it
+ * was until the user happens to scroll.
+ *
+ * `window`'s resize event does not cover them either — the window never
+ * changes size in any of those cases. That listener was what this used, and
+ * it is exactly the mistake an earlier version of this comment described and
+ * then failed to notice in the code below it.
+ *
+ * Two elements are observed because they move independently. The scroller's
+ * own box changes width when the menu reserves more or less room; its content
+ * changes HEIGHT while the scroller's height stays fixed at `h-full`, so
+ * observing the scroller alone sees nothing when an image arrives.
  *
  * ── Why there is no rAF throttle ──
  *
@@ -720,7 +733,7 @@ function scrollerFor(start: Element | null): HTMLElement | null {
  *
  * A throttle that hides a bug is worse than no throttle at this scale. If a
  * post ever has enough sections for the reads to matter, cache the tops and
- * invalidate on resize plus pane toggle — but measure first.
+ * invalidate from the observer below — but measure first.
  */
 export function useActiveSection(ids: string[]): string {
   const [active, setActive] = useState(ids[0] ?? "");
@@ -750,11 +763,16 @@ export function useActiveSection(ids: string[]): string {
 
     measure();
     scroller.addEventListener("scroll", measure, { passive: true });
-    window.addEventListener("resize", measure);
+
+    // Catches reflow from any cause rather than from an enumerated list of
+    // events, which is the point — the list was wrong once already.
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    if (scroller.firstElementChild) observer.observe(scroller.firstElementChild);
 
     return () => {
       scroller.removeEventListener("scroll", measure);
-      window.removeEventListener("resize", measure);
+      observer.disconnect();
     };
   }, [ids]);
 

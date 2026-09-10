@@ -105,6 +105,20 @@ export function MenuShell({
             snapping around the whole page. It is momentary — the next Tab
             moves focus into the content and takes it away.
 
+            ── `focus-visible`, not `focus` ──
+
+            It shipped as `focus:` and that was wrong for a reason worth
+            keeping: `tabIndex={-1}` makes <main> focusable by CLICK as well
+            as programmatically, so every click anywhere in the page content
+            focused it and drew a 2px rectangle around the whole scroll
+            container. A ring meant to confirm one deliberate jump was firing
+            on ordinary reading.
+
+            `focus-visible` is exactly this distinction — the browser shows
+            the indicator for keyboard-driven focus and suppresses it for a
+            pointer. The skip link keeps its confirmation; a click does not
+            get one it never needed.
+
             `focus:outline` is doing real work and is not redundant with
             `focus:outline-2`. In this Tailwind version those utilities are
             split: `outline-2` emits `outline-width` alone, the arbitrary
@@ -116,7 +130,7 @@ export function MenuShell({
         <main
           id={MAIN_CONTENT_ID}
           tabIndex={-1}
-          className="h-full overflow-y-auto px-8 py-6 focus:outline focus:outline-2 focus:-outline-offset-2 focus:outline-[color:var(--xn-ink-muted)]"
+          className="h-full overflow-y-auto px-8 py-6 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--xn-ink-muted)]"
         >
           {children}
         </main>

@@ -98,39 +98,46 @@ export function MenuShell({
             control whose whole job is to move them somewhere gives no sign it
             did anything.
 
-            So the ring stays, and it is deliberately quiet rather than the
-            accent: inset by 2px so it draws inside the scroll container
-            instead of tracing the viewport edge, in a muted ink that clears
-            the 3:1 a focus indicator needs without a near-black rectangle
-            snapping around the whole page. It is momentary — the next Tab
-            moves focus into the content and takes it away.
+            So an indicator stays. Two things decided what it is.
 
             ── `focus-visible`, not `focus` ──
 
-            It shipped as `focus:` and that was wrong for a reason worth
-            keeping: `tabIndex={-1}` makes <main> focusable by CLICK as well
-            as programmatically, so every click anywhere in the page content
-            focused it and drew a 2px rectangle around the whole scroll
-            container. A ring meant to confirm one deliberate jump was firing
-            on ordinary reading.
+            It shipped as `focus:` and that was wrong: `tabIndex={-1}` makes
+            <main> focusable by CLICK as well as programmatically, so every
+            click anywhere in the page content focused it and drew a rectangle
+            around the whole scroll container. An indicator meant to confirm
+            one deliberate jump was firing on ordinary reading.
 
-            `focus-visible` is exactly this distinction — the browser shows
-            the indicator for keyboard-driven focus and suppresses it for a
-            pointer. The skip link keeps its confirmation; a click does not
-            get one it never needed.
+            `focus-visible` is exactly this distinction — the browser shows the
+            indicator for keyboard-driven focus and suppresses it for a
+            pointer.
 
-            `focus:outline` is doing real work and is not redundant with
-            `focus:outline-2`. In this Tailwind version those utilities are
-            split: `outline-2` emits `outline-width` alone, the arbitrary
-            colour emits `outline-color` alone, and NEITHER sets a style — so
-            without the bare `outline` the default `outline-style: none`
-            stands and the ring paints nothing at all. Read out of the built
-            CSS, not assumed; it is the same silent-nothing failure that
-            `outline-none` produces, which is what this replaced. */}
+            ── A LEFT EDGE, not a ring ──
+
+            The ring could not be made to work here, and the reason is
+            structural rather than a matter of styling. <main> is the full
+            height scroll viewport, and a page pins its own furniture to the
+            top of it — the output route's bar is `sticky` at `z-30` with an
+            opaque fill. That bar is a DESCENDANT of <main>, and a descendant
+            always paints above its ancestor's outline, so it covered the
+            ring's top edge completely. Measured: probing just inside each edge
+            found the bar at the top and <main> on the other three.
+
+            No inset rescues it — the bar occupies the top ~60px, so -2, -4 and
+            -8 all land underneath. And any future page that pins something
+            will do the same thing, so this is not one route's problem.
+
+            A left edge cannot be covered by furniture pinned to the top, it
+            reads unambiguously as "this region", and it does not trace a
+            rectangle around the entire viewport to say so.
+
+            It is an INSET BOX-SHADOW rather than a border, because a border
+            would add 3px to the box and shift every page's content sideways
+            on focus. */}
         <main
           id={MAIN_CONTENT_ID}
           tabIndex={-1}
-          className="h-full overflow-y-auto px-8 py-6 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--xn-ink-muted)]"
+          className="h-full overflow-y-auto px-8 py-6 focus-visible:shadow-[inset_3px_0_0_0_var(--xn-ink-muted)] focus-visible:outline-none"
         >
           {children}
         </main>

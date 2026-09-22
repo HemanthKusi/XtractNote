@@ -37,7 +37,7 @@ import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { useTheme } from "@/components/shared/theme-provider";
 
 import { BlockView, numberEquations, toRoman, widthFor, type RenderCtx } from "./blocks";
-import { DOCS } from "./content";
+import { DOCS, type Reference } from "./content";
 
 // The clip every specimen in this project uses, for continuity.
 const VIDEO = {
@@ -66,6 +66,69 @@ const HIGHLIGHT = {
 // The model is preserved in §16 if it is ever wanted for a listing surface,
 // where an estimate has an actual job.
 
+/**
+ * The reference list, rendered in two places.
+ *
+ * ── Why it is not only in the source pane ──
+ *
+ * The pane is `hidden lg:block`. Below that breakpoint it is not rendered at
+ * all — but the citation markers in the prose still are, and clicking one
+ * still set the active source and switched the pane's tab. With nothing to
+ * switch, the click produced no visible result: a control that announces
+ * itself as actionable and does nothing.
+ *
+ * That is the third time this exact shape has appeared in this project — the
+ * topbar's ⌘K trigger and the create route's "Resume" button were both the
+ * same bug — so it gets fixed rather than deferred to the responsive pass.
+ *
+ * A reference list at the end of a brief is also just what a brief has, so
+ * this is the conventional answer rather than a mobile workaround.
+ */
+function ReferenceList({
+  refs,
+  activeCite,
+  className = "",
+}: {
+  refs: Reference[];
+  activeCite: string | null;
+  className?: string;
+}) {
+  return (
+    <ol className={className}>
+      {refs.map((ref, i) => {
+        const current = activeCite === ref.id;
+        return (
+          <li key={ref.id}>
+            <div
+              className={[
+                "flex gap-2.5 rounded-xn-sm px-2 py-2.5 transition-colors duration-xn ease-xn",
+                current ? "bg-xn-surface-alt" : "",
+              ].join(" ")}
+            >
+              {/* Roman here too, or clicking [iii] in the prose would send you
+                  looking for a 3. */}
+              <span
+                className={[
+                  "mt-px flex h-5 w-6 shrink-0 items-center justify-center rounded-xn-sm font-mono text-micro",
+                  current ? "bg-xn-ink text-xn-bg" : "bg-xn-surface-alt text-xn-ink-muted",
+                ].join(" ")}
+              >
+                {toRoman(i + 1)}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm leading-snug text-xn-ink">{ref.title}</span>
+                <span className="mt-0.5 block font-mono text-micro text-xn-ink-soft">
+                  {ref.authors} · {ref.year} · {ref.venue}
+                </span>
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default function OutputBlocksPage() {
   const [docIndex, setDocIndex] = useState(1); // notes: the middle density
   const [open, setOpen] = useState(true);
@@ -87,6 +150,11 @@ export default function OutputBlocksPage() {
       setActiveCite(id);
       setOpen(true);
       setTab("sources");
+      // Below `lg` the pane does not exist and the inline list is the
+      // destination. Above it the section is display:none, so this resolves to
+      // nothing and the pane switch above is what the user sees — one handler,
+      // correct at both widths, without asking the component how wide it is.
+      document.getElementById("references")?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
   };
 
@@ -162,6 +230,17 @@ export default function OutputBlocksPage() {
                     </section>
                   ))}
                 </div>
+
+                {/* Below `lg` the source pane is not rendered, so this is the
+                    only place a citation can lead. `lg:hidden` is display:none,
+                    which also keeps it out of the accessibility tree at wider
+                    widths rather than announcing every reference twice. */}
+                {doc.references.length > 0 && (
+                  <section id="references" className="mt-12 max-w-measure scroll-mt-20 lg:hidden">
+                    <h2 className="mb-4 font-serif text-h3 leading-tight text-xn-ink">Sources</h2>
+                    <ReferenceList refs={doc.references} activeCite={activeCite} />
+                  </section>
+                )}
               </article>
 
               {/* ── Source pane, now with two modes ── */}
@@ -230,42 +309,11 @@ export default function OutputBlocksPage() {
                           </nav>
                         </>
                       ) : (
-                        <ol className="px-2 py-2">
-                          {doc.references.map((ref, i) => {
-                            const current = activeCite === ref.id;
-                            return (
-                              <li key={ref.id}>
-                                <div
-                                  className={[
-                                    "flex gap-2.5 rounded-xn-sm px-2 py-2.5 transition-colors duration-xn ease-xn",
-                                    current ? "bg-xn-surface-alt" : "",
-                                  ].join(" ")}
-                                >
-                                  {/* Roman here too, or clicking [iii] in the
-                                      prose would send you looking for a 3. */}
-                                  <span
-                                    className={[
-                                      "mt-px flex h-5 w-6 shrink-0 items-center justify-center rounded-xn-sm font-mono text-micro",
-                                      current
-                                        ? "bg-xn-ink text-xn-bg"
-                                        : "bg-xn-surface-alt text-xn-ink-muted",
-                                    ].join(" ")}
-                                  >
-                                    {toRoman(i + 1)}
-                                  </span>
-                                  <span className="min-w-0">
-                                    <span className="block text-sm leading-snug text-xn-ink">
-                                      {ref.title}
-                                    </span>
-                                    <span className="mt-0.5 block font-mono text-micro text-xn-ink-soft">
-                                      {ref.authors} · {ref.year} · {ref.venue}
-                                    </span>
-                                  </span>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ol>
+                        <ReferenceList
+                          refs={doc.references}
+                          activeCite={activeCite}
+                          className="px-2 py-2"
+                        />
                       )}
                     </div>
                   </div>

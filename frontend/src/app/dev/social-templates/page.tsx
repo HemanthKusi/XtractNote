@@ -20,8 +20,11 @@
 //   already decided it. Not a variable and not up for direction work.
 //
 //   ABOVE THE RULE — ours. How this product offers four tones next to
-//   someone else's page. Genuinely open, so it gets four directions
-//   (`directions.tsx`), meant to be mixed rather than ranked.
+//   someone else's page. Genuinely open, so it gets five directions
+//   (`directions.tsx`), meant to be mixed rather than ranked. `E · Bar` is
+//   the one currently chosen; the other four stay because the alternatives
+//   are the reasoning, and keeping only the winner leaves the record saying
+//   what won but not what it beat.
 //
 // One platform per route pass. This is the video description; post, thread,
 // caption and newsletter each get their own, and each will want its own

@@ -2,7 +2,8 @@
 
 // src/app/dev/social-templates/directions.tsx
 //
-// Four treatments of OUR side of the surface — the part above the rule.
+// Five treatments of OUR side of the surface — the part above the rule.
+// `E · Bar` is the one currently chosen.
 //
 // ── What is being judged, and what is not ──
 //
@@ -141,7 +142,7 @@ export interface DirectionProps {
 }
 
 /**
- * The four directions.
+ * The five directions.
  *
  * A RECORD rather than an array, so looking one up by id is total — the
  * compiler knows every key exists and no caller needs a non-null assertion

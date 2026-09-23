@@ -44,9 +44,7 @@
 
 import { BarChart3, Heart, Loader2, MessageCircle, Repeat2 } from "lucide-react";
 
-import { useOnDemand } from "./use-on-demand";
 import {
-  DEFAULT_LENGTH,
   LENGTH_LABEL,
   LENGTH_LIMIT,
   LENGTH_NOTE,
@@ -321,14 +319,28 @@ function ThreadHead({
   );
 }
 
-export function XThread({ threads }: { threads: Record<ThreadLength, Tweet[]> }) {
-  // The same hook tone uses. This file owned a private copy of the race
-  // guard until tone moved to the same model and made a second consumer —
-  // two copies of a guard is two places for it to be subtly wrong.
-  const { value: length, ready, generating, request } = useOnDemand<ThreadLength>(
-    DEFAULT_LENGTH,
-  );
-
+/**
+ * The thread, CONTROLLED.
+ *
+ * Length used to be internal state here, and the route remounted this
+ * component on tone change to reset it. That threw away artefacts the user
+ * had already paid for the moment they returned to a tone — see the note in
+ * `use-on-demand.ts`. Readiness lives with the route now, keyed by the
+ * (tone, length) pair, and this component renders what it is told.
+ */
+export function XThread({
+  threads,
+  length,
+  onRequestLength,
+  lengthReady,
+  lengthGenerating,
+}: {
+  threads: Record<ThreadLength, Tweet[]>;
+  length: ThreadLength;
+  onRequestLength: (next: ThreadLength) => void;
+  lengthReady: ReadonlySet<ThreadLength>;
+  lengthGenerating: ThreadLength | null;
+}) {
   const tweets = threads[length];
   const limit = LENGTH_LIMIT[length];
   const overCount = tweets.filter((t) => budgetFor(t.text, limit).over > 0).length;
@@ -337,9 +349,9 @@ export function XThread({ threads }: { threads: Record<ThreadLength, Tweet[]> })
     <div className="mx-auto w-full max-w-[720px]">
       <ThreadHead
         length={length}
-        onRequest={request}
-        generating={generating}
-        ready={ready}
+        onRequest={onRequestLength}
+        generating={lengthGenerating}
+        ready={lengthReady}
         count={tweets.length}
         overCount={overCount}
       />

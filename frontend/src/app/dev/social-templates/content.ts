@@ -59,6 +59,9 @@ export const TONES = ["professional", "casual", "informative", "funny"] as const
 
 export type Tone = (typeof TONES)[number];
 
+/** The tone a run produces without being asked. */
+export const DEFAULT_TONE: Tone = "professional";
+
 /**
  * What each tone is trying to be.
  *

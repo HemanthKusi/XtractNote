@@ -55,6 +55,16 @@ export interface OnDemand {
    * independent selectors over the same set of artefacts.
    */
   request: (key: string, commit: () => void) => void;
+  /**
+   * Abandon whatever is in flight.
+   *
+   * Needed because not every navigation goes through `request`. Switching
+   * platform changes which artefact is on screen without asking for one, and
+   * a run left running would commit a selection for the platform you just
+   * left. Sharing the token is what makes that one mechanism rather than two
+   * that have to agree.
+   */
+  cancel: () => void;
 }
 
 /**
@@ -108,5 +118,11 @@ export function useOnDemand(
     [ready, delayMs],
   );
 
-  return { ready, generating, request };
+  const cancel = useCallback(() => {
+    runToken.current += 1;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    setGenerating(null);
+  }, []);
+
+  return { ready, generating, request, cancel };
 }

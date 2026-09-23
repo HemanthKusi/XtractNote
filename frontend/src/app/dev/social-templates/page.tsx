@@ -47,6 +47,7 @@ import { useTheme } from "@/components/shared/theme-provider";
 import {
   BUILT_PLATFORMS,
   DEFAULT_LENGTH,
+  DEFAULT_TONE,
   LENGTHS,
   PLATFORM_LABEL,
   TONES,
@@ -95,7 +96,7 @@ export default function SocialTemplatesPage() {
   // Each platform's default artefact is what a run produces, so both are
   // seeded. Switching platform in this harness is a specimen convenience,
   // not a user action that should appear to cost a generation.
-  const { ready, generating, request } = useOnDemand([
+  const { ready, generating, request, cancel } = useOnDemand([
     `yt:professional`,
     `x:professional:${DEFAULT_LENGTH}`,
   ]);
@@ -111,6 +112,32 @@ export default function SocialTemplatesPage() {
   );
   const lengthGenerating =
     LENGTHS.find((l) => keyFor(platform, tone, l) === generating) ?? null;
+
+  /**
+   * Switching platform lands on that platform's OWN default artefact.
+   *
+   * Two defects, one cause. Review caught the race: a generation in flight
+   * when the platform changes would commit its selection afterwards, leaving
+   * a tone selected on X that was only ever generated for the description.
+   *
+   * Reproducing it turned up the larger half — the same contradiction with
+   * NO race at all. Generate a tone on the description, let it finish, switch
+   * calmly, and that tone carries over to a platform where the artefact was
+   * never generated: selected and marked ungenerated at once. Cancelling the
+   * pending run alone would have fixed the race and left this untouched.
+   *
+   * Both come from treating tone and length as global when an artefact is
+   * per platform. A real user never does this — the platform is chosen at
+   * generation time and there is no switch — so the honest behaviour for a
+   * harness affordance is to land on the default the platform actually has,
+   * which is seeded ready. Every displayed variant is then one that exists.
+   */
+  const switchPlatform = (next: BuiltPlatform) => {
+    cancel();
+    setPlatform(next);
+    setTone(DEFAULT_TONE);
+    setLength(DEFAULT_LENGTH);
+  };
 
   const requestTone = (next: Tone) =>
     request(keyFor(platform, next, length), () => setTone(next));
@@ -179,7 +206,7 @@ export default function SocialTemplatesPage() {
             <button
               key={p}
               type="button"
-              onClick={() => setPlatform(p)}
+              onClick={() => switchPlatform(p)}
               className={[
                 "rounded-xn-sm px-2 py-1.5 text-xs transition-colors duration-xn ease-xn",
                 p === platform

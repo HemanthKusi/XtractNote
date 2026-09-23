@@ -133,6 +133,17 @@ export default function SocialTemplatesPage() {
    * which is seeded ready. Every displayed variant is then one that exists.
    */
   const switchPlatform = (next: BuiltPlatform) => {
+    // Re-clicking the platform you are already on is a no-op, not a reset.
+    // Without this, a redundant click cancels a generation in flight and
+    // throws away the tone and length you had chosen — work discarded for an
+    // interaction that changed nothing.
+    //
+    // A no-op rather than disabling the active button: disabling removes it
+    // from the tab order, so the CURRENT selection becomes the one thing a
+    // keyboard user cannot reach or have announced. `aria-pressed` below is
+    // what makes the state legible instead.
+    if (next === platform) return;
+
     cancel();
     setPlatform(next);
     setTone(DEFAULT_TONE);
@@ -207,6 +218,7 @@ export default function SocialTemplatesPage() {
               key={p}
               type="button"
               onClick={() => switchPlatform(p)}
+              aria-pressed={p === platform}
               className={[
                 "rounded-xn-sm px-2 py-1.5 text-xs transition-colors duration-xn ease-xn",
                 p === platform
@@ -229,6 +241,7 @@ export default function SocialTemplatesPage() {
               key={id}
               type="button"
               onClick={() => setDirectionId(id)}
+              aria-pressed={id === directionId}
               className={[
                 "rounded-xn-sm px-2 py-1.5 text-xs transition-colors duration-xn ease-xn",
                 id === directionId

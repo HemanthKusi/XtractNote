@@ -49,6 +49,7 @@ import {
   DEFAULT_LENGTH,
   DEFAULT_TONE,
   LENGTHS,
+  NEWSLETTER,
   PLATFORM_LABEL,
   TONES,
   X_THREAD,
@@ -64,6 +65,7 @@ import {
   type DirectionId,
 } from "./directions";
 import { useOnDemand } from "./use-on-demand";
+import { Newsletter } from "./newsletter";
 import { XThread } from "./x-thread";
 import { YoutubeDescription } from "./youtube-description";
 
@@ -177,7 +179,9 @@ export default function SocialTemplatesPage() {
             toneReady={toneReady}
             toneGenerating={toneGenerating}
           >
-            {platform === "x-thread" ? (
+            {platform === "newsletter" ? (
+              <Newsletter copy={NEWSLETTER[tone]} />
+            ) : platform === "x-thread" ? (
               <XThread
                 threads={X_THREAD[tone]}
                 length={length}
@@ -212,7 +216,7 @@ export default function SocialTemplatesPage() {
           </button>
         </div>
 
-        <div className="mt-2 grid grid-cols-2 gap-1">
+        <div className="mt-2 grid grid-cols-3 gap-1">
           {BUILT_PLATFORMS.map((p) => (
             <button
               key={p}

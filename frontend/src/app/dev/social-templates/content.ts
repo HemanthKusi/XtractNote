@@ -50,6 +50,7 @@ export const PLATFORM_LABEL: Record<SocialPlatform, string> = {
 export const BUILT_PLATFORMS = [
   "youtube-description",
   "x-thread",
+  "newsletter",
 ] as const satisfies readonly SocialPlatform[];
 
 export type BuiltPlatform = (typeof BUILT_PLATFORMS)[number];
@@ -474,12 +475,259 @@ export const X_THREAD: Record<Tone, Record<ThreadLength, Tweet[]>> = {
  *
  * `B · Specimens` previews a tone by its real first line, and what counts as
  * "first line" differs by platform: a description has an opening paragraph, a
- * thread has tweet one. Without this the thread would have been previewed
- * with the description's copy — a card claiming to show the real thing while
- * showing a different platform's.
+ * thread has tweet one, a newsletter has its subject.
+ *
+ * ── A RECORD, because the previous version was a ternary with a fallback ──
+ *
+ * This existed already, written to stop the thread being previewed with the
+ * description's copy. It was `platform === "x-thread" ? ... : <description>`,
+ * so when newsletter was added it silently inherited the description's prose
+ * and B claimed to be showing the real thing while showing another
+ * platform's. The same bug it was written to fix, reintroduced by the same
+ * shape.
+ *
+ * A record keyed by `BuiltPlatform` cannot do that: adding a platform without
+ * a line here fails to compile.
  */
+const OPENING_LINE: Record<BuiltPlatform, (tone: Tone) => string> = {
+  "youtube-description": (tone) => YOUTUBE_DESCRIPTION[tone].opening,
+  "x-thread": (tone) => X_THREAD[tone][DEFAULT_LENGTH][0].text,
+  // The subject, because that is genuinely the first thing a reader of a
+  // newsletter sees. It is much shorter than the other two, and that is
+  // information rather than an inconsistency.
+  newsletter: (tone) => NEWSLETTER[tone].subject,
+};
+
 export function openingFor(platform: BuiltPlatform, tone: Tone): string {
-  return platform === "x-thread"
-    ? X_THREAD[tone][DEFAULT_LENGTH][0].text
-    : YOUTUBE_DESCRIPTION[tone].opening;
+  return OPENING_LINE[platform](tone);
 }
+
+// ─────────────────────────────────────────────────────────────
+// Newsletter
+// ─────────────────────────────────────────────────────────────
+//
+// The only one of the five whose destination has TWO STATES: the inbox row
+// and the opened email. Every other platform has one surface. It is also the
+// only artefact that is sent to someone rather than posted.
+
+/**
+ * What the inbox actually shows, and where it stops.
+ *
+ * Verified 2026-09-23 rather than recalled. Truncation is by pixel width in
+ * real clients, but these character counts are what the guidance is written
+ * in and what a writer can act on, so they are what the specimen measures
+ * against.
+ *
+ * MOBILE IS THE ONE THAT MATTERS. Over 65% of opens are mobile, so a subject
+ * that only survives on desktop is a subject most readers never finish.
+ */
+export const SUBJECT_LIMIT = {
+  /** Safe across Apple and Android. Gmail mobile is tightest at about 30. */
+  mobile: 33,
+  /** Gmail 60-70, Outlook nearer 50. */
+  desktop: 60,
+} as const;
+
+/** Visible preview text beside or under the subject. 40-100 in practice. */
+export const PREHEADER_LIMIT = {
+  mobile: 40,
+  desktop: 100,
+} as const;
+
+/**
+ * A newsletter, in the shape its destination needs rather than the shape its
+ * prompt produces.
+ *
+ * ── `preheader` DOES NOT EXIST TODAY, and that is the point ──
+ *
+ * The inbox shows the subject AND preview text. Verified 2026-09-23: there is
+ * no notion of a preheader anywhere in this product — not in the prompt, not
+ * in the types, not in any renderer. So whatever the body happens to open
+ * with becomes the preview by accident.
+ *
+ * It is a separate field here because it is a separate decision. A preheader
+ * that repeats the subject wastes the second half of the only thing a reader
+ * sees before choosing; one that continues the subject doubles the space the
+ * artefact gets. That choice cannot be made if the field does not exist.
+ *
+ * ── `subject` carries the scaffolding problem ──
+ *
+ * The prompt asks for it as an H2 prefixed with the literal `Subject: `. That
+ * text is not part of the email — it is a label the user strips, exactly like
+ * the X thread's `1.` `2.` numbering. Stored here as the subject alone.
+ */
+/** One section of the body: a heading and the prose under it. */
+export interface NewsletterSection {
+  heading: string;
+  paragraphs: string[];
+}
+
+export interface NewsletterCopy {
+  subject: string;
+  /** Not produced by generation today. See above. */
+  preheader: string;
+  /** One line under the title. What the issue is about, before the argument. */
+  standfirst: string;
+  intro: string;
+  /**
+   * SECTIONS, not a bulleted list.
+   *
+   * The prompt today asks for "the key insights as tight prose or a short
+   * skimmable list" inside 150-250 words, and that produces a note rather
+   * than a newsletter. A newsletter is read as a sequence of small arguments
+   * under their own headings — the headings are how it is skimmed, and the
+   * prose under them is why it is worth opening.
+   *
+   * This is the design deciding the representation and the backend following
+   * (§16's stated direction of dependency). Generation does not produce this
+   * shape yet.
+   */
+  sections: NewsletterSection[];
+  /** The one line worth lifting out of the body. */
+  pullQuote: string;
+  closing: string;
+}
+
+/**
+ * Four tones.
+ *
+ * THREE OF THE FOUR SUBJECTS OVERRUN MOBILE, and that is deliberate sampling
+ * rather than careless writing. The prompt caps the subject at "short" with
+ * no number, so overrunning is the normal case, not the edge one. A sample
+ * where every subject fit would demonstrate a discipline the pipeline does
+ * not have.
+ */
+export const NEWSLETTER: Record<Tone, NewsletterCopy> = {
+  professional: {
+    subject: "How transformers actually work",
+    preheader: "Embeddings, attention, and where the parameters really live.",
+    standfirst: "The architecture under every model you use, built one component at a time.",
+    intro:
+      "Most explanations of large language models stop at “it predicts the next word”. That is true and it explains nothing — it describes the output without touching the machinery. This week's video is the clearest account of that machinery I have found, and it is worth the twenty-eight minutes precisely because it refuses to hand-wave.",
+    sections: [
+      {
+        heading: "Meaning becomes a direction",
+        paragraphs: [
+          "The first move is the one everything else rests on: tokens become vectors. Once a word is a point in high-dimensional space, the distance and direction between words carries meaning, and meaning becomes something you can do arithmetic on.",
+          "That is the whole trick, and it is why the rest of the architecture is possible at all. Nothing downstream makes sense until this one is solid."
+        ],
+      },
+      {
+        heading: "Attention rewrites what a word means",
+        paragraphs: [
+          "A word does not arrive with a fixed meaning. “Bank” beside “river” and “bank” beside “deposit” are the same token and end up in completely different places, and attention is the mechanism that moves them.",
+          "Query, key and value are where most explanations lose people. Here each projection is motivated before it is written down, so the dot product arrives as a consequence of wanting to measure alignment rather than as a formula to accept."
+        ],
+      },
+      {
+        heading: "Where the parameters actually live",
+        paragraphs: [
+          "Multi-headed attention runs that operation ninety-six times in parallel, each head free to track a different kind of relationship without anyone specifying what.",
+          "But the attention layers are not where most of the model is. The multilayer perceptron blocks between them hold roughly two thirds of the parameters, and most of what the model has actually learned. It is the part nobody covers and the part that answers “where are the facts stored”."
+        ],
+      },
+    ],
+    pullQuote: "Once meaning is a direction, meaning becomes something you can do arithmetic on.",
+    closing:
+      "Twenty-eight minutes, and worth the whole of it. If you have been meaning to understand this rather than have heard about it, start here.",
+  },
+  casual: {
+    subject: "the thing inside ChatGPT, explained properly",
+    preheader: "No hand-waving, no “it's like a brain”. Actual mechanism.",
+    standfirst: "You've used this stuff for years. Here's what's actually in it.",
+    intro:
+      "You have been typing into a box backed by 175 billion numbers for about two years now, and nobody has explained what those numbers do. This video fixes that, and the reason I'm sending it is that it doesn't cheat — no “it's like a brain”, no vague gestures at neurons.",
+    sections: [
+      {
+        heading: "words become vectors, and that's the trick",
+        paragraphs: [
+          "First thing that happens: every word turns into a point in space. Once meaning is a direction, you can do maths on it, and that single move is what makes everything after it possible.",
+          "Sounds like a detail. It's the whole foundation."
+        ],
+      },
+      {
+        heading: "attention is how context changes meaning",
+        paragraphs: [
+          "“Bank” next to “river” versus “bank” next to “deposit” — same word going in, completely different thing coming out. Attention is the bit that does that, and it's the bit everyone name-drops and nobody explains.",
+          "Queries, keys and values sound like a database and honestly are one. Each word asks a question, every other word answers, and the answers get mixed by how well they match."
+        ],
+      },
+      {
+        heading: "then it does all that 96 times at once",
+        paragraphs: [
+          "Ninety-six heads, running in parallel, each one drifting toward a different kind of relationship without being told to. Nobody programs what they track.",
+          "And the layers in between? That's where most of the parameters sit, quietly storing every fact you'll later argue with it about."
+        ],
+      },
+    ],
+    pullQuote: "Same word going in, completely different thing coming out.",
+    closing:
+      "28 minutes, and genuinely worth it. Watch it once properly rather than twice in the background.",
+  },
+  informative: {
+    subject: "Transformers: a component-by-component walkthrough",
+    preheader: "Chapter 5 of the deep learning series. Prerequisites in 1 to 4.",
+    standfirst: "The 2017 architecture, built up rather than presented whole.",
+    intro:
+      "Chapter 5 of the deep learning series covers the transformer architecture introduced in 2017. Its approach is to construct the model component by component rather than present it complete, which makes it usable as a reference rather than only as an explanation.",
+    sections: [
+      {
+        heading: "Embeddings and the geometry of meaning",
+        paragraphs: [
+          "A vocabulary is mapped into high-dimensional space, where the dot product between two vectors measures semantic alignment. Every subsequent operation depends on this representation.",
+          "The video is careful to establish why direction carries meaning before using that fact, which is unusual and makes the attention section land."
+        ],
+      },
+      {
+        heading: "Attention, single and multi-headed",
+        paragraphs: [
+          "Single-head attention is covered first: query, key and value projections, the scaling factor, and the masking step that prevents a position attending to tokens after it.",
+          "Multi-headed attention then runs the operation across parallel representation subspaces — 96 heads in a production-scale model, each with its own projection matrices."
+        ],
+      },
+      {
+        heading: "Parameter distribution",
+        paragraphs: [
+          "The multilayer perceptron blocks between attention layers account for roughly two thirds of total parameters, and appear to be where most factual recall is stored.",
+          "The chapter closes with the unembedding step, softmax, and the role of temperature in sampling."
+        ],
+      },
+    ],
+    pullQuote: "Roughly two thirds of the parameters sit outside the attention layers entirely.",
+    closing:
+      "Chapters 1 to 4 cover neural networks, gradient descent and backpropagation, and are worth watching first if any of the above was unfamiliar.",
+  },
+  funny: {
+    subject: "175 billion numbers and nobody explained them",
+    preheader: "Turns out it is matrix multiplication in a trench coat.",
+    standfirst: "An honest look inside the thing you've been arguing with.",
+    intro:
+      "You have been typing into a text box containing roughly 175 billion numbers, and at no point did anyone sit you down and explain what they do. This video does. The answer, broadly, is matrix multiplication wearing a very convincing trench coat.",
+    sections: [
+      {
+        heading: "Words become vectors, because computers cannot read",
+        paragraphs: [
+          "Step one is turning every word into a direction in space, which sounds unhinged and is, and works anyway. Meaning is now geometry. Nobody asked for this and yet here we are.",
+          "Everything else in the architecture is downstream of that one deeply strange decision."
+        ],
+      },
+      {
+        heading: "Attention, or: is that river-bank or money-bank",
+        paragraphs: [
+          "Every word turns to every other word and asks “are you relevant to me”, which is frankly more social awareness than most group chats manage.",
+          "Queries, keys and values are a filing system invented by people who hate filing. Each word files a request, every other word files a response, everyone gets averaged. Democracy happens."
+        ],
+      },
+      {
+        heading: "Ninety-six times, simultaneously, for some reason",
+        paragraphs: [
+          "Doing it once would be restrained, and we do not do that here. Ninety-six heads all running at the same time, each quietly developing its own opinion about grammar.",
+          "Meanwhile the layers in between are memorising every fact you will later confidently argue with it about."
+        ],
+      },
+    ],
+    pullQuote: "Matrix multiplication wearing a very convincing trench coat.",
+    closing:
+      "28 minutes. Go. It is better than whatever else you had open.",
+  },
+};

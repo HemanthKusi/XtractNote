@@ -69,6 +69,17 @@ const PLATFORM_MARK_COLOR: Record<BuiltPlatform, string> = {
   // on light, light on dark — and both are the real lockup rather than an
   // approximation of one.
   "x-thread": "var(--xn-ink)",
+  // Amber, but NOT the picker's #E3B04B. That value is a FILL, chosen to sit
+  // behind a dark glyph, and as ink it measures 1.99:1 on a light bar —
+  // under the 3:1 a mark needs. YouTube's red survives being used as ink at
+  // 4.00:1; an amber that light does not.
+  //
+  // So the hue is kept and the value darkened until it carries: #A87526 is
+  // 4.01:1 on light and 4.42:1 on dark, the most balanced of the candidates
+  // measured. The first version of this reasoned from "there is no company
+  // called Newsletter" and went to ink, which answered a question about
+  // branding when the actual problem was luminance.
+  newsletter: "#A87526",
 };
 
 /**

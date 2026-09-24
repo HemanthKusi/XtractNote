@@ -49,6 +49,7 @@ import {
   DEFAULT_LENGTH,
   DEFAULT_TONE,
   LENGTHS,
+  NEWSLETTER,
   PLATFORM_LABEL,
   TONES,
   X_THREAD,
@@ -64,6 +65,7 @@ import {
   type DirectionId,
 } from "./directions";
 import { useOnDemand } from "./use-on-demand";
+import { Newsletter } from "./newsletter";
 import { XThread } from "./x-thread";
 import { YoutubeDescription } from "./youtube-description";
 
@@ -87,9 +89,24 @@ export default function SocialTemplatesPage() {
   const [tone, setTone] = useState<Tone>("professional");
   const [length, setLength] = useState<ThreadLength>(DEFAULT_LENGTH);
 
+  // ── One key shape per platform, exhaustively ──
+  //
+  // This was `p === "x-thread" ? \`x:...\` : \`yt:...\``, so newsletter fell
+  // through to YouTube's keys and the two shared a readiness set: generating
+  // a tone for the description marked it generated for the newsletter, which
+  // then claimed an artefact that had never been produced.
+  //
+  // A record keyed by `BuiltPlatform` makes the next platform a compile
+  // error rather than a silent alias.
   const keyFor = useCallback(
-    (p: BuiltPlatform, t: Tone, l: ThreadLength) =>
-      p === "x-thread" ? `x:${t}:${l}` : `yt:${t}`,
+    (p: BuiltPlatform, t: Tone, l: ThreadLength) => {
+      const shape: Record<BuiltPlatform, string> = {
+        "youtube-description": `yt:${t}`,
+        "x-thread": `x:${t}:${l}`,
+        newsletter: `news:${t}`,
+      };
+      return shape[p];
+    },
     [],
   );
 
@@ -97,8 +114,9 @@ export default function SocialTemplatesPage() {
   // seeded. Switching platform in this harness is a specimen convenience,
   // not a user action that should appear to cost a generation.
   const { ready, generating, request, cancel } = useOnDemand([
-    `yt:professional`,
-    `x:professional:${DEFAULT_LENGTH}`,
+    `yt:${DEFAULT_TONE}`,
+    `x:${DEFAULT_TONE}:${DEFAULT_LENGTH}`,
+    `news:${DEFAULT_TONE}`,
   ]);
 
   // Per-axis views, derived rather than stored, so the two can never disagree
@@ -177,17 +195,25 @@ export default function SocialTemplatesPage() {
             toneReady={toneReady}
             toneGenerating={toneGenerating}
           >
-            {platform === "x-thread" ? (
-              <XThread
-                threads={X_THREAD[tone]}
-                length={length}
-                onRequestLength={requestLength}
-                lengthReady={lengthReady}
-                lengthGenerating={lengthGenerating}
-              />
-            ) : (
-              <YoutubeDescription copy={YOUTUBE_DESCRIPTION[tone]} />
-            )}
+            {/* Exhaustive for the same reason the two above are: a ternary
+                chain ending in a fallback silently renders the wrong platform
+                when a new one is added, and this file has now done that
+                twice. */}
+            {(
+              {
+                "youtube-description": <YoutubeDescription copy={YOUTUBE_DESCRIPTION[tone]} />,
+                "x-thread": (
+                  <XThread
+                    threads={X_THREAD[tone]}
+                    length={length}
+                    onRequestLength={requestLength}
+                    lengthReady={lengthReady}
+                    lengthGenerating={lengthGenerating}
+                  />
+                ),
+                newsletter: <Newsletter copy={NEWSLETTER[tone]} />,
+              } satisfies Record<BuiltPlatform, React.ReactNode>
+            )[platform]}
           </Direction>
         </div>
       </AppShell>
@@ -212,7 +238,7 @@ export default function SocialTemplatesPage() {
           </button>
         </div>
 
-        <div className="mt-2 grid grid-cols-2 gap-1">
+        <div className="mt-2 grid grid-cols-3 gap-1">
           {BUILT_PLATFORMS.map((p) => (
             <button
               key={p}

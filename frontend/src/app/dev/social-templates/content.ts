@@ -475,14 +475,31 @@ export const X_THREAD: Record<Tone, Record<ThreadLength, Tweet[]>> = {
  *
  * `B · Specimens` previews a tone by its real first line, and what counts as
  * "first line" differs by platform: a description has an opening paragraph, a
- * thread has tweet one. Without this the thread would have been previewed
- * with the description's copy — a card claiming to show the real thing while
- * showing a different platform's.
+ * thread has tweet one, a newsletter has its subject.
+ *
+ * ── A RECORD, because the previous version was a ternary with a fallback ──
+ *
+ * This existed already, written to stop the thread being previewed with the
+ * description's copy. It was `platform === "x-thread" ? ... : <description>`,
+ * so when newsletter was added it silently inherited the description's prose
+ * and B claimed to be showing the real thing while showing another
+ * platform's. The same bug it was written to fix, reintroduced by the same
+ * shape.
+ *
+ * A record keyed by `BuiltPlatform` cannot do that: adding a platform without
+ * a line here fails to compile.
  */
+const OPENING_LINE: Record<BuiltPlatform, (tone: Tone) => string> = {
+  "youtube-description": (tone) => YOUTUBE_DESCRIPTION[tone].opening,
+  "x-thread": (tone) => X_THREAD[tone][DEFAULT_LENGTH][0].text,
+  // The subject, because that is genuinely the first thing a reader of a
+  // newsletter sees. It is much shorter than the other two, and that is
+  // information rather than an inconsistency.
+  newsletter: (tone) => NEWSLETTER[tone].subject,
+};
+
 export function openingFor(platform: BuiltPlatform, tone: Tone): string {
-  return platform === "x-thread"
-    ? X_THREAD[tone][DEFAULT_LENGTH][0].text
-    : YOUTUBE_DESCRIPTION[tone].opening;
+  return OPENING_LINE[platform](tone);
 }
 
 // ─────────────────────────────────────────────────────────────

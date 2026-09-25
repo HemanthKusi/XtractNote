@@ -77,6 +77,32 @@
   --xn-mark-purple: #e9d5ff;
   --xn-highlight: var(--xn-mark-yellow);
 
+  /* ── A DESTINATION's brand colour, not one of ours ──
+     Everything above this is the product's own identity. This is
+     not: it belongs to an external platform and is used only by
+     the social preview templates, which exist to look like
+     somewhere else. Kept here because this file is the only place
+     a value can be theme-aware, and quarantined in its own block
+     so it is never mistaken for a colour the product may paint
+     its own chrome with.
+
+     WHY IT NEEDS A PAIR AT ALL. The platform mark table gets away
+     with ONE value per brand because a mark needs 3:1. The moment
+     a brand colour carries TEXT the bar is 4.5:1, and no single
+     value clears that against both grounds: it would need a
+     relative luminance at or below 0.183 for the light surface
+     and at or above 0.217 for the dark one. That is not a close
+     call, it is a contradiction, and it is the reason every
+     format colour above is also declared twice.
+
+     Both halves are the platform's own published values rather
+     than something tuned here — its brand blue, and the lighter
+     blue it switches to in its own dark mode. Measured against
+     the ground they sit on, which is the card (--xn-surface) and
+     not the page: 5.69:1 light, 8.15:1 dark, the second clearing
+     the 7:1 the format colours hold. */
+  --xn-brand-linkedin: #0A66C2;
+
   /* ── Elevation: four layers, offset and blur rising as opacity falls ──
      The tight dark layer sits under the element; the wide faint
      one does the ambient work. Separation comes from depth, not
@@ -212,6 +238,12 @@
   --xn-mark-blue: rgba(191, 219, 254, 0.24);
   --xn-mark-pink: rgba(254, 205, 211, 0.24);
   --xn-mark-purple: rgba(233, 213, 255, 0.24);
+
+  /* The platform's own dark-mode blue, not a lightened version of
+     its brand blue. #0A66C2 measures 3.11:1 here — fine for a mark
+     at 3:1 and under the 4.5:1 that text needs, which is exactly
+     the gap this pair exists to close. */
+  --xn-brand-linkedin: #70B5F9;
 
   /* Same geometry, deeper alpha — a shadow on near-black needs it */
   --xn-elev-1:

@@ -236,11 +236,14 @@ function AuthorRow() {
         <p className="truncate text-xs leading-snug text-xn-ink-muted">{VIDEO.title}</p>
       </div>
 
-      {/* Blue is what the destination uses and what this cannot have: text
-          needs 4.5:1, and #0A66C2 measures 3.11:1 on the dark surface. The
-          same arithmetic that sends the hashtags to ink sends this there too —
-          one constraint, two places, recorded once in `Hashtags`. */}
-      <span className="flex shrink-0 items-center gap-1 pt-0.5 text-sm font-semibold text-xn-ink">
+      {/* Blue, through the same theme-aware pair the hashtags use — one
+          constraint, two places, reasoned once in `Hashtags`. This is the
+          control the reference draws in blue, and the mark beside it in the
+          bar is the same brand at the same value in light. */}
+      <span
+        className="flex shrink-0 items-center gap-1 pt-0.5 text-sm font-semibold"
+        style={{ color: "var(--xn-brand-linkedin)" }}
+      >
         <Plus size={16} strokeWidth={2.5} aria-hidden="true" />
         Follow
       </span>
@@ -324,20 +327,24 @@ function Body({ post, expanded, onExpand }: {
 /**
  * Hashtags, as their own block.
  *
- * ── Why they are not blue ──
+ * ── They are blue, via a token PAIR, and the pair is the point ──
  *
- * The destination renders them as links, and a link is blue. It cannot be here,
- * and the reason is arithmetic rather than taste: text needs 4.5:1, and against
- * `--xn-surface` at #ffffff light and #161917 dark, NO single colour clears
- * 4.5:1 on both — it would need a relative luminance at or below 0.183 for the
- * light ground and at or above 0.217 for the dark one. That is why every format
- * colour in this project is defined twice, once per theme, and why the mark
- * table gets away with one value each: a mark needs 3:1, not 4.5:1.
+ * The destination renders them as links, and a link is blue. An earlier
+ * version of this file took ink instead and recorded why: text needs 4.5:1,
+ * and no single value clears that against both `--xn-surface` grounds — it
+ * would need a relative luminance at or below 0.183 for #ffffff and at or
+ * above 0.217 for #161917, which is a contradiction rather than a tight fit.
  *
- * Inventing a theme-aware LinkedIn blue would mean a new token pair in
- * globals.css, which is past what a specimen should add. So they take ink and
- * are distinguished by being their own block, and the gap is recorded instead
- * of papered over.
+ * That arithmetic was right and the conclusion drawn from it was wrong. The
+ * answer to "no single value works" is two values, which is what every format
+ * colour in this project already does and what the mark table avoids only
+ * because a mark needs 3:1. `--xn-brand-linkedin` is declared in both theme
+ * blocks: 5.69:1 light, 8.15:1 dark.
+ *
+ * It is read through `var()` rather than a Tailwind class deliberately — it is
+ * a destination's brand, not a product token, so it does not earn a utility in
+ * the config beside `text-xn-ink`. The same reasoning keeps the mark colours
+ * as inline values.
  *
  * ── Why they are a block at all ──
  *
@@ -362,7 +369,10 @@ function Body({ post, expanded, onExpand }: {
  */
 function Hashtags({ tags }: { tags: string[] }) {
   return (
-    <p className="flex flex-wrap gap-x-2 gap-y-1 px-4 pt-2 text-sm text-xn-ink-muted">
+    <p
+      className="flex flex-wrap gap-x-2 gap-y-1 px-4 pt-2 text-sm font-medium"
+      style={{ color: "var(--xn-brand-linkedin)" }}
+    >
       {tags.map((tag) => (
         <span key={tag}>#{tag}</span>
       ))}

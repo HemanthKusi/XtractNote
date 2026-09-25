@@ -51,6 +51,7 @@ export const BUILT_PLATFORMS = [
   "youtube-description",
   "x-thread",
   "newsletter",
+  "instagram",
 ] as const satisfies readonly SocialPlatform[];
 
 export type BuiltPlatform = (typeof BUILT_PLATFORMS)[number];
@@ -496,6 +497,9 @@ const OPENING_LINE: Record<BuiltPlatform, (tone: Tone) => string> = {
   // newsletter sees. It is much shorter than the other two, and that is
   // information rather than an inconsistency.
   newsletter: (tone) => NEWSLETTER[tone].subject,
+  // The hook, which is the line the destination shows before "more" and the
+  // line the quote card puts on the image. One piece of copy, both jobs.
+  instagram: (tone) => INSTAGRAM[tone].hook,
 };
 
 export function openingFor(platform: BuiltPlatform, tone: Tone): string {
@@ -729,5 +733,119 @@ export const NEWSLETTER: Record<Tone, NewsletterCopy> = {
     pullQuote: "Matrix multiplication wearing a very convincing trench coat.",
     closing:
       "28 minutes. Go. It is better than whatever else you had open.",
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// Instagram
+// ─────────────────────────────────────────────────────────────
+//
+// The only one of the five whose PRIMARY CONTENT this product cannot make.
+// Instagram is an image with words under it; we have words and a 16:9
+// thumbnail belonging to someone else. Frame extraction is deferred (§14).
+
+/** Instagram truncates a feed caption here. Verified 2026-09-23. */
+export const CAPTION_FOLD = 125;
+
+/**
+ * An Instagram post.
+ *
+ * ── `hashtags` is its own field, not the end of the caption ──
+ *
+ * The prompt asks for "a block of 8-15 relevant hashtags on the final lines",
+ * which makes them the caption's tail. In practice they are a separate
+ * payload: frequently posted as a first comment rather than in the caption at
+ * all, and copied separately when they are not. Rendering them as the last
+ * paragraph of prose is the one thing guaranteed to be wrong.
+ *
+ * ── `hook` is its own field because the destination treats it as one ──
+ *
+ * Instagram shows about 125 characters before "more", and this prompt is the
+ * FIRST of the five to acknowledge its own fold: it asks for "an
+ * attention-grabbing first line (the part shown before 'more')". It still
+ * gives no number, so it knows the boundary exists and cannot aim at it.
+ */
+export interface InstagramCopy {
+  /** The line shown before "more". */
+  hook: string;
+  body: string[];
+  cta: string;
+  hashtags: string[];
+}
+
+export const INSTAGRAM: Record<Tone, InstagramCopy> = {
+  professional: {
+    hook: "The architecture under every model you use, explained without hand-waving.",
+    body: [
+      "Tokens become vectors, so meaning turns into a direction you can do maths on. Attention then lets the words around a word rewrite what it means — which is why “bank” resolves differently beside “river” than beside “deposit”.",
+      "Ninety-six heads run that in parallel. And the blocks between them hold most of the parameters, and most of what the model has actually learned.",
+    ],
+    cta: "Save this for the next time someone tells you it just predicts the next word.",
+    hashtags: [
+      "MachineLearning",
+      "DeepLearning",
+      "Transformers",
+      "LLM",
+      "AI",
+      "NeuralNetworks",
+      "DataScience",
+      "TechExplained",
+      "3Blue1Brown",
+    ],
+  },
+  casual: {
+    hook: "you've used ChatGPT for years without knowing what's inside it. this fixes that.",
+    body: [
+      "words become vectors, so meaning is a direction. attention is how context changes what a word means — same word in, completely different thing out.",
+      "then it runs 96 of those at once, and the layers in between quietly store every fact you'll later argue with it about.",
+    ],
+    cta: "save it for later, you'll want the 28 minutes when you have them",
+    hashtags: [
+      "AI",
+      "MachineLearning",
+      "ChatGPT",
+      "LearnInPublic",
+      "TechTok",
+      "Explainer",
+      "DeepLearning",
+      "Curiosity",
+    ],
+  },
+  informative: {
+    hook: "Chapter 5: the transformer architecture, built component by component.",
+    body: [
+      "Embeddings map a vocabulary into a space where dot products measure alignment. Attention updates each vector from its context, with query, key and value projections and a masking step.",
+      "Multi-headed attention runs across 96 parallel subspaces. MLP blocks account for roughly two thirds of total parameters.",
+    ],
+    cta: "Chapters 1–4 cover the prerequisites. Save for later.",
+    hashtags: [
+      "DeepLearning",
+      "Transformers",
+      "NeuralNetworks",
+      "MachineLearning",
+      "AIEducation",
+      "DataScience",
+      "Mathematics",
+      "LLM",
+      "StudyNotes",
+    ],
+  },
+  funny: {
+    hook: "175 billion numbers are involved and nobody has ever explained them to you.",
+    body: [
+      "Words become vectors, because computers famously cannot read. Attention then works out whether “bank” is near a river or your money, which is more social awareness than most group chats.",
+      "Then it does the whole thing 96 times at once, because restraint was not on the menu.",
+    ],
+    cta: "Save this and casually bring it up at dinner. Nobody can stop you.",
+    hashtags: [
+      "AI",
+      "MachineLearning",
+      "TechHumour",
+      "Explainer",
+      "ChatGPT",
+      "DeepLearning",
+      "NerdStuff",
+      "LearnSomething",
+    ],
   },
 };

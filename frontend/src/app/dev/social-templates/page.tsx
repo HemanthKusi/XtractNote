@@ -48,6 +48,7 @@ import {
   BUILT_PLATFORMS,
   DEFAULT_LENGTH,
   DEFAULT_TONE,
+  INSTAGRAM,
   LENGTHS,
   NEWSLETTER,
   PLATFORM_LABEL,
@@ -65,6 +66,7 @@ import {
   type DirectionId,
 } from "./directions";
 import { useOnDemand } from "./use-on-demand";
+import { Instagram } from "./instagram";
 import { Newsletter } from "./newsletter";
 import { XThread } from "./x-thread";
 import { YoutubeDescription } from "./youtube-description";
@@ -104,6 +106,7 @@ export default function SocialTemplatesPage() {
         "youtube-description": `yt:${t}`,
         "x-thread": `x:${t}:${l}`,
         newsletter: `news:${t}`,
+        instagram: `ig:${t}`,
       };
       return shape[p];
     },
@@ -117,6 +120,7 @@ export default function SocialTemplatesPage() {
     `yt:${DEFAULT_TONE}`,
     `x:${DEFAULT_TONE}:${DEFAULT_LENGTH}`,
     `news:${DEFAULT_TONE}`,
+    `ig:${DEFAULT_TONE}`,
   ]);
 
   // Per-axis views, derived rather than stored, so the two can never disagree
@@ -212,6 +216,7 @@ export default function SocialTemplatesPage() {
                   />
                 ),
                 newsletter: <Newsletter copy={NEWSLETTER[tone]} />,
+                instagram: <Instagram copy={INSTAGRAM[tone]} />,
               } satisfies Record<BuiltPlatform, React.ReactNode>
             )[platform]}
           </Direction>
@@ -238,7 +243,7 @@ export default function SocialTemplatesPage() {
           </button>
         </div>
 
-        <div className="mt-2 grid grid-cols-3 gap-1">
+        <div className="mt-2 grid grid-cols-2 gap-1">
           {BUILT_PLATFORMS.map((p) => (
             <button
               key={p}

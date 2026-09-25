@@ -80,6 +80,10 @@ const PLATFORM_MARK_COLOR: Record<BuiltPlatform, string> = {
   // called Newsletter" and went to ink, which answered a question about
   // branding when the actual problem was luminance.
   newsletter: "#A87526",
+  // The picker's fill for this one is a GRADIENT, which cannot be a text
+  // colour. Its own `tip` exists for exactly this case — the solid it falls
+  // back to where the gradient cannot go — so the mark takes that.
+  instagram: "#C13584",
 };
 
 /**

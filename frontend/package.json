@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . && node scripts/check-design-tokens.mjs"
+    "lint": "eslint . && node scripts/check-design-tokens.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-fold.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

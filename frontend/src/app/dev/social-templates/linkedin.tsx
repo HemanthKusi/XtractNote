@@ -80,14 +80,8 @@ import { MessageSquare, MoreHorizontal, Plus, Repeat2, Send, ThumbsUp } from "lu
 
 import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 
-import {
-  foldAt,
-  POST_FOLD,
-  POST_FOLD_LINES,
-  POST_LIMIT,
-  VIDEO,
-  type LinkedInCopy,
-} from "./content";
+import { VIDEO, type LinkedInCopy } from "./content";
+import { foldAt, POST_FOLD, POST_FOLD_LINES, POST_LIMIT } from "./fold";
 
 /**
  * Our information about the post, OUTSIDE the destination's card.
@@ -123,11 +117,17 @@ function PostHead({ post }: { post: string }) {
             <>
               {/* The visible length and the budget are different numbers once
                   the cut snaps back to a word boundary, so the readout names
-                  the budget that ran out rather than repeating the length. */}
+                  the budget that ran out rather than repeating the length.
+
+                  "PARAGRAPH BREAKS", not "lines". `foldAt` counts hard breaks
+                  and cannot count wrapped ones, so calling this a three-line
+                  fold would claim a fidelity it does not have — and a reader
+                  of a specimen has no way to tell the difference. The caveat
+                  below says what is not modelled. */}
               Folds at {mobile.visible.length} of {post.length} —{" "}
               <span className="text-xn-ink-muted">
                 {mobile.cause === "lines"
-                  ? `the ${POST_FOLD_LINES}-line budget`
+                  ? `the ${POST_FOLD_LINES}-paragraph-break budget`
                   : `the ${POST_FOLD.mobile}-character budget`}
               </span>
             </>
@@ -156,9 +156,9 @@ function PostHead({ post }: { post: string }) {
           </>
         ) : desktopAddsNothing ? (
           <>
-            Cut by the line budget, so desktop stops in the same place — its extra{" "}
+            Cut by the break budget, so desktop stops in the same place — its extra{" "}
             {POST_FOLD.desktop - POST_FOLD.mobile} characters show nothing more. Blank
-            lines spend a line, and this opener spends two.
+            lines spend a break, and this opener spends two.
           </>
         ) : (
           <>
@@ -167,6 +167,20 @@ function PostHead({ post }: { post: string }) {
             reading happens.
           </>
         )}
+      </p>
+
+      {/* ── What this preview does NOT model, said on the surface ──
+
+          The destination truncates by RENDERED line, and counting those here
+          would measure the wrong device: this card is the desktop column width
+          while the numbers above are the mobile fold. So the character budget
+          stands in for wrapping and the break budget catches airy openers,
+          and the gap between that and the real thing is stated rather than
+          left for a reader to discover. It belongs on screen, beside the
+          claim, not only in a comment nobody reading the specimen will open. */}
+      <p className="mt-1.5 text-xs leading-snug text-xn-ink-faint">
+        Counts paragraph breaks, not wrapped lines. A long opener wraps on a
+        real phone and folds earlier there than it does here.
       </p>
     </div>
   );

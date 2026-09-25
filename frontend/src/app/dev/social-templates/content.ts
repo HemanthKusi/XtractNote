@@ -882,116 +882,12 @@ export const INSTAGRAM: Record<Tone, InstagramCopy> = {
 // "3-5 relevant hashtags on the final line" makes them the tail of the prose,
 // exactly as Instagram's prompt did. They are a separate payload for the same
 // reasons, so they are a separate field. Two platforms now, not one.
-
-/** The hard ceiling. Reached far less often than the fold below it. */
-export const POST_LIMIT = 3000;
-
-/**
- * Where the feed stops showing a post, per device.
- *
- * Cross-checked against two independent sources 2026-09-25 rather than
- * recalled. Both give the same pair and both say plainly that the figures are
- * approximate and drift across app versions — LinkedIn tests variations — so
- * these are what a writer can act on rather than a constant the destination
- * guarantees.
- *
- * MOBILE IS THE ONE THAT MATTERS, for the same reason the newsletter's mobile
- * subject limit is: it is where the reading happens, and a hook that only
- * survives on desktop is a hook most readers never finish.
- */
-export const POST_FOLD = {
-  mobile: 140,
-  desktop: 210,
-} as const;
-
-/**
- * The other half of the fold, and the half no previous platform had.
- *
- * Three lines, and BLANK LINES COUNT — an empty line spends one of the three,
- * so an airy opener is cut earlier than its character count predicts. This is
- * the budget the prompt's "generous line breaks" instruction burns.
- */
-export const POST_FOLD_LINES = 3;
-
-/** Which budget ran out first. */
-export type FoldCause = "characters" | "lines";
-
-export interface Fold {
-  /** What the feed shows before "…see more". */
-  visible: string;
-  /** What it hides. Empty when the whole post fits. */
-  hidden: string;
-  /** Which budget cut it, or `null` when nothing folds. */
-  cause: FoldCause | null;
-}
-
-/**
- * Cut a post at whichever of its two budgets runs out first.
- *
- * Pure and React-free for the same reason `budgetFor` is: it is the only real
- * logic on this template, it is the part worth testing, and anything that
- * eventually VALIDATES generation output will want it rather than a component.
- *
- * ── What this can and cannot know ──
- *
- * `maxLines` counts HARD line breaks, because those are what the writer — and
- * the prompt — actually control. The destination truncates by rendered line
- * box, so a long paragraph that wraps to four lines is folded by the real feed
- * and not by this function.
- *
- * That is not a defect to fix here, because it cannot be fixed here: rendered
- * wrapping is layout, and a pure function has no font metrics. The character
- * budget is the proxy that covers it — ~140 characters is roughly three
- * wrapped lines of ordinary prose — so the two budgets together catch both the
- * dense case and the airy one. Neither catches both alone, which is precisely
- * why the destination uses both.
- *
- * ── The character cut snaps back to a word boundary ──
- *
- * Slicing at exactly `chars` splits whatever word straddles it, and the first
- * render of this template showed why that is not merely untidy: the marker
- * landed inside "worth" and the line read "the mechanism is w…see moreorth
- * understanding". A mangled word reads as breakage, which is the same mistake
- * as a row of blanks — the surface looked broken where it was only truncated.
- *
- * The destination breaks at a word, so this does too. A line cut needs no
- * snapping: the end of a line is already a boundary.
- */
-export function foldAt(text: string, chars: number, maxLines: number): Fold {
-  const lines = text.split("\n");
-
-  // Blank lines are included deliberately: the destination counts them.
-  const lineCut =
-    lines.length > maxLines ? lines.slice(0, maxLines).join("\n").length : Infinity;
-  const charCut = text.length > chars ? chars : Infinity;
-
-  if (lineCut === Infinity && charCut === Infinity) {
-    return { visible: text, hidden: "", cause: null };
-  }
-
-  // A tie is attributed to characters. Both are true at that index, and naming
-  // one keeps the readout from having to say "both".
-  const cause: FoldCause = charCut <= lineCut ? "characters" : "lines";
-  let cut = Math.min(lineCut, charCut);
-
-  if (cause === "characters") {
-    // Back up to the last break at or before the budget. `lastIndexOf` on the
-    // slice finds it without a regex scan, and a word longer than the whole
-    // budget — no break to find — keeps the hard cut rather than collapsing
-    // the visible text to nothing.
-    const boundary = Math.max(
-      text.lastIndexOf(" ", cut),
-      text.lastIndexOf("\n", cut),
-    );
-    if (boundary > 0) cut = boundary;
-  }
-
-  return {
-    visible: text.slice(0, cut),
-    hidden: text.slice(cut),
-    cause,
-  };
-}
+//
+// ── The fold itself lives in `fold.ts` ──
+//
+// The budgets and `foldAt` were here and have moved. This file is sample copy;
+// that is logic, and keeping it in a module importing nothing is what lets
+// `scripts/check-fold.mjs` exercise the real function instead of a copy of it.
 
 /**
  * A LinkedIn post.

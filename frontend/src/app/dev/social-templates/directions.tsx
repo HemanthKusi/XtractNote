@@ -84,6 +84,22 @@ const PLATFORM_MARK_COLOR: Record<BuiltPlatform, string> = {
   // colour. Its own `tip` exists for exactly this case — the solid it falls
   // back to where the gradient cannot go — so the mark takes that.
   instagram: "#C13584",
+  // The true brand value, kept, and the measurement is why rather than an
+  // assumption: 5.69:1 on light and 3.11:1 on dark. Both clear the 3:1 a mark
+  // needs, so the table's own principle applies — take the real brand colour
+  // when it carries, adjust only when it does not. That is what kept YouTube's
+  // #FF0000 at 4.00 and what forced the newsletter's amber to move from 1.99.
+  //
+  // It IS the tightest of the five on dark, at a 4% margin. #2D7FD3 measures
+  // 4.13/4.29 and is the most balanced value in this table — better than
+  // YouTube's 0.43 spread and the newsletter's 0.41 — so it is the one to
+  // reach for if that margin is ever judged too thin. It is not taken now
+  // because it is not LinkedIn's blue, and the mark's job is to carry the
+  // brand.
+  //
+  // LinkedIn's own dark-mode blue, #70B5F9, is a dark-mode-ONLY value: 2.17:1
+  // on light, which fails outright. A single-value table cannot use it.
+  linkedin: "#0A66C2",
 };
 
 /**

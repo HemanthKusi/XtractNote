@@ -50,6 +50,7 @@ import {
   DEFAULT_TONE,
   INSTAGRAM,
   LENGTHS,
+  LINKEDIN,
   NEWSLETTER,
   PLATFORM_LABEL,
   TONES,
@@ -67,6 +68,7 @@ import {
 } from "./directions";
 import { useOnDemand } from "./use-on-demand";
 import { Instagram } from "./instagram";
+import { LinkedIn } from "./linkedin";
 import { Newsletter } from "./newsletter";
 import { XThread } from "./x-thread";
 import { YoutubeDescription } from "./youtube-description";
@@ -107,6 +109,11 @@ export default function SocialTemplatesPage() {
         "x-thread": `x:${t}:${l}`,
         newsletter: `news:${t}`,
         instagram: `ig:${t}`,
+        // Tone alone. A length axis here would invent a variant the user
+        // cannot ask for: the prompt writes one post, and the short
+        // "hook-and-link" mode §13 records is a proposal open across the whole
+        // format rather than a decision belonging to this platform.
+        linkedin: `li:${t}`,
       };
       return shape[p];
     },
@@ -121,6 +128,7 @@ export default function SocialTemplatesPage() {
     `x:${DEFAULT_TONE}:${DEFAULT_LENGTH}`,
     `news:${DEFAULT_TONE}`,
     `ig:${DEFAULT_TONE}`,
+    `li:${DEFAULT_TONE}`,
   ]);
 
   // Per-axis views, derived rather than stored, so the two can never disagree
@@ -217,6 +225,20 @@ export default function SocialTemplatesPage() {
                 ),
                 newsletter: <Newsletter copy={NEWSLETTER[tone]} />,
                 instagram: <Instagram copy={INSTAGRAM[tone]} />,
+                // `key` on the tone is load-bearing, not decoration. The post
+                // holds whether it has been expanded past its fold, and that is
+                // a property of ONE artefact — each tone folds in a different
+                // place, and two of them fold by a different budget entirely.
+                // Without the key the component survives a tone change and the
+                // next post opens already expanded, which is the one state that
+                // hides what this surface exists to show.
+                //
+                // Safe here in a way §13 warns it is not elsewhere: remounting
+                // X's thread discarded generated lengths the user had paid for.
+                // Nothing inside this component has been paid for — readiness
+                // lives with the route — so a remount costs only the expanded
+                // flag, which is exactly what should be reset.
+                linkedin: <LinkedIn key={tone} copy={LINKEDIN[tone]} />,
               } satisfies Record<BuiltPlatform, React.ReactNode>
             )[platform]}
           </Direction>

@@ -52,6 +52,7 @@ export const BUILT_PLATFORMS = [
   "x-thread",
   "newsletter",
   "instagram",
+  "linkedin",
 ] as const satisfies readonly SocialPlatform[];
 
 export type BuiltPlatform = (typeof BUILT_PLATFORMS)[number];
@@ -500,6 +501,9 @@ const OPENING_LINE: Record<BuiltPlatform, (tone: Tone) => string> = {
   // The hook, which is the line the destination shows before "more" and the
   // line the quote card puts on the image. One piece of copy, both jobs.
   instagram: (tone) => INSTAGRAM[tone].hook,
+  // The hook again, and for the same reason: this prompt also names its own
+  // fold and this is the line written to survive it.
+  linkedin: (tone) => LINKEDIN[tone].hook,
 };
 
 export function openingFor(platform: BuiltPlatform, tone: Tone): string {
@@ -847,5 +851,217 @@ export const INSTAGRAM: Record<Tone, InstagramCopy> = {
       "NerdStuff",
       "LearnSomething",
     ],
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// LinkedIn
+// ─────────────────────────────────────────────────────────────
+//
+// The fifth platform, and the first whose fold is TWO budgets rather than one.
+//
+// ── The hard limit is not the interesting number ──
+//
+// A post may run to 3,000 characters, and the prompt targets 150-300 words —
+// roughly 900 to 2,000. So unlike X, where the limit is the whole point of the
+// gutter, the ceiling here is almost never what binds. The FOLD is the only
+// boundary that actually decides what a reader sees, which is why this
+// template spends its attention there and keeps the character count quiet.
+//
+// ── The prompt argues with the fold, which is new ──
+//
+// The other four prompts are merely SILENT about their platform's fold. This
+// one is worse. It names the boundary — "a strong one-line hook that earns the
+// 'see more' click" — gives no number for it, and then asks for "generous line
+// breaks", which is the single fastest way to spend a three-line budget.
+//
+// Silence is a gap. This is a conflict, and it is the first of the five.
+//
+// ── Hashtags, again ──
+//
+// "3-5 relevant hashtags on the final line" makes them the tail of the prose,
+// exactly as Instagram's prompt did. They are a separate payload for the same
+// reasons, so they are a separate field. Two platforms now, not one.
+
+/** The hard ceiling. Reached far less often than the fold below it. */
+export const POST_LIMIT = 3000;
+
+/**
+ * Where the feed stops showing a post, per device.
+ *
+ * Cross-checked against two independent sources 2026-09-25 rather than
+ * recalled. Both give the same pair and both say plainly that the figures are
+ * approximate and drift across app versions — LinkedIn tests variations — so
+ * these are what a writer can act on rather than a constant the destination
+ * guarantees.
+ *
+ * MOBILE IS THE ONE THAT MATTERS, for the same reason the newsletter's mobile
+ * subject limit is: it is where the reading happens, and a hook that only
+ * survives on desktop is a hook most readers never finish.
+ */
+export const POST_FOLD = {
+  mobile: 140,
+  desktop: 210,
+} as const;
+
+/**
+ * The other half of the fold, and the half no previous platform had.
+ *
+ * Three lines, and BLANK LINES COUNT — an empty line spends one of the three,
+ * so an airy opener is cut earlier than its character count predicts. This is
+ * the budget the prompt's "generous line breaks" instruction burns.
+ */
+export const POST_FOLD_LINES = 3;
+
+/** Which budget ran out first. */
+export type FoldCause = "characters" | "lines";
+
+export interface Fold {
+  /** What the feed shows before "…see more". */
+  visible: string;
+  /** What it hides. Empty when the whole post fits. */
+  hidden: string;
+  /** Which budget cut it, or `null` when nothing folds. */
+  cause: FoldCause | null;
+}
+
+/**
+ * Cut a post at whichever of its two budgets runs out first.
+ *
+ * Pure and React-free for the same reason `budgetFor` is: it is the only real
+ * logic on this template, it is the part worth testing, and anything that
+ * eventually VALIDATES generation output will want it rather than a component.
+ *
+ * ── What this can and cannot know ──
+ *
+ * `maxLines` counts HARD line breaks, because those are what the writer — and
+ * the prompt — actually control. The destination truncates by rendered line
+ * box, so a long paragraph that wraps to four lines is folded by the real feed
+ * and not by this function.
+ *
+ * That is not a defect to fix here, because it cannot be fixed here: rendered
+ * wrapping is layout, and a pure function has no font metrics. The character
+ * budget is the proxy that covers it — ~140 characters is roughly three
+ * wrapped lines of ordinary prose — so the two budgets together catch both the
+ * dense case and the airy one. Neither catches both alone, which is precisely
+ * why the destination uses both.
+ *
+ * ── The character cut snaps back to a word boundary ──
+ *
+ * Slicing at exactly `chars` splits whatever word straddles it, and the first
+ * render of this template showed why that is not merely untidy: the marker
+ * landed inside "worth" and the line read "the mechanism is w…see moreorth
+ * understanding". A mangled word reads as breakage, which is the same mistake
+ * as a row of blanks — the surface looked broken where it was only truncated.
+ *
+ * The destination breaks at a word, so this does too. A line cut needs no
+ * snapping: the end of a line is already a boundary.
+ */
+export function foldAt(text: string, chars: number, maxLines: number): Fold {
+  const lines = text.split("\n");
+
+  // Blank lines are included deliberately: the destination counts them.
+  const lineCut =
+    lines.length > maxLines ? lines.slice(0, maxLines).join("\n").length : Infinity;
+  const charCut = text.length > chars ? chars : Infinity;
+
+  if (lineCut === Infinity && charCut === Infinity) {
+    return { visible: text, hidden: "", cause: null };
+  }
+
+  // A tie is attributed to characters. Both are true at that index, and naming
+  // one keeps the readout from having to say "both".
+  const cause: FoldCause = charCut <= lineCut ? "characters" : "lines";
+  let cut = Math.min(lineCut, charCut);
+
+  if (cause === "characters") {
+    // Back up to the last break at or before the budget. `lastIndexOf` on the
+    // slice finds it without a regex scan, and a word longer than the whole
+    // budget — no break to find — keeps the hard cut rather than collapsing
+    // the visible text to nothing.
+    const boundary = Math.max(
+      text.lastIndexOf(" ", cut),
+      text.lastIndexOf("\n", cut),
+    );
+    if (boundary > 0) cut = boundary;
+  }
+
+  return {
+    visible: text.slice(0, cut),
+    hidden: text.slice(cut),
+    cause,
+  };
+}
+
+/**
+ * A LinkedIn post.
+ *
+ * `hook` is its own field because the destination treats it as one, and
+ * because it is the only part of the post that is certain to be read. `body`
+ * is paragraphs rather than a string for a reason this platform makes sharper
+ * than Instagram did: a paragraph boundary is a LINE, and lines are a budget
+ * here. Joining them into prose would hide the thing being measured.
+ */
+export interface LinkedInCopy {
+  /** The line written to survive the fold. */
+  hook: string;
+  body: string[];
+  /** The prompt's "light call to engagement" — a question or invitation. */
+  cta: string;
+  /** 3-5, per the prompt. Its own payload, not the last line of the body. */
+  hashtags: string[];
+}
+
+/**
+ * Four tones, hand-written.
+ *
+ * Two of them are cut by CHARACTERS and two by LINES, which is deliberate:
+ * a specimen for a dual constraint that only ever demonstrates one half of it
+ * would leave the reader believing the other half is decoration. `casual` and
+ * `funny` open with a short stacked line — the shape LinkedIn writing actually
+ * uses, and the shape the prompt asks for — and lose the fold at line three,
+ * well before their character budget is spent.
+ */
+export const LINKEDIN: Record<Tone, LinkedInCopy> = {
+  professional: {
+    hook: "Most explanations of language models stop at “it predicts the next word”, which is true and tells you nothing about how.",
+    body: [
+      "The mechanism is worth understanding. Tokens become vectors, so meaning becomes a direction you can do arithmetic on. Attention then lets the surrounding words rewrite what a word means — the reason “bank” resolves one way beside “river” and another beside “deposit”.",
+      "Ninety-six of those attention heads run in parallel. The layers between them hold most of the parameters, and most of what the model has actually learned.",
+      "None of this requires calculus to follow. It requires someone willing to draw it, which is what this explainer does.",
+    ],
+    cta: "What is the one concept in this space you have never found a clear explanation of?",
+    hashtags: ["MachineLearning", "DeepLearning", "AI", "Transformers"],
+  },
+  casual: {
+    hook: "I finally understand how language models work.",
+    body: [
+      "Not the hand-wavy version.",
+      "Words get turned into vectors, which means meaning becomes a direction in space — and directions are something you can do maths on. Then attention lets the words around a word change what it means, which is how “bank” knows whether it is a river or your salary.",
+      "Then it runs ninety-six of those at once, and the layers in between quietly hold most of what the thing knows.",
+      "Twenty-eight minutes, no equations you have to chase, and I stopped nodding along to things I did not follow.",
+    ],
+    cta: "Anyone else have a topic that only clicked once someone drew it?",
+    hashtags: ["AI", "LearningInPublic", "MachineLearning"],
+  },
+  informative: {
+    hook: "A transformer does four things, and the order they happen in is the part most summaries leave out.",
+    body: [
+      "First, tokens are embedded as vectors, which turns meaning into geometry. Second, attention lets each token read the others and revise itself, which is where context enters. Third, the feed-forward layers between attention blocks store the bulk of the learned parameters. Fourth, the whole stack repeats, ninety-six times over in the model this explainer uses.",
+      "The useful consequence: “it predicts the next word” describes the output, not the machinery. The machinery is a sequence of coordinate transformations, and it is legible if someone shows you the axes.",
+    ],
+    cta: "If you work with these models, which of the four steps do you find hardest to explain to a non-technical colleague?",
+    hashtags: ["Transformers", "MachineLearning", "AI", "Explainer"],
+  },
+  funny: {
+    hook: "175 billion numbers are doing something in there.",
+    body: [
+      "Nobody has ever explained what.",
+      "Turns out: words become vectors, because computers cannot read and we had to improvise. Attention then works out whether “bank” is about a river or your overdraft — which, frankly, is more contextual awareness than most group chats manage.",
+      "Then it does the whole thing ninety-six times simultaneously, because restraint was never on the table.",
+      "Twenty-eight minutes and I came out able to bluff convincingly at dinner. Arguably the highest return on any video this month.",
+    ],
+    cta: "What is the most confidently wrong thing you have heard said about AI this week?",
+    hashtags: ["AI", "TechHumour", "MachineLearning"],
   },
 };

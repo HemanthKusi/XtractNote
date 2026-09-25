@@ -31,7 +31,10 @@ Frontend (Next.js + React)  ←→  Backend (Python + FastAPI + LangGraph)  ←�
 
 ### Prerequisites
 
-- Node.js 18+ (`node --version`)
+- Node.js 22.18+ (`node --version`) — 18 and 20 are both past end of life, and
+  the toolchain already required newer than 18 regardless: Next 16 asks for
+  20.9+, ESLint 10 for 20.19+, and the lint step reads TypeScript directly,
+  which Node runs without a flag from 22.18
 - Python 3.13 (`python --version`) — not 3.14, which has no `pydantic-core` wheels
 - Git (`git --version`)
 - A Supabase account (free at supabase.com)

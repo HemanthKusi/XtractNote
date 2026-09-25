@@ -23,6 +23,19 @@
  * detail. `check-design-tokens` established the shape: a plain .mjs that runs
  * inside `npm run lint`. This follows it. If a runner is ever adopted these
  * cases move into it unchanged, because they are ordinary assertions.
+ *
+ * ── Why relying on native type stripping is safe here ──
+ * Review flagged that this needs Node 22.18+, while the README claimed 18+.
+ * The claim was already false: Next 16 declares >=20.9, ESLint 10 declares
+ * >=20.19, and supabase-js declares >=20 — so `npm run lint` could not run on
+ * Node 18 before this file existed, because eslint itself refuses it.
+ *
+ * Node 18 reached end of life 2025-04-30 and Node 20 on 2026-04-30, so every
+ * version still in support runs this. `engines` in package.json and the
+ * README now state the real floor rather than an aspirational one. This does
+ * raise it from 20.19 to 22.18, and that is a deliberate trade: the
+ * alternative is a check that cannot import the function it tests, and a test
+ * holding its own copy of the logic can only confirm itself.
  */
 
 import {

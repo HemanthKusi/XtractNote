@@ -225,13 +225,27 @@ function Carousel({ copy }: { copy: InstagramCopy }) {
 
         {/* Hidden at the ends rather than disabled: the destination removes
             the arrow when there is nothing that way, and a disabled control
-            that never becomes enabled is furniture. */}
+            that never becomes enabled is furniture.
+
+            ── And NOT RENDERED AT ALL below `sm` ──
+
+            The slide's padding drops to 24 there while a chevron still
+            reaches 50 from the edge, so it sat 26px over the text. The
+            previous round's reasoning for allowing that was wrong twice:
+            `sm` is a VIEWPORT width, not an input type — a narrow desktop
+            window has a mouse — and `focus-visible` reveals the chevron for a
+            keyboard user whether or not anything can hover.
+
+            `hidden` is display:none, so below that width they are out of the
+            tab order and out of the accessibility tree as well as off the
+            screen. Navigation there is the dots and the arrow keys, which is
+            what the destination gives a phone anyway. */}
         {index > 0 && (
           <button
             type="button"
             onClick={() => go(index - 1)}
             aria-label="Previous slide"
-            className="absolute left-1.5 top-1/2 -translate-y-1/2 rounded-full bg-xn-bg/90 p-3 text-xn-ink opacity-0 transition-opacity duration-xn ease-xn focus-visible:opacity-100 group-hover:opacity-100"
+            className="absolute left-1.5 top-1/2 hidden -translate-y-1/2 rounded-full bg-xn-bg/90 p-3 text-xn-ink opacity-0 sm:block transition-opacity duration-xn ease-xn focus-visible:opacity-100 group-hover:opacity-100"
           >
             <ChevronLeft size={20} strokeWidth={2.25} />
           </button>
@@ -241,7 +255,7 @@ function Carousel({ copy }: { copy: InstagramCopy }) {
             type="button"
             onClick={() => go(index + 1)}
             aria-label="Next slide"
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-xn-bg/90 p-3 text-xn-ink opacity-0 transition-opacity duration-xn ease-xn focus-visible:opacity-100 group-hover:opacity-100"
+            className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 rounded-full bg-xn-bg/90 p-3 text-xn-ink opacity-0 sm:block transition-opacity duration-xn ease-xn focus-visible:opacity-100 group-hover:opacity-100"
           >
             <ChevronRight size={20} strokeWidth={2.25} />
           </button>

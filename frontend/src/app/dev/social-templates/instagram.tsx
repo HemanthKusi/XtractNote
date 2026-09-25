@@ -169,15 +169,25 @@ function Carousel({ copy }: { copy: InstagramCopy }) {
       }}
     >
       <div className="relative aspect-[4/5]" style={{ backgroundColor: CARD_GROUND }}>
-        {/* ── The horizontal padding clears the chevrons ──
-            They sit at 10px and are 40 wide, so anything starting before 50
-            is underneath one. The text began at 28 and the chevrons were
-            resting on it.
+        {/* ── The horizontal padding clears the chevrons, but only where
+            there are chevrons to clear ──
 
-            On the destination this never comes up, because the thing behind
-            the arrows is a photograph and a photograph does not mind. Here
-            the picture IS the type, so the type has to move. */}
-        <div className="flex h-full items-center px-14 py-8">
+            They sit at 6px and are 44 wide, so anything starting before 50 is
+            underneath one, and the text used to begin at 28. On the
+            destination this never comes up: the thing behind the arrows is a
+            photograph and a photograph does not mind being covered. Here the
+            picture IS the type, so the type moved.
+
+            56px each side is right at the card's full width and wrong at a
+            phone's. Measured: a 272px card gives the text 158px, the longest
+            body paragraph runs to 391px against a 338px card, and 54px of it
+            is cut off by the parent's `overflow-hidden`.
+
+            So the clearance applies from `sm` upward. Below it the chevrons
+            are not reachable anyway — they are revealed by hover, and a touch
+            screen has none — so the padding they exist for is padding nobody
+            is paying for. */}
+        <div className="flex h-full items-center px-6 py-8 sm:px-14">
           {/* Nothing but the words.
 
               The slide used to carry a counter top-left and the video's
@@ -241,14 +251,21 @@ function Carousel({ copy }: { copy: InstagramCopy }) {
       {/* Dots below the media, as the destination places them. These are real
           controls — they move the carousel — so unlike the action row they are
           buttons and keep their focus behaviour. */}
-      {/* The dot stays 6px and the BUTTON around it stays 24, which is the
-          minimum target — but 24px buttons laid end to end spread the dots
-          four times further apart than the destination does.
+      {/* ── The dots, and an honest account of their target ──
+          The dot is 6px, as the destination draws it, and the pitch is 12px,
+          as the destination spaces it.
 
-          `-mx-1.5` overlaps the targets so the visual PITCH comes back to
-          12px while each button keeps its full 24. Adjacent targets touching
-          is fine here: whichever dot you are nearest is the one you hit, and
-          a near-miss lands on a neighbour rather than on nothing. */}
+          An earlier version kept 24x24 buttons and overlapped them with a
+          negative margin to pull the pitch back to 12, claiming each button
+          "keeps its full 24". It does not: later buttons paint over earlier
+          ones, so every dot but the last had roughly half its target covered.
+          A comment asserting a property the code does not have.
+
+          They are 12x24 now — no overlap, no claim, and each dot owns exactly
+          the space between it and its neighbour. That is under the 24x24
+          guideline in one axis, and the mitigation is real rather than
+          hopeful: the chevrons and the arrow keys are the primary way through
+          this carousel, and both are full-sized. */}
       <div className="flex items-center justify-center py-2" role="group" aria-label="Slide">
         {slides.map((_, i) => (
           <button
@@ -257,7 +274,7 @@ function Carousel({ copy }: { copy: InstagramCopy }) {
             onClick={() => go(i)}
             aria-label={`Slide ${i + 1} of ${slides.length}`}
             aria-current={i === index ? "true" : undefined}
-            className="-mx-1.5 grid h-6 w-6 place-items-center"
+            className="grid h-6 w-3 place-items-center"
           >
             <span
               className={[
@@ -386,8 +403,14 @@ export function Instagram({ copy }: { copy: InstagramCopy }) {
               is the one treatment guaranteed to be wrong.
 
               They only appear once the caption is open, because on the
-              destination they sit below the fold with everything else. */}
-          {expanded && (
+              destination they sit below the fold with everything else.
+
+              `!folds` matters: a caption of 125 characters or fewer never
+              gets a "more" control, so `expanded` could never become true and
+              the hashtags were unreachable. None of the sample copy is that
+              short, which is exactly why it would have survived to the first
+              caption that was. */}
+          {(expanded || !folds) && (
             <p className="mt-2.5 text-sm leading-relaxed text-xn-fmt-social">
               {copy.hashtags.map((tag) => `#${tag}`).join(" ")}
             </p>

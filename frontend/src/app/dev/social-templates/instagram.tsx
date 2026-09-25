@@ -265,21 +265,35 @@ function Carousel({ copy }: { copy: InstagramCopy }) {
       {/* Dots below the media, as the destination places them. These are real
           controls — they move the carousel — so unlike the action row they are
           buttons and keep their focus behaviour. */}
-      {/* ── The dots, and an honest account of their target ──
-          The dot is 6px, as the destination draws it, and the pitch is 12px,
-          as the destination spaces it.
+      {/* ── The dots, sized by what else is available ──
+          The dot itself is always 6px, as the destination draws it. What
+          changes is the target around it.
 
-          An earlier version kept 24x24 buttons and overlapped them with a
-          negative margin to pull the pitch back to 12, claiming each button
-          "keeps its full 24". It does not: later buttons paint over earlier
-          ones, so every dot but the last had roughly half its target covered.
-          A comment asserting a property the code does not have.
+          ABOVE `sm` it is 12x24, which matches the destination's 12px pitch.
+          That is under the 24x24 guideline in one axis, and the mitigation is
+          real: the chevrons are 44x44 and the arrow keys work, so the dots
+          are an indicator that can also be clicked rather than the only way
+          through.
 
-          They are 12x24 now — no overlap, no claim, and each dot owns exactly
-          the space between it and its neighbour. That is under the 24x24
-          guideline in one axis, and the mitigation is real rather than
-          hopeful: the chevrons and the arrow keys are the primary way through
-          this carousel, and both are full-sized. */}
+          BELOW `sm` it is 24x24, because there the dots are ALL there is. The
+          chevrons are not rendered — they covered the text at that width —
+          and a phone has no arrow keys. Instagram can keep its dots tiny down
+          there because it has swipe; this does not, so the control has to be
+          a real target.
+
+          The pitch doubles as a result, which is less faithful than 12. A
+          preview nobody can operate is less faithful still.
+
+          `shrink-0` is not decoration either. Without it the buttons are flex
+          items that compress: measured at 8x24 each when the column was
+          narrow, which is a declared 24 that the layout quietly took back. A
+          target that collapses under pressure is not a target.
+
+          Two earlier versions got this wrong in opposite directions: 24x24
+          buttons overlapped with a negative margin, whose comment claimed
+          each "keeps its full 24" while later buttons painted over earlier
+          ones — and then 12x24 everywhere, which left a phone with a 12px
+          target once the chevrons went. */}
       <div className="flex items-center justify-center py-2" role="group" aria-label="Slide">
         {slides.map((_, i) => (
           <button
@@ -288,7 +302,7 @@ function Carousel({ copy }: { copy: InstagramCopy }) {
             onClick={() => go(i)}
             aria-label={`Slide ${i + 1} of ${slides.length}`}
             aria-current={i === index ? "true" : undefined}
-            className="grid h-6 w-3 place-items-center"
+            className="grid h-6 w-6 shrink-0 place-items-center sm:w-3"
           >
             <span
               className={[

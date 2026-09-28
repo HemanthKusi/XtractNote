@@ -35,13 +35,31 @@ import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
 //
 // ── The geometry is measured, not chosen ──
 // A lid hinged at the spine swings outside its own card, and an open cover
-// renders about 12% taller than the card because perspective magnifies
-// whatever leans toward the viewer. Three consequences, all load-bearing:
+// renders taller than the card because perspective magnifies whatever leans
+// toward the viewer — 22.7px past each edge of a 300px card, 15% overall,
+// measured 2026-09-28. This said "about 12%" and that was the second wrong
+// number in this block; see point 1. Three consequences, all load-bearing:
 //
-//   1. The card is a FIXED 220 wide. Swing scales with width, while a wider
+//   1. The card is a FIXED 280 wide. Swing scales with width, while a wider
 //      card leaves less slack in its cell to swing into — the two work
-//      against each other, so widening is punished twice. At 240 the lid
-//      needed 86px of room and had 72px, and landed on its neighbour.
+//      against each other, so widening is punished twice.
+//
+//      This said 220 until 2026-09-28, and cited a collision at 240. Both
+//      described the geometry BEFORE the card was widened and the step
+//      raised from 32 to 48 with a solved left inset; the numbers were true
+//      when written and were not revisited when the thing they described
+//      changed underneath them. The reasoning above survived that change
+//      intact, which is exactly why the stale figures went unnoticed — a
+//      wrong number inside correct reasoning reads as correct.
+//
+//      The live argument is 280 over 300, not over 240: the overhang scales
+//      with the card, so 20px off the width buys it back on both sides of
+//      the fold. Two open columns need 878px of the 960 available at 280,
+//      where 300 needed 936 and left nothing for the gaps.
+//
+//      Re-verified at 280 on 2026-09-28: an open lid clears the card beside
+//      it and the row beneath it, with the lid's own bounding box measured
+//      against its neighbours rather than estimated.
 //   2. The ROW gap is larger than the column gap, because two vertically
 //      stacked open cards overlap otherwise — by 24px at a 12px gap.
 //   3. Cards are CENTRED in their cells and step right as they open, so
@@ -103,6 +121,15 @@ import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
 /** How far the cover swings past its spine, and how far the card steps aside. */
 const SWING_DEG = -110;
 const STEP_PX = 48;
+
+/**
+ * How long the cover's own contents take to fade as it opens.
+ *
+ * Comfortably inside the swing: the reverse of the cover only becomes visible
+ * once it passes 90 of its 110 degrees, so the number and the question are
+ * long gone by the time anything could be seen through them.
+ */
+const FADE_MS = 180;
 
 /**
  * The cover's swing. Also the duration of the quiz's explanation reveal —
@@ -272,7 +299,10 @@ function FlashcardTile({
           <span className="mb-2 shrink-0 font-mono text-[11px]" style={{ color: accent }}>
             Answer
           </span>
-          <span className="text-[14px] leading-[1.6] text-xn-ink">{card.back}</span>
+          {/* 17.5px, the size summary, notes and research read at. An answer
+              is prose and there is no reason it should be smaller than the
+              same sentence in a summary — see the note above the prompt. */}
+          <span className="text-[17.5px] leading-[1.6] text-xn-ink">{card.back}</span>
         </span>
 
         {/* The cover. transform-origin at the spine is the whole trick —
@@ -300,10 +330,99 @@ function FlashcardTile({
           >
             {`Card ${index + 1}. Showing prompt. Activate to turn over.`}
           </button>
-          <span className="mb-2 shrink-0 font-mono text-[11px]" style={{ color: accent }}>
+          {/* ── The cover's contents fade as it opens, and why not backface ──
+
+              Swung to -110deg the cover shows its REVERSE, and with nothing
+              said about `backface-visibility` the browser paints the front
+              seen from behind: the number and the question rendered in mirror
+              writing. A real cover's back is blank card.
+
+              `backface-visibility: hidden` is the usual answer and it cannot
+              work here, twice over. On the cover itself it would hide the
+              whole panel past 90deg, so the cover would vanish mid-swing
+              instead of opening. On these contents it does nothing at all,
+              because `faceBase` carries `overflow-y-auto` — a scroll
+              container flattens the 3D space inside it, so a child never has
+              a backface of its own to hide. Both were tried in the browser
+              before this was written.
+
+              So the state does it instead. The contents fade out as the cover
+              opens and back in as it closes, leaving a blank panel at rest.
+
+              THE TWO DIRECTIONS ARE NOT SYMMETRIC, and the first version of
+              this missed it. Opening starts at 0deg facing the reader, so
+              fading out from the first frame is right. CLOSING starts at
+              -110deg with the contents still facing AWAY — so fading in
+              immediately puts the question back in mirror writing until the
+              cover passes -90deg. Review caught that; the note here had
+              reasoned about opening and about reduced motion, and never about
+              closing.
+
+              So the return fade waits.
+
+              THE COVER DOES NOT USE `ease-xn`. It sets a duration and no
+              timing function, so it runs on the CSS default, `ease` —
+              cubic-bezier(.25,.1,.25,1). `ease-xn` is on the CARD, where it
+              governs the 48px step, and reading it as the cover's curve is
+              the mistake this paragraph made on its first attempt: the
+              crossing came out at 20.2ms instead of 66.7, and claimed a
+              fourfold margin that did not exist. Confirmed against
+              getComputedStyle rather than by reading class names, because the
+              cover inherits nothing and says nothing.
+
+              On the real curve, over the 450ms swing, the cover travels the
+              20 of its 110 degrees back past -90 within the first 66.7ms —
+              solved by bisection, not measured, because the browser pane
+              throttles animation frames too hard to time a transition in.
+
+              The delay is 120ms against that 66.7. It was 90, which cleared
+              the crossing by 23ms and looked adequate; a margin that thin is
+              a silent trap, because it is derived from DURATION_MS and
+              SWING_DEG and nothing recomputes it when either moves. If you
+              change the swing or the duration, recompute this — 120ms is not
+              a round number chosen for comfort.
+
+              `motion-safe:` on the delay rather than a bare one, because the
+              global reduced-motion rule zeroes transition-DURATION and NOT
+              transition-DELAY. A bare delay survives that rule and would hold
+              the text back from a cover that has already snapped shut. Under
+              reduced motion the transform snaps as well, so there is no
+              mirrored window to avoid and no delay is wanted. */}
+          <span
+            className={[
+              "mb-2 shrink-0 font-mono text-[11px] transition-opacity ease-xn",
+              open ? "opacity-0" : "opacity-100 motion-safe:delay-[120ms]",
+            ].join(" ")}
+            style={{ color: accent, transitionDuration: `${FADE_MS}ms` }}
+          >
             {String(index + 1).padStart(2, "0")}
           </span>
-          <span className="text-[15px] font-medium leading-[1.55] text-xn-ink">
+          {/* ── Why 17.5 and not the 15 this shipped with ──
+
+              These two renderers were built 23-25 August. `D · Split` was
+              chosen on 9 September and the block vocabulary landed on the
+              22nd, so the flashcard type was set before the scale the rest of
+              the output surface now shares existed.
+
+              Measured at OutputView's real 960px, the prompt was 15 and the
+              answer 14, against 17.5 for summary/notes/research and 21 for a
+              blog post — making these the only output surfaces in the product
+              under 16px. Chosen from three rendered variants; the alternative
+              was a 20px serif prompt, which reads as a heading but splits the
+              two faces across two families for no gain.
+
+              It costs nothing geometrically: the longest sample answer grows
+              from 112px of text to 196px inside a 298px face, so it fills
+              space the card already reserved rather than needing more, and
+              nothing began to scroll. */}
+          <span
+            className={[
+              "text-[17.5px] font-medium leading-[1.5] text-xn-ink",
+              "transition-opacity ease-xn",
+              open ? "opacity-0" : "opacity-100 motion-safe:delay-[120ms]",
+            ].join(" ")}
+            style={{ transitionDuration: `${FADE_MS}ms` }}
+          >
             {card.front}
           </span>
         </span>

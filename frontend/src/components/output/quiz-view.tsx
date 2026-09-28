@@ -102,7 +102,8 @@ function Option({
       onClick={onPick}
       className={[
         "flex w-full items-start gap-2.5 rounded-xn-sm border px-2.5 py-2.5",
-        "text-left text-[15px] leading-[1.55]",
+        // 17.5 with the stem — an option is prose being read, not a label.
+        "text-left text-[17.5px] leading-[1.5]",
         "transition-colors duration-xn ease-xn",
         tone,
         resolved ? "cursor-default" : "hover:bg-xn-surface-alt",
@@ -169,7 +170,10 @@ function Outcome({ q, picked }: { q: QuizQuestion; picked: number | null }) {
               >
                 Why
               </p>
-              <p className="mt-1.5 text-[14px] leading-[1.65] text-xn-ink">{q.explanation}</p>
+              {/* The explanation is the most prose-like text on this surface —
+                  it is the part you actually read to learn something — and it
+                  was the smallest at 14. Its "Why" label above stays a label. */}
+              <p className="mt-1.5 text-[17.5px] leading-[1.6] text-xn-ink">{q.explanation}</p>
             </div>
           )}
         </div>
@@ -362,7 +366,22 @@ export function QuizView({ body, className = "" }: QuizViewProps) {
                   >
                     {qi + 1}
                   </span>
-                  <p className="text-[16px] font-medium leading-[1.6] text-xn-ink">
+                  {/* ── 17.5, the size the rest of the output surface reads at ──
+
+                      This renderer and the flashcards were built 23-25 August,
+                      before `D · Split` was chosen and before the block
+                      vocabulary landed. Their type was set against nothing, and
+                      it left them the only output surfaces under 16px: stem 16,
+                      options 15, explanation 14, against 17.5 for summary,
+                      notes and research.
+
+                      The stem stays the same SIZE as its options and keeps its
+                      hierarchy from weight and the mono number beside it. A
+                      larger stem was the alternative; it was not taken because
+                      a question and its answers are one unit being read, and
+                      the flashcard pass settled that both faces of one artefact
+                      read at one size. */}
+                  <p className="text-[17.5px] font-medium leading-[1.5] text-xn-ink">
                     {q.question}
                   </p>
                 </div>

@@ -358,12 +358,29 @@ function FlashcardTile({
               reasoned about opening and about reduced motion, and never about
               closing.
 
-              So the return fade waits. `ease-xn` is cubic-bezier(.2,.8,.2,1)
-              over 450ms, and the cover travels the 20 of its 110 degrees back
-              past -90 within the first 20.2ms — solved from the curve, not
-              measured, because the browser pane throttles animation frames
-              too hard to time a transition in. 90ms is about four times that
-              and still short enough not to read as lag.
+              So the return fade waits.
+
+              THE COVER DOES NOT USE `ease-xn`. It sets a duration and no
+              timing function, so it runs on the CSS default, `ease` —
+              cubic-bezier(.25,.1,.25,1). `ease-xn` is on the CARD, where it
+              governs the 48px step, and reading it as the cover's curve is
+              the mistake this paragraph made on its first attempt: the
+              crossing came out at 20.2ms instead of 66.7, and claimed a
+              fourfold margin that did not exist. Confirmed against
+              getComputedStyle rather than by reading class names, because the
+              cover inherits nothing and says nothing.
+
+              On the real curve, over the 450ms swing, the cover travels the
+              20 of its 110 degrees back past -90 within the first 66.7ms —
+              solved by bisection, not measured, because the browser pane
+              throttles animation frames too hard to time a transition in.
+
+              The delay is 120ms against that 66.7. It was 90, which cleared
+              the crossing by 23ms and looked adequate; a margin that thin is
+              a silent trap, because it is derived from DURATION_MS and
+              SWING_DEG and nothing recomputes it when either moves. If you
+              change the swing or the duration, recompute this — 120ms is not
+              a round number chosen for comfort.
 
               `motion-safe:` on the delay rather than a bare one, because the
               global reduced-motion rule zeroes transition-DURATION and NOT
@@ -374,7 +391,7 @@ function FlashcardTile({
           <span
             className={[
               "mb-2 shrink-0 font-mono text-[11px] transition-opacity ease-xn",
-              open ? "opacity-0" : "opacity-100 motion-safe:delay-[90ms]",
+              open ? "opacity-0" : "opacity-100 motion-safe:delay-[120ms]",
             ].join(" ")}
             style={{ color: accent, transitionDuration: `${FADE_MS}ms` }}
           >
@@ -402,7 +419,7 @@ function FlashcardTile({
             className={[
               "text-[17.5px] font-medium leading-[1.5] text-xn-ink",
               "transition-opacity ease-xn",
-              open ? "opacity-0" : "opacity-100 motion-safe:delay-[90ms]",
+              open ? "opacity-0" : "opacity-100 motion-safe:delay-[120ms]",
             ].join(" ")}
             style={{ transitionDuration: `${FADE_MS}ms` }}
           >

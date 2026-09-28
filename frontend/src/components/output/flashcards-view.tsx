@@ -105,6 +105,15 @@ const SWING_DEG = -110;
 const STEP_PX = 48;
 
 /**
+ * How long the cover's own contents take to fade as it opens.
+ *
+ * Comfortably inside the swing: the reverse of the cover only becomes visible
+ * once it passes 90 of its 110 degrees, so the number and the question are
+ * long gone by the time anything could be seen through them.
+ */
+const FADE_MS = 180;
+
+/**
  * The cover's swing. Also the duration of the quiz's explanation reveal —
  * the `unfold` animation in tailwind.config.ts is set to 450ms to match
  * this deliberately.
@@ -272,7 +281,10 @@ function FlashcardTile({
           <span className="mb-2 shrink-0 font-mono text-[11px]" style={{ color: accent }}>
             Answer
           </span>
-          <span className="text-[14px] leading-[1.6] text-xn-ink">{card.back}</span>
+          {/* 17.5px, the size summary, notes and research read at. An answer
+              is prose and there is no reason it should be smaller than the
+              same sentence in a summary — see the note above the prompt. */}
+          <span className="text-[17.5px] leading-[1.6] text-xn-ink">{card.back}</span>
         </span>
 
         {/* The cover. transform-origin at the spine is the whole trick —
@@ -300,10 +312,66 @@ function FlashcardTile({
           >
             {`Card ${index + 1}. Showing prompt. Activate to turn over.`}
           </button>
-          <span className="mb-2 shrink-0 font-mono text-[11px]" style={{ color: accent }}>
+          {/* ── The cover's contents fade as it opens, and why not backface ──
+
+              Swung to -110deg the cover shows its REVERSE, and with nothing
+              said about `backface-visibility` the browser paints the front
+              seen from behind: the number and the question rendered in mirror
+              writing. A real cover's back is blank card.
+
+              `backface-visibility: hidden` is the usual answer and it cannot
+              work here, twice over. On the cover itself it would hide the
+              whole panel past 90deg, so the cover would vanish mid-swing
+              instead of opening. On these contents it does nothing at all,
+              because `faceBase` carries `overflow-y-auto` — a scroll
+              container flattens the 3D space inside it, so a child never has
+              a backface of its own to hide. Both were tried in the browser
+              before this was written.
+
+              So the state does it instead. The contents fade out as the cover
+              opens and back in as it closes, leaving a blank panel at rest.
+
+              NO DELAY, deliberately. Timing it to cross 90deg would read
+              better, but the global reduced-motion rule zeroes
+              transition-DURATION and not transition-DELAY — so a delayed fade
+              survives that rule, and a reduced-motion user would get the
+              mirrored text held on an already-open cover. Fading from the
+              first frame is worse by a hair and correct in both modes. */}
+          <span
+            className={[
+              "mb-2 shrink-0 font-mono text-[11px] transition-opacity ease-xn",
+              open ? "opacity-0" : "opacity-100",
+            ].join(" ")}
+            style={{ color: accent, transitionDuration: `${FADE_MS}ms` }}
+          >
             {String(index + 1).padStart(2, "0")}
           </span>
-          <span className="text-[15px] font-medium leading-[1.55] text-xn-ink">
+          {/* ── Why 17.5 and not the 15 this shipped with ──
+
+              These two renderers were built 23-25 August. `D · Split` was
+              chosen on 9 September and the block vocabulary landed on the
+              22nd, so the flashcard type was set before the scale the rest of
+              the output surface now shares existed.
+
+              Measured at OutputView's real 960px, the prompt was 15 and the
+              answer 14, against 17.5 for summary/notes/research and 21 for a
+              blog post — making these the only output surfaces in the product
+              under 16px. Chosen from three rendered variants; the alternative
+              was a 20px serif prompt, which reads as a heading but splits the
+              two faces across two families for no gain.
+
+              It costs nothing geometrically: the longest sample answer grows
+              from 112px of text to 196px inside a 298px face, so it fills
+              space the card already reserved rather than needing more, and
+              nothing began to scroll. */}
+          <span
+            className={[
+              "text-[17.5px] font-medium leading-[1.5] text-xn-ink",
+              "transition-opacity ease-xn",
+              open ? "opacity-0" : "opacity-100",
+            ].join(" ")}
+            style={{ transitionDuration: `${FADE_MS}ms` }}
+          >
             {card.front}
           </span>
         </span>

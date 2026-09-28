@@ -35,13 +35,31 @@ import type { Flashcard, FlashcardsBody } from "@/lib/content/types";
 //
 // ── The geometry is measured, not chosen ──
 // A lid hinged at the spine swings outside its own card, and an open cover
-// renders about 12% taller than the card because perspective magnifies
-// whatever leans toward the viewer. Three consequences, all load-bearing:
+// renders taller than the card because perspective magnifies whatever leans
+// toward the viewer — 22.7px past each edge of a 300px card, 15% overall,
+// measured 2026-09-28. This said "about 12%" and that was the second wrong
+// number in this block; see point 1. Three consequences, all load-bearing:
 //
-//   1. The card is a FIXED 220 wide. Swing scales with width, while a wider
+//   1. The card is a FIXED 280 wide. Swing scales with width, while a wider
 //      card leaves less slack in its cell to swing into — the two work
-//      against each other, so widening is punished twice. At 240 the lid
-//      needed 86px of room and had 72px, and landed on its neighbour.
+//      against each other, so widening is punished twice.
+//
+//      This said 220 until 2026-09-28, and cited a collision at 240. Both
+//      described the geometry BEFORE the card was widened and the step
+//      raised from 32 to 48 with a solved left inset; the numbers were true
+//      when written and were not revisited when the thing they described
+//      changed underneath them. The reasoning above survived that change
+//      intact, which is exactly why the stale figures went unnoticed — a
+//      wrong number inside correct reasoning reads as correct.
+//
+//      The live argument is 280 over 300, not over 240: the overhang scales
+//      with the card, so 20px off the width buys it back on both sides of
+//      the fold. Two open columns need 878px of the 960 available at 280,
+//      where 300 needed 936 and left nothing for the gaps.
+//
+//      Re-verified at 280 on 2026-09-28: an open lid clears the card beside
+//      it and the row beneath it, with the lid's own bounding box measured
+//      against its neighbours rather than estimated.
 //   2. The ROW gap is larger than the column gap, because two vertically
 //      stacked open cards overlap otherwise — by 24px at a 12px gap.
 //   3. Cards are CENTRED in their cells and step right as they open, so

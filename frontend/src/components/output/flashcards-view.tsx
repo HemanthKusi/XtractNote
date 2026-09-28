@@ -349,16 +349,32 @@ function FlashcardTile({
               So the state does it instead. The contents fade out as the cover
               opens and back in as it closes, leaving a blank panel at rest.
 
-              NO DELAY, deliberately. Timing it to cross 90deg would read
-              better, but the global reduced-motion rule zeroes
-              transition-DURATION and not transition-DELAY — so a delayed fade
-              survives that rule, and a reduced-motion user would get the
-              mirrored text held on an already-open cover. Fading from the
-              first frame is worse by a hair and correct in both modes. */}
+              THE TWO DIRECTIONS ARE NOT SYMMETRIC, and the first version of
+              this missed it. Opening starts at 0deg facing the reader, so
+              fading out from the first frame is right. CLOSING starts at
+              -110deg with the contents still facing AWAY — so fading in
+              immediately puts the question back in mirror writing until the
+              cover passes -90deg. Review caught that; the note here had
+              reasoned about opening and about reduced motion, and never about
+              closing.
+
+              So the return fade waits. `ease-xn` is cubic-bezier(.2,.8,.2,1)
+              over 450ms, and the cover travels the 20 of its 110 degrees back
+              past -90 within the first 20.2ms — solved from the curve, not
+              measured, because the browser pane throttles animation frames
+              too hard to time a transition in. 90ms is about four times that
+              and still short enough not to read as lag.
+
+              `motion-safe:` on the delay rather than a bare one, because the
+              global reduced-motion rule zeroes transition-DURATION and NOT
+              transition-DELAY. A bare delay survives that rule and would hold
+              the text back from a cover that has already snapped shut. Under
+              reduced motion the transform snaps as well, so there is no
+              mirrored window to avoid and no delay is wanted. */}
           <span
             className={[
               "mb-2 shrink-0 font-mono text-[11px] transition-opacity ease-xn",
-              open ? "opacity-0" : "opacity-100",
+              open ? "opacity-0" : "opacity-100 motion-safe:delay-[90ms]",
             ].join(" ")}
             style={{ color: accent, transitionDuration: `${FADE_MS}ms` }}
           >
@@ -386,7 +402,7 @@ function FlashcardTile({
             className={[
               "text-[17.5px] font-medium leading-[1.5] text-xn-ink",
               "transition-opacity ease-xn",
-              open ? "opacity-0" : "opacity-100",
+              open ? "opacity-0" : "opacity-100 motion-safe:delay-[90ms]",
             ].join(" ")}
             style={{ transitionDuration: `${FADE_MS}ms` }}
           >

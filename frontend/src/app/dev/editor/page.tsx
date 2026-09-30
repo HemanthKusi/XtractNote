@@ -988,8 +988,13 @@ function BlockTools({
           spellCheck={false}
           className="min-w-[320px] flex-1 rounded-xn-sm border border-xn-border bg-xn-surface px-2.5 py-1.5 font-mono text-sm text-xn-ink"
         />
+        {/* This read "rendering it needs a maths dependency, which is gated"
+            until the markers landed. It does not — KaTeX is installed and the
+            block above re-renders on every keystroke. A stale caption is worse
+            than a stale comment: it tells the person using the surface that a
+            thing they can watch happening is not possible. */}
         <span className="text-xs text-xn-ink-muted">
-          LaTeX — rendering it needs a maths dependency, which is gated
+          LaTeX — the formula above re-renders as you type
         </span>
       </div>
     );
@@ -1142,6 +1147,16 @@ export default function EditorPage() {
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** True while a burst of typing is in progress, so it snapshots once. */
   const typingBurst = useRef(false);
+  /**
+   * The same pair for the LaTeX field, kept SEPARATE from the document's.
+   *
+   * They are two input streams editing one document. Sharing the flag would
+   * let a burst started in the prose swallow the field's snapshot for the next
+   * 600ms, so an edit to a formula made straight after typing would have no
+   * undo entry of its own.
+   */
+  const mathBurst = useRef(false);
+  const mathTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pushHistory = useCallback(() => {
     const el = docRef.current;
@@ -1167,6 +1182,11 @@ export default function EditorPage() {
     lastBlocksRef.current = [];
     lastCellRef.current = null;
     setKind("");
+    // The document was replaced wholesale, so any open field burst belongs to a
+    // formula that is gone. Leaving it set would let the next edit slip into an
+    // entry that no longer describes anything.
+    if (mathTimer.current) clearTimeout(mathTimer.current);
+    mathBurst.current = false;
   }, []);
 
   const undo = useCallback(() => {
@@ -1557,14 +1577,43 @@ export default function EditorPage() {
    * to KaTeX's own parse, and showing the formula resolve as it is typed is
    * most of the field's value.
    */
-  const setMathText = useCallback((v: string) => {
-    setMathTextState(v);
-    const b = lastBlockRef.current;
-    if (b && b.dataset.kind === "math" && docRef.current?.contains(b)) {
+  const setMathText = useCallback(
+    (v: string) => {
+      setMathTextState(v);
+      const root = docRef.current;
+      const b = lastBlockRef.current;
+      if (!b || b.dataset.kind !== "math" || !root?.contains(b)) return;
+
+      // ── The field edits the document, so it uses the document's undo ──
+      //
+      // This wrote straight to the DOM. It was survivable while the formula
+      // block held its LaTeX as plain text, because typing INSIDE the block
+      // went through the editable document's own listeners and was snapshotted
+      // there. Now the rendered formula is a non-editable atom and this field
+      // is the only way to change one, so without this the single edit a
+      // formula can receive was the one edit Revert could not undo.
+      //
+      // Snapshot BEFORE the write and once per burst — the same rule, and the
+      // same reason, as `beforeinput` on the document: after the write, the
+      // state being captured already contains the change.
+      if (!mathBurst.current) {
+        pushHistory();
+        mathBurst.current = true;
+      }
+      if (mathTimer.current) clearTimeout(mathTimer.current);
+      mathTimer.current = setTimeout(() => {
+        mathBurst.current = false;
+      }, 600);
+
       b.dataset.tex = v;
       b.innerHTML = mathBodyHtml(v);
-    }
-  }, []);
+      // The LaTeX is source text, and `countWords` counts source, so a formula
+      // that grew or shrank changes the total. Left out, the count stayed at
+      // whatever the last prose edit made it.
+      setWords(countWords(root));
+    },
+    [pushHistory],
+  );
 
   /**
    * Table structure, relative to the caret where that makes sense.

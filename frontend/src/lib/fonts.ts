@@ -1,0 +1,210 @@
+// src/lib/fonts.ts
+//
+// Every typeface the product can set text in, declared once.
+//
+// ── Why a registry rather than imports where they are used ──
+//
+// A family named in a component is a family nothing else can find. Landing
+// pages, headers, footers and the editor's font control all want the same set,
+// and a picker needs to ENUMERATE it — which means the list has to be data, not
+// a pile of imports scattered across the files that happen to use them.
+//
+// ── PRELOADING IS THE WHOLE GAME HERE ──
+//
+// `next/font` preloads by default, and preloading thirty families would put
+// thirty font requests in the critical path of every page. Nobody would connect
+// the slowdown back to this file.
+//
+// So exactly three families preload: the sans, serif and mono the base design
+// actually uses on first paint. Everything else is declared with
+// `preload: false`, which still self-hosts the file and still defines the CSS
+// variable — the browser simply does not fetch it until something applies it.
+// A face used on one landing page costs nothing on every other page.
+//
+// ── Licensing ──
+//
+// Every family here comes through `next/font/google`, and that catalogue
+// accepts only open licences — OFL, Apache 2.0 and UFL. There is no per-family
+// question to answer, which is exactly why these are the ones that land first.
+// Families that need their files committed carry their own licence and are
+// handled separately.
+
+import {
+  Alex_Brush,
+  Anonymous_Pro,
+  Anybody,
+  Barriecito,
+  Cinzel,
+  DM_Sans,
+  Fira_Mono,
+  Gluten,
+  Grandstander,
+  Inconsolata,
+  Instrument_Serif,
+  Inter,
+  JetBrains_Mono,
+  Kaushan_Script,
+  League_Gothic,
+  Linden_Hill,
+  Lora,
+  Major_Mono_Display,
+  Manrope,
+  Martian_Mono,
+  Neuton,
+  Oi,
+  Open_Sans,
+  PT_Mono,
+  Prociono,
+  Rakkas,
+  Rokkitt,
+  Space_Grotesk,
+  Work_Sans,
+  Yatra_One,
+} from "next/font/google";
+
+/**
+ * What a face is FOR, which is what a picker groups by.
+ *
+ * Deliberately coarser than a type foundry's categories: someone choosing a
+ * font is asking "do I want this to read, or to shout", and five buckets answer
+ * that. `script` covers handwriting and brush faces both — the distinction
+ * between them matters to a typographer and not to the person picking one.
+ */
+export type FaceCategory = "sans" | "serif" | "mono" | "display" | "script";
+
+export interface Face {
+  /** Stable, url-safe, and what markup carries: `data-font="alex-brush"`. */
+  id: string;
+  /** What a person reads in a picker. */
+  name: string;
+  category: FaceCategory;
+  /** The custom property to set `font-family` from. */
+  cssVar: string;
+  /** Where the family ends and the system takes over. */
+  fallback: string;
+  /**
+   * next/font's generated class. It DEFINES the custom property rather than
+   * applying the font, so it belongs on `<html>` once and nowhere else.
+   */
+  varClass: string;
+  /** True only for the three the base design paints with on first load. */
+  preloaded: boolean;
+}
+
+const SANS = "system-ui, sans-serif";
+const SERIF = "Georgia, serif";
+const MONO = "ui-monospace, Menlo, monospace";
+const DISPLAY = "system-ui, sans-serif";
+const SCRIPT = "cursive";
+
+// ── The three the base design uses, and the only three that preload ──
+
+const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans", display: "swap" });
+
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  variable: "--font-instrument-serif",
+  display: "swap",
+  weight: "400",
+  style: ["normal", "italic"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
+
+// ── Everything else: self-hosted, variable defined, file not fetched ──
+//
+// ── The options are repeated on every line, and they have to be ──
+//
+// `next/font` is a COMPILE-TIME transform, not a function call: it reads the
+// argument out of the source to know what to download, so the argument must be
+// an object literal. A shared `{ ...defaults }` spread typechecks perfectly and
+// then fails the build with "Unexpected spread" — `tsc` has no idea this is not
+// an ordinary call. Three repeated properties are the price of that.
+
+const alexBrush = Alex_Brush({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-alex-brush", weight: "400" });
+const anonymousPro = Anonymous_Pro({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-anonymous-pro", weight: ["400", "700"] });
+const anybody = Anybody({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-anybody" });
+const barriecito = Barriecito({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-barriecito", weight: "400" });
+const cinzel = Cinzel({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-cinzel" });
+const firaMono = Fira_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-fira-mono", weight: ["400", "700"] });
+const gluten = Gluten({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-gluten" });
+const grandstander = Grandstander({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-grandstander" });
+const inconsolata = Inconsolata({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-inconsolata" });
+const inter = Inter({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-inter" });
+const kaushanScript = Kaushan_Script({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-kaushan-script", weight: "400" });
+const leagueGothic = League_Gothic({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-league-gothic" });
+const lindenHill = Linden_Hill({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-linden-hill", weight: "400", style: ["normal", "italic"] });
+const lora = Lora({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-lora" });
+const majorMono = Major_Mono_Display({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-major-mono", weight: "400" });
+const manrope = Manrope({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-manrope" });
+const martianMono = Martian_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-martian-mono" });
+const neuton = Neuton({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-neuton", weight: ["300", "400", "700"] });
+const oi = Oi({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-oi", weight: "400" });
+const openSans = Open_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-open-sans" });
+const ptMono = PT_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-pt-mono", weight: "400" });
+const prociono = Prociono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-prociono", weight: "400" });
+const rakkas = Rakkas({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-rakkas", weight: "400" });
+const rokkitt = Rokkitt({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-rokkitt" });
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-space-grotesk" });
+const workSans = Work_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-work-sans" });
+const yatraOne = Yatra_One({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-yatra-one", weight: "400" });
+
+/**
+ * The catalogue, in picker order: the working families first, then the ones
+ * chosen for character.
+ */
+export const FACES: Face[] = [
+  { id: "dm-sans", name: "DM Sans", category: "sans", cssVar: "--font-dm-sans", fallback: SANS, varClass: dmSans.variable, preloaded: true },
+  { id: "instrument-serif", name: "Instrument Serif", category: "serif", cssVar: "--font-instrument-serif", fallback: SERIF, varClass: instrumentSerif.variable, preloaded: true },
+  { id: "jetbrains-mono", name: "JetBrains Mono", category: "mono", cssVar: "--font-jetbrains-mono", fallback: MONO, varClass: jetbrainsMono.variable, preloaded: true },
+
+  { id: "inter", name: "Inter", category: "sans", cssVar: "--font-inter", fallback: SANS, varClass: inter.variable, preloaded: false },
+  { id: "open-sans", name: "Open Sans", category: "sans", cssVar: "--font-open-sans", fallback: SANS, varClass: openSans.variable, preloaded: false },
+  { id: "manrope", name: "Manrope", category: "sans", cssVar: "--font-manrope", fallback: SANS, varClass: manrope.variable, preloaded: false },
+  { id: "work-sans", name: "Work Sans", category: "sans", cssVar: "--font-work-sans", fallback: SANS, varClass: workSans.variable, preloaded: false },
+  { id: "space-grotesk", name: "Space Grotesk", category: "sans", cssVar: "--font-space-grotesk", fallback: SANS, varClass: spaceGrotesk.variable, preloaded: false },
+  { id: "anybody", name: "Anybody", category: "sans", cssVar: "--font-anybody", fallback: SANS, varClass: anybody.variable, preloaded: false },
+
+  { id: "lora", name: "Lora", category: "serif", cssVar: "--font-lora", fallback: SERIF, varClass: lora.variable, preloaded: false },
+  { id: "neuton", name: "Neuton", category: "serif", cssVar: "--font-neuton", fallback: SERIF, varClass: neuton.variable, preloaded: false },
+  { id: "linden-hill", name: "Linden Hill", category: "serif", cssVar: "--font-linden-hill", fallback: SERIF, varClass: lindenHill.variable, preloaded: false },
+  { id: "prociono", name: "Prociono", category: "serif", cssVar: "--font-prociono", fallback: SERIF, varClass: prociono.variable, preloaded: false },
+  { id: "cinzel", name: "Cinzel", category: "serif", cssVar: "--font-cinzel", fallback: SERIF, varClass: cinzel.variable, preloaded: false },
+  { id: "rokkitt", name: "Rokkitt", category: "serif", cssVar: "--font-rokkitt", fallback: SERIF, varClass: rokkitt.variable, preloaded: false },
+
+  { id: "inconsolata", name: "Inconsolata", category: "mono", cssVar: "--font-inconsolata", fallback: MONO, varClass: inconsolata.variable, preloaded: false },
+  { id: "fira-mono", name: "Fira Mono", category: "mono", cssVar: "--font-fira-mono", fallback: MONO, varClass: firaMono.variable, preloaded: false },
+  { id: "pt-mono", name: "PT Mono", category: "mono", cssVar: "--font-pt-mono", fallback: MONO, varClass: ptMono.variable, preloaded: false },
+  { id: "anonymous-pro", name: "Anonymous Pro", category: "mono", cssVar: "--font-anonymous-pro", fallback: MONO, varClass: anonymousPro.variable, preloaded: false },
+  { id: "martian-mono", name: "Martian Mono", category: "mono", cssVar: "--font-martian-mono", fallback: MONO, varClass: martianMono.variable, preloaded: false },
+  { id: "major-mono", name: "Major Mono Display", category: "mono", cssVar: "--font-major-mono", fallback: MONO, varClass: majorMono.variable, preloaded: false },
+
+  { id: "oi", name: "Oi", category: "display", cssVar: "--font-oi", fallback: DISPLAY, varClass: oi.variable, preloaded: false },
+  { id: "league-gothic", name: "League Gothic", category: "display", cssVar: "--font-league-gothic", fallback: DISPLAY, varClass: leagueGothic.variable, preloaded: false },
+  { id: "rakkas", name: "Rakkas", category: "display", cssVar: "--font-rakkas", fallback: DISPLAY, varClass: rakkas.variable, preloaded: false },
+  { id: "yatra-one", name: "Yatra One", category: "display", cssVar: "--font-yatra-one", fallback: DISPLAY, varClass: yatraOne.variable, preloaded: false },
+  { id: "barriecito", name: "Barriecito", category: "display", cssVar: "--font-barriecito", fallback: DISPLAY, varClass: barriecito.variable, preloaded: false },
+  { id: "grandstander", name: "Grandstander", category: "display", cssVar: "--font-grandstander", fallback: DISPLAY, varClass: grandstander.variable, preloaded: false },
+  { id: "gluten", name: "Gluten", category: "display", cssVar: "--font-gluten", fallback: DISPLAY, varClass: gluten.variable, preloaded: false },
+
+  { id: "kaushan-script", name: "Kaushan Script", category: "script", cssVar: "--font-kaushan-script", fallback: SCRIPT, varClass: kaushanScript.variable, preloaded: false },
+  { id: "alex-brush", name: "Alex Brush", category: "script", cssVar: "--font-alex-brush", fallback: SCRIPT, varClass: alexBrush.variable, preloaded: false },
+];
+
+/** Every variable-defining class, for `<html>`. The only correct consumer. */
+export const FACE_VAR_CLASSES = FACES.map((f) => f.varClass).join(" ");
+
+/** The `font-family` value for a face — the variable, then where to fall back. */
+export const faceStack = (face: Face) => `var(${face.cssVar}), ${face.fallback}`;
+
+/** Faces grouped for a picker, in the order declared above. */
+export function facesByCategory(): { category: FaceCategory; faces: Face[] }[] {
+  const order: FaceCategory[] = ["sans", "serif", "mono", "display", "script"];
+  return order
+    .map((category) => ({ category, faces: FACES.filter((f) => f.category === category) }))
+    .filter((g) => g.faces.length > 0);
+}

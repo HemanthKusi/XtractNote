@@ -104,8 +104,43 @@ import {
 } from "@/app/dev/output-blocks/inline";
 import { VIDEO } from "@/app/dev/social-templates/content";
 
-const MARKS = ["yellow", "green", "blue", "pink", "purple"] as const;
+/**
+ * The highlighter's colours, default first.
+ *
+ * ── Lime is not one of six, it is THE one, plus five ──
+ *
+ * Hemanth, 2026-09-29, and not negotiable: the lime stroke is what generation
+ * produces. `==phrase==` carries no colour, so every highlight in created
+ * content is this one. The other five exist so a reader can mark different
+ * things differently AFTERWARDS — they are an editing affordance, never an
+ * output of the model.
+ *
+ * That ordering is the whole reason lime sits first here rather than being
+ * filed alphabetically among the rest.
+ */
+const MARKS = ["lime", "yellow", "green", "blue", "pink", "purple"] as const;
 type MarkId = (typeof MARKS)[number];
+
+/** The default a highlight takes when nothing says otherwise. */
+const DEFAULT_MARK: MarkId = "lime";
+
+/**
+ * Where each mark's colour comes from.
+ *
+ * Lime reads `--xn-hl`, which this page sets from the shared constant, because
+ * it is not a `--xn-mark-*` token yet. §16 is where it becomes one — the note
+ * at the bottom of `blocks.tsx` says to unify at port time, not in a specimen,
+ * and a token invented here would be the second definition of a colour the
+ * reading surface already owns.
+ */
+const MARK_VAR: Record<MarkId, string> = {
+  lime: "var(--xn-hl)",
+  yellow: "var(--xn-mark-yellow)",
+  green: "var(--xn-mark-green)",
+  blue: "var(--xn-mark-blue)",
+  pink: "var(--xn-mark-pink)",
+  purple: "var(--xn-mark-purple)",
+};
 
 /**
  * What the toolbar can turn the current block into.
@@ -244,10 +279,13 @@ function segsHtml(segs: InlineSeg[], ctx: MarkerCtx): string {
           // NOT an atom: a highlighted phrase is still prose and has to stay
           // typeable, which is also why it carries no `data-src`.
           //
-          // `==phrase==` cannot say WHICH of the five marks it is, so it takes
-          // the default. That is the gap the treatments below exist to settle,
-          // and it is honest to show it rather than invent a colour.
-          return `<mark data-mark="yellow" class="xn-hl">${segsHtml(seg.inner, ctx)}</mark>`;
+          // `==phrase==` says nothing about colour, and it does not need to:
+          // the default IS the answer. Generation only ever produces this one,
+          // and a reader who wants another picks it afterwards.
+          return `<mark data-mark="${DEFAULT_MARK}" class="xn-hl">${segsHtml(
+            seg.inner,
+            ctx,
+          )}</mark>`;
         case "math":
           return atomHtml("math", seg.src, texHtml(seg.tex), "");
         case "cite": {
@@ -285,57 +323,39 @@ const inlineHtml = (text: string, ctx: MarkerCtx = DOC_CTX) =>
 /** A display formula as the block's only child — an atom, edited via the field. */
 const mathBodyHtml = (tex: string) => atomHtml("mathblock", tex, texHtml(tex, true), "");
 
-// ── The three highlight treatments ──────────────────────────
+// ── How a highlight is painted ──────────────────────────────
 //
-// HARNESS, not editor chrome. Two highlight systems reached this file from
-// opposite directions and disagree:
+// Two highlight systems reached this file from opposite directions: the reading
+// surface's `==phrase==`, one lime stroke with a hand-drawn edge and no colour
+// choice, and this editor's button, five flat rectangles with no text spelling.
+// The same phrase looked like two different things depending on which made it.
 //
-//   ==phrase==          one lime stroke with a hand-drawn edge, from the
-//                       reading surface, carrying no colour choice
-//   Highlighter button  five flat rectangles, from this editor, carrying no
-//                       text spelling
+// SETTLED 2026-09-29, by Hemanth, after looking at all three candidates:
 //
-// The same phrase therefore looks like two different things depending on which
-// produced it, and `==phrase==` has no way to record which of five it was. That
-// is a decision about what a highlight IS, so it is shown rather than argued.
+//   · the PEN SHAPE for every highlight, the five included. A rectangle of
+//     colour reads as a UI selection; the uneven edge reads as a pen, and one
+//     shape across all six is what makes them one thing rather than two
+//   · LIME is the default and stays the default — it is what generation
+//     produces, and `==phrase==` resolves to it
+//   · the other five are the user's, applied after the fact
 //
-// ── Why a stylesheet and not three renders ──
+// So there is one treatment now and the harness that compared three is gone.
+//
+// ── Why a stylesheet rather than markup ──
 //
 // The document is built ONCE, at module load, and pinned in `useMemo` with no
-// deps — re-rendering it is the bug §13 records, where React re-applied
-// `dangerouslySetInnerHTML` and silently undid every edit. So a treatment
-// cannot change the HTML. It changes how that HTML is PAINTED: one attribute on
-// an ancestor outside the pinned node, and CSS does the rest. Switching costs
-// nothing and cannot touch the document or the caret.
+// deps: re-rendering it is the bug §13 records, where React re-applied
+// `dangerouslySetInnerHTML` and silently undid every edit. Painting from a
+// stylesheet keeps every colour change out of the HTML entirely, so applying a
+// highlight never has to touch anything but the one element it wraps.
 
-const HL_TREATMENTS = [
-  { id: "flat", label: "Flat · five" },
-  { id: "pen-one", label: "Pen · one" },
-  { id: "pen-five", label: "Pen · five" },
-] as const;
-
-type HlTreatment = (typeof HL_TREATMENTS)[number]["id"];
-
-/**
- * One custom property per mark, so each treatment says "the mark's own colour"
- * once instead of repeating five rules.
- */
 const HL_CSS = `
-mark.xn-hl { --xn-hl-c: var(--xn-mark-yellow); }
-mark.xn-hl[data-mark="green"]  { --xn-hl-c: var(--xn-mark-green); }
-mark.xn-hl[data-mark="blue"]   { --xn-hl-c: var(--xn-mark-blue); }
-mark.xn-hl[data-mark="pink"]   { --xn-hl-c: var(--xn-mark-pink); }
-mark.xn-hl[data-mark="purple"] { --xn-hl-c: var(--xn-mark-purple); }
-
-[data-hl="flat"] mark.xn-hl {
+mark.xn-hl {
+  /* The pen, for all six. --xn-hl-c defaults to lime, so a mark that lost its
+     attribute still paints as the default rather than as nothing. */
+  --xn-hl-c: var(--xn-hl);
   background-color: var(--xn-hl-c);
   color: inherit;
-  border-radius: 2px;
-  padding: 0 1px;
-}
-
-[data-hl="pen-one"] mark.xn-hl,
-[data-hl="pen-five"] mark.xn-hl {
   border-radius: 0;
   padding: 0.16em 0.3em;
   margin: 0 -0.16em;
@@ -349,18 +369,16 @@ mark.xn-hl[data-mark="purple"] { --xn-hl-c: var(--xn-mark-purple); }
           box-decoration-break: clone;
 }
 
-[data-hl="pen-one"] mark.xn-hl {
-  background-color: var(--xn-hl);
-  color: var(--xn-hl-ink);
-}
+/* Lime alone forces its ink. It is bright in both themes, so it carries a
+   near-black partner; the other five are dark enough in dark and pale enough in
+   light that the page's own ink is already the measured pairing. */
+mark.xn-hl[data-mark="lime"] { color: var(--xn-hl-ink); }
 
-/* Ink stays inherited here. The five were measured for exactly this — normal
-   ink on the mark, 5.26-5.29:1 — whereas --xn-hl-ink is near-black, chosen
-   against lime. Forcing it would put dark text on a dark mark. */
-[data-hl="pen-five"] mark.xn-hl {
-  background-color: var(--xn-hl-c);
-  color: inherit;
-}
+mark.xn-hl[data-mark="yellow"] { --xn-hl-c: var(--xn-mark-yellow); }
+mark.xn-hl[data-mark="green"]  { --xn-hl-c: var(--xn-mark-green); }
+mark.xn-hl[data-mark="blue"]   { --xn-hl-c: var(--xn-mark-blue); }
+mark.xn-hl[data-mark="pink"]   { --xn-hl-c: var(--xn-mark-pink); }
+mark.xn-hl[data-mark="purple"] { --xn-hl-c: var(--xn-mark-purple); }
 `;
 
 // ── Marker conformance ──────────────────────────────────────
@@ -789,7 +807,7 @@ function Tools({
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => mark(m)}
             className="h-6 w-6 rounded-xn-sm border border-xn-border transition-transform duration-xn ease-xn hover:scale-110"
-            style={{ backgroundColor: `var(--xn-mark-${m})` }}
+            style={{ backgroundColor: MARK_VAR[m] }}
           />
         ))}
         <button
@@ -991,8 +1009,6 @@ export default function EditorPage() {
   const [words, setWords] = useState(0);
   /** The LaTeX of the formula the caret is in, mirrored into a field. */
   const [mathText, setMathTextState] = useState("");
-  /** Harness only — which highlight treatment is being looked at. */
-  const [hl, setHl] = useState<HlTreatment>("flat");
 
   /**
    * Undo, as one stack this editor owns.
@@ -1470,42 +1486,15 @@ export default function EditorPage() {
   return (
     <div className="min-h-screen bg-xn-bg py-10">
       <style dangerouslySetInnerHTML={{ __html: HL_CSS }} />
-      {/* `data-hl` sits here, OUTSIDE the pinned document, which is the whole
-          reason a treatment can be switched at all. `--xn-hl` is set the same
-          way the reading surface sets it, from the same constant, so "Pen · one"
-          is the real stroke rather than something resembling it. */}
+      {/* `--xn-hl` is set here the same way the reading surface sets it, from
+          the same constant, so the default stroke in the editor is the stroke
+          the reading surface draws rather than something resembling it. */}
       <div
-        data-hl={hl}
         style={
           { "--xn-hl": lime.bg, "--xn-hl-ink": lime.ink } as React.CSSProperties
         }
         className="mx-auto max-w-[1030px] px-6"
       >
-        {/* HARNESS STRIP — not editor chrome, and it goes when the question is
-            settled. The five swatches in the toolbar apply a mark; this decides
-            what every mark LOOKS like, parsed or applied. */}
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="font-mono text-micro uppercase tracking-widest text-xn-ink-soft">
-            highlight
-          </span>
-          {HL_TREATMENTS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setHl(t.id)}
-              aria-pressed={hl === t.id}
-              className={[
-                "rounded-xn-sm border px-2.5 py-1 font-mono text-micro transition-colors duration-xn ease-xn",
-                hl === t.id
-                  ? "border-xn-ink bg-xn-ink text-xn-bg"
-                  : "border-xn-border text-xn-ink-muted hover:text-xn-ink",
-              ].join(" ")}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
         {/* Mode control sits OUTSIDE the card — it is the app asking whether
             you are reading or editing, not part of the editor's own chrome. */}
         <div className="mb-4 flex items-center gap-3">

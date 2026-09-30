@@ -1837,18 +1837,20 @@ export default function EditorPage() {
     if (range.collapsed) return setNote("Select some text first.");
     if (!root.contains(range.commonAncestorContainer)) return;
 
-    // Nothing highlighted inside the selection means DO NOTHING — no unwrap,
-    // and no history entry either, so an idle press cannot cost an undo step.
+    // Candidates only. `intersectsNode` also returns true for a mark the
+    // selection merely reaches the edge of, so whether there is anything to
+    // erase is settled further down, once coverage is known.
     const marks = () =>
       [...root.querySelectorAll<HTMLElement>("mark[data-mark]")].filter((m) =>
         range.intersectsNode(m),
       );
     if (marks().length === 0) return setNote("Nothing highlighted in that selection.");
 
-    pushHistory();
+    // Splitting is invisible to a snapshot — `<p>ab</p>` serialises the same
+    // whether "ab" is one text node or two — so it can happen before the
+    // history entry is taken, which lets the entry wait until something is
+    // actually going to change.
     splitBoundaries(range);
-
-    const touched = marks();
 
     // ── Decide everything first, then move anything ──
     //
@@ -1860,17 +1862,30 @@ export default function EditorPage() {
       if (isLeafNode(n)) return void coverage.set(n, rangeCovers(range, n));
       for (const child of [...n.childNodes]) record(child);
     };
-    for (const m of touched) record(m);
+    for (const m of marks()) record(m);
+
+    const holdsCovered = (n: Node): boolean =>
+      isLeafNode(n)
+        ? (coverage.get(n) ?? false)
+        : [...n.childNodes].some(holdsCovered);
+
+    // ── Only marks with covered CONTENT, decided before any rebuild ──
+    //
+    // `intersectsNode` is true for a mark the selection merely reaches the edge
+    // of, and such a mark has nothing to erase. Asking `runsByCoverage` first
+    // and skipping afterwards destroyed it: that call MOVES the children into
+    // detached clones, so bailing out left the original mark empty and the
+    // clones unattached — the highlighted text disappeared from the document.
+    const touched = marks().filter(holdsCovered);
+    if (touched.length === 0) return setNote("Nothing highlighted in that selection.");
+
+    pushHistory();
 
     for (const mark of touched) {
       const parent = mark.parentNode;
       if (!parent) continue;
 
       const runs = runsByCoverage(mark, (n) => coverage.get(n) ?? false);
-      // A mark only touching the selection, with nothing of it covered, is
-      // left exactly as it is.
-      if (!runs.some((r) => r.covered)) continue;
-
       for (const run of runs) {
         const el = run.node as HTMLElement;
         if (run.covered) {

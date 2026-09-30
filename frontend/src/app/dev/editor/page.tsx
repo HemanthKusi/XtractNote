@@ -198,6 +198,13 @@ const esc = (s: string) =>
 /** `esc` plus the quote, for anything going inside an attribute. */
 const escAttr = (s: string) => esc(s).replace(/"/g, "&quot;");
 
+/**
+ * The reading scale, shared by the serialiser and by anything that builds a
+ * block by hand. One definition, because a paragraph made by leaving a list has
+ * to be indistinguishable from one that was always a paragraph.
+ */
+const PROSE_CLS = "text-[17.5px] leading-[1.72] text-xn-ink";
+
 // ── The four inline markers, as HTML strings ─────────────────
 //
 // The rules come from `output-blocks/inline`; only the OUTPUT is written here.
@@ -379,6 +386,47 @@ mark.xn-hl[data-mark="green"]  { --xn-hl-c: var(--xn-mark-green); }
 mark.xn-hl[data-mark="blue"]   { --xn-hl-c: var(--xn-mark-blue); }
 mark.xn-hl[data-mark="pink"]   { --xn-hl-c: var(--xn-mark-pink); }
 mark.xn-hl[data-mark="purple"] { --xn-hl-c: var(--xn-mark-purple); }
+
+/* ── Where focus is shown ──────────────────────────────────
+   The document is ONE focusable element wrapping the whole article, so the
+   global :focus-visible rule — 2px solid var(--xn-ink), offset 2px — drew a
+   box around everything the moment you clicked into the text. It reads thin in
+   light and glaring in dark for the same reason: --xn-ink is near-black on
+   white and near-white on near-black, and the same 2px carries far more weight
+   against the darker page.
+
+   A box around the entire article also answers a question nobody asked. What
+   you want to know while editing is WHICH BLOCK the caret is in — and the
+   formula field made that urgent, because it opens at the top of the panel
+   with nothing on screen tying it to the formula it edits.
+
+   So the ring moves down to the block. A left edge rather than an outline,
+   which is the indicator this project already settled on for the skip link,
+   and for the same reason: an outline around a block of prose reads as a
+   selection or an error, an edge in the margin reads as "you are here". */
+.xn-doc:focus,
+.xn-doc:focus-visible { outline: none; }
+
+.xn-doc [data-block] { position: relative; }
+
+/* In the margin, never in the text, so marking a block reflows nothing. */
+.xn-doc [data-block][data-active]::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--xn-ink-soft);
+}
+
+/* The formula block is the one that needed this. Its edge is full strength,
+   because when it is active a LaTeX field opens elsewhere on the screen and
+   this is the only thing connecting the two. */
+.xn-doc [data-block][data-active][data-kind="math"]::before {
+  background: var(--xn-ink);
+}
 `;
 
 // ── Marker conformance ──────────────────────────────────────
@@ -481,7 +529,7 @@ function headingHtml(level: 1 | 2 | 3, text: string): string {
 }
 
 function blockHtml(b: Block): string {
-  const cls = "text-[17.5px] leading-[1.72] text-xn-ink";
+  const cls = PROSE_CLS;
   switch (b.kind) {
     case "para":
       return `<p data-block data-kind="para" class="${cls} my-4">${inlineHtml(b.text)}</p>`;
@@ -635,20 +683,67 @@ function applyHighlight(mark: MarkId): "applied" | "empty" | "crosses" {
  * The answer is now the words a person typed, which is also what a save would
  * write: the two agree by construction instead of being kept in step by hand.
  */
-const countWords = (root: HTMLElement | null) => {
-  if (!root) return 0;
-  const words = (t: string | null) => (t ?? "").trim().split(/\s+/).filter(Boolean).length;
-
-  const clone = root.cloneNode(true) as HTMLElement;
+/**
+ * Mark which block the caret is in, so the edge in the margin can follow it.
+ *
+ * Imperative, like every other write to this document: React does not own it,
+ * and a state-driven class would re-render the surface and undo the toolbar's
+ * DOM surgery — the bug §13 records.
+ *
+ * `data-active` is presentation, not content, so it is stripped before every
+ * undo snapshot. Left in, the snapshot would carry whichever block happened to
+ * be active when it was taken, and undo would restore a stale edge onto a block
+ * the caret is not in. It costs two attribute writes; see `pushHistory`.
+ */
+/**
+ * An element's text as it was WRITTEN, with every atom back to its source.
+ *
+ * The one place that knows rendered output is not the thing a person typed.
+ * KaTeX emits a formula as MathML plus positioned spans, so `textContent` on a
+ * paragraph holding `$q$` returns its glyphs — twice — and nothing resembling
+ * `$q$`. Anything that reads a block back, to count it or to rebuild it as
+ * another kind, has to come through here.
+ */
+function sourceText(el: HTMLElement): string {
+  const clone = el.cloneNode(true) as HTMLElement;
   for (const atom of clone.querySelectorAll<HTMLElement>("[data-src]")) {
     atom.replaceWith(document.createTextNode(atom.dataset.src ?? ""));
   }
+  return clone.textContent ?? "";
+}
 
-  const blocks = [...clone.querySelectorAll<HTMLElement>("[data-block]")];
+/** A block that holds `<li>` children, so its items can be carried across. */
+function isListBlock(el: Element): el is HTMLUListElement | HTMLOListElement {
+  return el instanceof HTMLUListElement || el instanceof HTMLOListElement;
+}
+
+function markActive(root: HTMLElement | null, block: HTMLElement | null) {
+  if (!root) return;
+  const prev = root.querySelector<HTMLElement>("[data-active]");
+  if (prev === block) return;
+  prev?.removeAttribute("data-active");
+  block?.setAttribute("data-active", "");
+}
+
+/** The document, as it should be stored: without the active-block marker. */
+function snapshot(el: HTMLElement): string {
+  const active = el.querySelector<HTMLElement>("[data-active]");
+  if (!active) return el.innerHTML;
+  active.removeAttribute("data-active");
+  const html = el.innerHTML;
+  active.setAttribute("data-active", "");
+  return html;
+}
+
+const countWords = (root: HTMLElement | null) => {
+  if (!root) return 0;
+  const words = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
+
+  const blocks = [...root.querySelectorAll<HTMLElement>("[data-block]")];
   // Before the first edit there is always at least one block; the fallback is
   // for a document emptied down to bare text nodes.
-  if (blocks.length === 0) return words(clone.textContent);
-  return blocks.reduce((n, b) => n + words(b.textContent), 0);
+  if (blocks.length === 0) return words(sourceText(root));
+  return blocks.reduce((n, b) => n + words(sourceText(b)), 0);
 };
 
 /**
@@ -1052,7 +1147,7 @@ export default function EditorPage() {
     const el = docRef.current;
     if (!el) return;
     const stack = historyRef.current;
-    const snap = el.innerHTML;
+    const snap = snapshot(el);
     if (stack[stack.length - 1] === snap) return;
     stack.push(snap);
     // A specimen does not need unbounded history, and an unbounded array of
@@ -1081,7 +1176,7 @@ export default function EditorPage() {
     const prev = stack.pop();
     if (prev === undefined) return;
     // The state being left becomes the thing redo returns to.
-    redoRef.current.push(el.innerHTML);
+    redoRef.current.push(snapshot(el));
     setCanRedo(true);
     el.innerHTML = prev;
     setCanUndo(stack.length > 0);
@@ -1101,7 +1196,7 @@ export default function EditorPage() {
     // Symmetric: stepping forward makes the state being left undoable again.
     // `pushHistory` is not used here — it clears the redo branch, which is
     // exactly what a redo must not do.
-    historyRef.current.push(el.innerHTML);
+    historyRef.current.push(snapshot(el));
     setCanUndo(true);
     el.innerHTML = next;
     setCanRedo(stack.length > 0);
@@ -1120,9 +1215,26 @@ export default function EditorPage() {
 
   useEffect(() => {
     const onSel = () => {
-      const b = currentBlock(docRef.current);
+      const root = docRef.current;
+      const sel = window.getSelection();
+      if (!root || !sel || sel.rangeCount === 0) return;
+
+      // ── Ignore selections that are not in the document ──
+      //
+      // `selectionchange` fires for the LaTeX field too, and a caret in a text
+      // input says nothing about which block is being edited. Acting on it
+      // cleared `kind`, which closes the contextual strip — so the field would
+      // have shut itself the moment it was clicked — and it would now also drop
+      // the active edge, which is the one thing tying the field to its formula.
+      //
+      // Leaving everything as it was is what keeps the edge, the strip and the
+      // field all pointing at the same block while any of them is in use.
+      if (!root.contains(sel.getRangeAt(0).startContainer)) return;
+
+      const b = currentBlock(root);
       if (b) lastBlockRef.current = b;
-      const many = blocksInSelection(docRef.current);
+      markActive(root, b);
+      const many = blocksInSelection(root);
       if (many.length) lastBlocksRef.current = many;
       setKind(b?.dataset.kind ?? "");
       // Mirror a formula's source into the field when the caret enters it.
@@ -1130,7 +1242,7 @@ export default function EditorPage() {
       // is KaTeX's output and not the LaTeX that produced it.
       if (b?.dataset.kind === "math") setMathTextState(b.dataset.tex ?? "");
       // Remember which cell, so "this row" means the row you are actually in.
-      const c = currentCell(docRef.current);
+      const c = currentCell(root);
       if (c) lastCellRef.current = c;
     };
     document.addEventListener("selectionchange", onSel);
@@ -1173,33 +1285,93 @@ export default function EditorPage() {
     if (blocks.length === 0) return setNote("Select some text first.");
 
     if (action === "ul" || action === "ol") {
-      // ONE list, one item per selected block. No sentence splitting.
+      const wantKind = action === "ol" ? "ol" : "list";
+
+      // ── Pressing the list you are already in turns it OFF ──
+      //
+      // These buttons carry `aria-pressed`, which promises a toggle, so one
+      // that cannot be un-pressed is the surface claiming what the code does
+      // not do. Leaving a list returns each item to its own paragraph, which is
+      // what every word processor does and what the items were before.
+      if (blocks.every((b) => isListBlock(b) && b.dataset.kind === wantKind)) {
+        const made: HTMLElement[] = [];
+        for (const b of blocks) {
+          for (const li of [...b.children]) {
+            const p = document.createElement("p");
+            p.setAttribute("data-block", "");
+            p.setAttribute("data-kind", "para");
+            p.className = `${PROSE_CLS} my-4`;
+            // Move nodes, never text: marks, bold and atoms have to survive.
+            while (li.firstChild) p.appendChild(li.firstChild);
+            b.before(p);
+            made.push(p);
+          }
+          b.remove();
+        }
+        lastBlockRef.current = made[0] ?? null;
+        lastBlocksRef.current = made;
+        markActive(root, made[0] ?? null);
+        setKind(made.length ? "para" : "");
+        setWords(countWords(root));
+        return;
+      }
+
+      // ── One list, and a list already selected contributes ITS items ──
+      //
+      // This used to move each selected block's children into a fresh `<li>`
+      // unconditionally. For a paragraph that is right; for a list it put the
+      // existing `<li>` elements INSIDE a new one, so switching bulleted to
+      // numbered produced `<ol><li><li>text</li></li></ol>`. Invalid nesting,
+      // which the browser then repairs in its own way — the collapse that made
+      // the two buttons feel broken.
+      //
+      // Switching between the two is therefore a RE-TAG, not a re-wrap: the
+      // items are carried over untouched and only the element around them
+      // changes.
       const list = document.createElement(action === "ol" ? "ol" : "ul");
       list.setAttribute("data-block", "");
-      list.setAttribute("data-kind", action === "ol" ? "ol" : "list");
-      list.className = `text-[17.5px] leading-[1.72] text-xn-ink my-4 space-y-1 pl-5 ${
+      list.setAttribute("data-kind", wantKind);
+      list.className = `${PROSE_CLS} my-4 space-y-1 pl-5 ${
         action === "ol" ? "list-decimal" : "list-disc"
       }`;
+
       for (const b of blocks) {
-        const li = document.createElement("li");
-        // Move the block's nodes rather than copying text, so highlights and
-        // bold already inside it survive becoming a list item.
-        while (b.firstChild) li.appendChild(b.firstChild);
-        list.appendChild(li);
+        if (isListBlock(b)) {
+          // appendChild moves, so each item leaves the old list as it arrives.
+          for (const li of [...b.children]) list.appendChild(li);
+        } else {
+          const li = document.createElement("li");
+          // Move the block's nodes rather than copying text, so highlights and
+          // bold already inside it survive becoming a list item.
+          while (b.firstChild) li.appendChild(b.firstChild);
+          list.appendChild(li);
+        }
       }
+
       blocks[0].replaceWith(list);
       for (const b of blocks.slice(1)) b.remove();
       lastBlockRef.current = list;
       lastBlocksRef.current = [list];
-      setKind(list.getAttribute("data-kind") ?? "");
+      markActive(root, list);
+      setKind(wantKind);
       setWords(countWords(root));
       return;
     }
 
-    // Every other kind converts each selected block in place.
+    // ── Every other kind re-renders each selected block from its SOURCE ──
+    //
+    // `sourceText`, never `textContent`. Since the markers render, a formula in
+    // the DOM is KaTeX's output, so `textContent` returns its glyphs rather
+    // than the `$q$` that produced them — converting a paragraph holding a
+    // formula to a quote used to rebuild it from that garble. The atoms carry
+    // `data-src` for exactly this.
+    //
+    // A LIST contributes one block per item, mirroring the rule going the other
+    // way: one block in, one item out. Flattening it with `textContent` glued
+    // every item into a single run of words with no space between them.
     const made: HTMLElement[] = [];
-    for (const b of blocks) {
-      const text = b.textContent ?? "";
+
+    const emit = (text: string, at: Element) => {
       const wrap = document.createElement("div");
       if (action === "h1" || action === "h2" || action === "h3") {
         wrap.innerHTML = headingHtml(Number(action[1]) as 1 | 2 | 3, text);
@@ -1208,9 +1380,20 @@ export default function EditorPage() {
       }
       const fresh = wrap.firstElementChild;
       if (fresh instanceof HTMLElement) {
-        b.replaceWith(fresh);
+        at.before(fresh);
         made.push(fresh);
       }
+    };
+
+    for (const b of blocks) {
+      if (isListBlock(b)) {
+        for (const li of [...b.children]) {
+          if (li instanceof HTMLElement) emit(sourceText(li), b);
+        }
+      } else {
+        emit(sourceText(b), b);
+      }
+      b.remove();
     }
     if (made.length) {
       lastBlockRef.current = made[0];
@@ -1276,7 +1459,7 @@ export default function EditorPage() {
         suppressContentEditableWarning
         spellCheck={false}
         dangerouslySetInnerHTML={{ __html: DOC_HTML }}
-        className="mt-2 max-w-[68ch] outline-none"
+        className="xn-doc mt-2 max-w-[68ch] outline-none"
       />
     ),
     [],
@@ -1286,6 +1469,9 @@ export default function EditorPage() {
     const el = docRef.current;
     if (!el) return;
     el.contentEditable = editing ? "true" : "false";
+    // The edge marks where you are EDITING. On Done the document returns to the
+    // output page's presentation, where there is no caret and nothing to mark.
+    if (!editing) markActive(el, null);
 
     const onInput = () => setWords(countWords(el));
 

@@ -232,12 +232,30 @@
   --xn-fmt-quiz: #FF7BA0;
   --xn-fmt-social: #4FD3C9;
 
-  /* Translucent on dark so light text stays legible through them */
-  --xn-mark-yellow: rgba(251, 226, 143, 0.26);
-  --xn-mark-green: rgba(187, 247, 208, 0.22);
-  --xn-mark-blue: rgba(191, 219, 254, 0.24);
-  --xn-mark-pink: rgba(254, 205, 211, 0.24);
-  --xn-mark-purple: rgba(233, 213, 255, 0.24);
+  /* ── Solid, not translucent — corrected 2026-09-29 ──
+     These were the light pastels at 22-26% alpha, on the reasoning that a
+     veil keeps light text legible through them. The text half was right and
+     the rest was not: composited over a near-black surface all five collapse
+     to the same muddy grey — rgb(82,77,54), rgb(58,74,64), rgb(63,72,78),
+     rgb(78,68,68), rgb(73,70,79). Within twenty RGB points of each other, and
+     every one measuring 1.88-2.09:1 against the surface, so a highlight was
+     barely perceptible and the five were not tellable apart.
+
+     §13 already records the cause in another place: a colour tuned for one
+     job fails at another. A pale tint reads as a highlight on white by being
+     DARKER than the page; on a near-black page the same tint has to be
+     LIGHTER, and diluting it toward the background is the opposite move.
+
+     Solved as one family at a shared 49% saturation rather than per-hue, so
+     they read as a set. Every value clears 3:1 against the surface — the bar
+     for a non-text element that has to be seen — while ink on top holds
+     5.26-5.29:1, comfortably past the 4.5:1 text needs. Both numbers were
+     searched for, not picked. */
+  --xn-mark-yellow: #766228;
+  --xn-mark-green: #277246;
+  --xn-mark-blue: #3766a0;
+  --xn-mark-pink: #af3c4f;
+  --xn-mark-purple: #8941bd;
 
   /* The platform's own dark-mode blue, not a lightened version of
      its brand blue. #0A66C2 measures 3.11:1 here — fine for a mark

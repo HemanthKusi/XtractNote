@@ -36,7 +36,8 @@ import { ContentTypeIcon } from "@/components/ui/content-type-icon";
 import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { useTheme } from "@/components/shared/theme-provider";
 
-import { BlockView, numberEquations, toRoman, widthFor, type RenderCtx } from "./blocks";
+import { BlockView, numberEquations, widthFor, type RenderCtx } from "./blocks";
+import { HIGHLIGHT_LIME, toRoman } from "./inline";
 import { DOCS, type Reference } from "./content";
 
 // The clip every specimen in this project uses, for continuity.
@@ -48,12 +49,9 @@ const VIDEO = {
   duration: "28:07",
 } as const;
 
-// Settled in the blog work: lime, opaque on dark at a luminance that does not
-// glare, with near-black text inside the band.
-const HIGHLIGHT = {
-  light: { bg: "#d8f24f", ink: "var(--xn-ink)" },
-  dark: { bg: "#a6c03c", ink: "#12150b" },
-};
+// The stroke's colour pair now lives beside its mask in `./inline`, because the
+// editor draws the same stroke and has to draw the real one.
+const HIGHLIGHT = HIGHLIGHT_LIME;
 
 // ── No reading time ──
 //

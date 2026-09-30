@@ -337,10 +337,14 @@ export function cuesFor(section: Section): Cue[] {
 // ── What is reused and what is proposed ──
 //
 // The five `--xn-mark-*` tokens already exist and are already theme-aware:
-// solid pastels on light, translucent on dark so light text stays legible
-// through them. globals.css calls them "groundwork for annotation data the
-// generation path does not produce yet", which is exactly this. Lime is NOT
-// a token — it is a proposal, and it carries its own pair of values.
+// solid pastels on light, and — since 2026-09-29 — solid values on dark too.
+// They WERE translucent there, on the reasoning that a veil keeps light text
+// legible through them; the text half held and the rest did not, because all
+// five composited over the near-black surface into near-identical greys at
+// roughly 2:1. The replacements are opaque and each clears 3:1 against the
+// surface it sits on. globals.css calls the set "groundwork for annotation
+// data the generation path does not produce yet", which is exactly this. Lime
+// is NOT a token — it is a proposal, and it carries its own pair of values.
 
 /** A highlighter in one theme: the ink of the pen, and the text it sits under. */
 export interface HighlighterTheme {

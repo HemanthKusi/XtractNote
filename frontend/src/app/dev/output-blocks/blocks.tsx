@@ -29,6 +29,7 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 
 import type { Block, Doc, Reference } from "./content";
+import { HIGHLIGHT_MASK, parseInline, toRoman, type InlineSeg } from "./inline";
 
 // ── Equation numbering ──────────────────────────────────────
 
@@ -148,36 +149,6 @@ export interface RenderCtx {
   onCite: (id: string) => void;
 }
 
-/**
- * Citations are numbered in ROMAN, equations in Arabic.
- *
- * Both were Arabic and both appear in the same paragraph, so "(3)" beside a
- * formula and "[3]" in the sentence above it looked like the same reference
- * twice. They are not even the same KIND of thing — one points into the
- * document, the other out of it — and nothing in the type said so.
- *
- * Different numeral systems separate them at a glance, before reading, which
- * is the only point at which the confusion happens. Lowercase, because that
- * is the convention for a citation or footnote marker and because uppercase
- * roman is heavy enough to compete with the prose.
- */
-export function toRoman(n: number): string {
-  const table: [number, string][] = [
-    [1000, "m"], [900, "cm"], [500, "d"], [400, "cd"],
-    [100, "c"], [90, "xc"], [50, "l"], [40, "xl"],
-    [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"],
-  ];
-  let out = "";
-  let rest = n;
-  for (const [value, numeral] of table) {
-    while (rest >= value) {
-      out += numeral;
-      rest -= value;
-    }
-  }
-  return out;
-}
-
 // ── Maths ───────────────────────────────────────────────────
 
 function Tex({ tex, display }: { tex: string; display?: boolean }) {
@@ -208,26 +179,22 @@ function Tex({ tex, display }: { tex: string; display?: boolean }) {
 
 // ── Inline parsing ──────────────────────────────────────────
 //
-// Four markers, each resolving against something different, which is why they
-// are four markers and not one escape:
-//
-//   ==phrase==     a highlight — resolves against nothing, it is presentation
-//   $x^2$          maths       — resolves against KaTeX
-//   [@vaswani17]   citation    — resolves against the document's references
-//   [#eq-scaling]  equation    — resolves against the numbering pass
-//
-// A single alternation keeps them in one pass so a citation inside a
-// highlighted phrase still renders as a citation.
+// The markers, the regex and the resolution rules live in `./inline`, because
+// the editor renders the same four and cannot share a React renderer with this
+// one. What stays here is only how they LOOK on a reading surface.
 
-const INLINE = /(==[^=]+==|\$[^$\n]+\$|\[@[A-Za-z0-9_-]+\]|\[#[A-Za-z0-9_-]+\])/g;
-
-/** Copied from the blog specimen deliberately — see the note at the bottom. */
+/**
+ * The single stroke, built on the shared mask.
+ *
+ * The SHAPE now comes from `./inline`, since the editor needs the same
+ * silhouette; the colour pair is still this specimen's own. It remains a
+ * reduced copy of the blog specimen's highlighter — see the note at the bottom.
+ */
 const MARK_STYLE = {
   backgroundColor: "var(--xn-hl)",
   color: "var(--xn-hl-ink)",
-  maskImage: `url("data:image/svg+xml,${encodeURIComponent(
-    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 24' preserveAspectRatio='none'><path d='M0,3.4 C14,5.2 30,1.9 43,3.4 C57,4.9 74,1.6 88,3.1 C94,3.8 97,2.1 100,3.6 L100,21.0 C87,23.2 69,20.2 54,21.7 C39,23.1 21,20.4 8,22.2 C4,22.7 2,21.2 0,22.0 Z' fill='#000'/></svg>",
-  )}")`,
+  maskImage: HIGHLIGHT_MASK,
+  WebkitMaskImage: HIGHLIGHT_MASK,
   maskSize: "100% 100%",
   WebkitMaskSize: "100% 100%",
   maskRepeat: "no-repeat",
@@ -237,25 +204,44 @@ const MARK_STYLE = {
   WebkitBoxDecorationBreak: "clone",
 } as const;
 
+/** Parse a line, then render it. */
 export function Inline({ text, ctx }: { text: string; ctx: RenderCtx }) {
-  const parts = text.split(INLINE);
+  return <InlineSegs segs={parseInline(text)} ctx={ctx} />;
+}
+
+/**
+ * How the markers look on a reading surface.
+ *
+ * Takes segments rather than text so a highlight can recurse into its own
+ * contents without re-joining them into a string and parsing them twice.
+ */
+function InlineSegs({ segs, ctx }: { segs: InlineSeg[]; ctx: RenderCtx }) {
   return (
     <>
-      {parts.map((part, i) => {
-        if (part.startsWith("==") && part.endsWith("==") && part.length > 4) {
+      {segs.map((seg, i) => {
+        if (seg.kind === "highlight") {
           return (
             <mark key={i} className="bg-transparent" style={MARK_STYLE}>
-              <Inline text={part.slice(2, -2)} ctx={ctx} />
+              <InlineSegs segs={seg.inner} ctx={ctx} />
             </mark>
           );
         }
-        if (part.startsWith("$") && part.endsWith("$") && part.length > 2) {
-          return <Tex key={i} tex={part.slice(1, -1)} />;
+        if (seg.kind === "math") {
+          return <Tex key={i} tex={seg.tex} />;
         }
-        if (part.startsWith("[@")) {
-          const id = part.slice(2, -1);
+        if (seg.kind === "bold") {
+          return (
+            <strong key={i} className="font-semibold text-xn-ink">
+              {seg.text}
+            </strong>
+          );
+        }
+        if (seg.kind === "cite") {
+          const id = seg.id;
           const index = ctx.refs.findIndex((r) => r.id === id);
-          if (index < 0) return part;
+          // An unknown id renders as the characters it was written as, so a
+          // broken citation is obvious rather than absent.
+          if (index < 0) return seg.src;
           const ref = ctx.refs[index];
           const current = ctx.activeCite === id;
 
@@ -282,8 +268,8 @@ export function Inline({ text, ctx }: { text: string; ctx: RenderCtx }) {
             </button>
           );
         }
-        if (part.startsWith("[#")) {
-          const n = ctx.eq.get(part.slice(2, -1));
+        if (seg.kind === "eqref") {
+          const n = ctx.eq.get(seg.id);
           // An unresolved reference renders as a visible gap rather than a
           // number, so a broken link is obvious instead of plausible.
           return (
@@ -292,23 +278,7 @@ export function Inline({ text, ctx }: { text: string; ctx: RenderCtx }) {
             </span>
           );
         }
-        // Minimal bold, so list items can emphasise a term without a parser.
-        if (part.includes("**")) {
-          return (
-            <span key={i}>
-              {part.split(/(\*\*[^*]+\*\*)/g).map((seg, j) =>
-                seg.startsWith("**") && seg.endsWith("**") ? (
-                  <strong key={j} className="font-semibold text-xn-ink">
-                    {seg.slice(2, -2)}
-                  </strong>
-                ) : (
-                  seg
-                ),
-              )}
-            </span>
-          );
-        }
-        return part;
+        return seg.text;
       })}
     </>
   );
@@ -560,12 +530,18 @@ export function BlockView({ block, ctx }: { block: Block; ctx: RenderCtx }) {
 
 // ── A note for whoever ports this ──
 //
-// `MARK_STYLE` above is a DELIBERATE COPY of the highlighter from the blog
-// specimen, reduced to a single stroke. Two specimens importing from each other
-// is worse than a copy that is labelled: the blog route is a settled artefact
-// and this one should be readable without it.
+// `MARK_STYLE` above is still a DELIBERATE COPY of the highlighter from the
+// blog specimen, reduced to a single stroke. Two specimens importing from each
+// other is worse than a copy that is labelled: the blog route is a settled
+// artefact and this one should be readable without it.
 //
-// That is a reason for a copy in a specimen, not a reason for two in the
-// product. §16 already says where both belong at port time — the stroke joins
-// the `.mark-*` utilities in globals.css and lime becomes an `--xn-mark-lime`
-// token pair. Unify them there, not here.
+// What changed 2026-09-29: the SHAPE moved to `./inline`, because the editor
+// renders the same four markers and needs the same silhouette. That is a module
+// inside this folder, shared with a surface already built on this folder's
+// `content.tsx` — not the blog specimen reaching in here, which is the case the
+// paragraph above is about. The blog route's own copy is untouched.
+//
+// A copy in a specimen is still not a reason for two in the product. §16 says
+// where both belong at port time — the stroke joins the `.mark-*` utilities in
+// globals.css and lime becomes an `--xn-mark-lime` token pair. Unify them
+// there, not here.

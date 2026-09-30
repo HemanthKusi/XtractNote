@@ -83,8 +83,25 @@ import {
   Redo2,
 } from "lucide-react";
 
+import katex from "katex";
+import "katex/dist/katex.min.css";
+
 import { useTheme } from "@/components/shared/theme-provider";
-import { NOTES_DOC, type Block } from "@/app/dev/output-blocks/content";
+import {
+  NOTES_DOC,
+  REFERENCES,
+  RESEARCH_DOC,
+  type Block,
+  type Reference,
+} from "@/app/dev/output-blocks/content";
+import { numberEquations } from "@/app/dev/output-blocks/blocks";
+import {
+  HIGHLIGHT_LIME,
+  HIGHLIGHT_MASK,
+  parseInline,
+  toRoman,
+  type InlineSeg,
+} from "@/app/dev/output-blocks/inline";
 import { VIDEO } from "@/app/dev/social-templates/content";
 
 const MARKS = ["yellow", "green", "blue", "pink", "purple"] as const;
@@ -143,6 +160,295 @@ type InlineAction = (typeof INLINE_ACTIONS)[number]["id"];
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+/** `esc` plus the quote, for anything going inside an attribute. */
+const escAttr = (s: string) => esc(s).replace(/"/g, "&quot;");
+
+// ── The four inline markers, as HTML strings ─────────────────
+//
+// The rules come from `output-blocks/inline`; only the OUTPUT is written here.
+// The reading surface renders the same four as JSX, and cannot be reused: this
+// document is uncontrolled DOM, so React must not own any part of it.
+//
+// ── Why the resolved markers are atoms ──
+//
+// `contenteditable="false"` inside an editable document makes a unit the caret
+// skips: it can be selected and deleted whole, but typing cannot land inside
+// KaTeX's markup and destroy it. A rendered formula is ~40 nested spans and
+// there is nothing useful to do with the caret in the middle of them.
+//
+// Each atom carries `data-src` — the characters it was written as. Rendering
+// `$q$` into maths otherwise destroys the only copy of `q`, and the editor
+// needs it twice: to put back when a save serialises the DOM, and to count
+// words with, because KaTeX emits its formula as BOTH MathML and styled spans,
+// so `textContent` returns every copy.
+
+/**
+ * What the markers resolve against.
+ *
+ * Passed rather than read from a module constant, because the two things a
+ * citation needs are properties of a DOCUMENT, not of this file: equation
+ * numbers come from a whole-document pass, and the reference list belongs to
+ * the document that cites it. `REFERENCES` is the research document's — a notes
+ * document resolving against it would render a citation to a source it does not
+ * carry, which is worse than leaving it unresolved.
+ */
+interface MarkerCtx {
+  eq: Map<string, number>;
+  refs: Reference[];
+}
+
+const DOC_CTX: MarkerCtx = {
+  eq: numberEquations(NOTES_DOC),
+  refs: NOTES_DOC.references,
+};
+
+/** A formula, rendered, or its source in red when the LaTeX will not parse. */
+function texHtml(tex: string, display = false): string {
+  let html = "";
+  try {
+    html = katex.renderToString(tex, {
+      displayMode: display,
+      // The same two non-defaults the reading surface sets, for the same
+      // reasons: this LaTeX is model-generated, so it is untrusted input, and a
+      // malformed formula has to render in place rather than take out the page.
+      throwOnError: false,
+      trust: false,
+      strict: false,
+    });
+  } catch {
+    html = "";
+  }
+  if (!html) {
+    return `<code class="rounded-xn-sm bg-xn-danger-soft px-1.5 py-0.5 font-mono text-xs text-xn-danger">${esc(
+      tex,
+    )}</code>`;
+  }
+  return html;
+}
+
+function atomHtml(marker: string, src: string, inner: string, cls: string): string {
+  return `<span data-marker="${marker}" data-src="${escAttr(
+    src,
+  )}" contenteditable="false" class="${cls}">${inner}</span>`;
+}
+
+function segsHtml(segs: InlineSeg[], ctx: MarkerCtx): string {
+  return segs
+    .map((seg): string => {
+      switch (seg.kind) {
+        case "text":
+          return esc(seg.text);
+        case "bold":
+          return `<strong class="font-semibold text-xn-ink">${esc(seg.text)}</strong>`;
+        case "highlight":
+          // NOT an atom: a highlighted phrase is still prose and has to stay
+          // typeable, which is also why it carries no `data-src`.
+          //
+          // `==phrase==` cannot say WHICH of the five marks it is, so it takes
+          // the default. That is the gap the treatments below exist to settle,
+          // and it is honest to show it rather than invent a colour.
+          return `<mark data-mark="yellow" class="xn-hl">${segsHtml(seg.inner, ctx)}</mark>`;
+        case "math":
+          return atomHtml("math", seg.src, texHtml(seg.tex), "");
+        case "cite": {
+          const index = ctx.refs.findIndex((r) => r.id === seg.id);
+          // An unknown id stays as the characters it was written as, matching
+          // the reading surface: a broken citation reads as broken, not absent.
+          if (index < 0) return esc(seg.src);
+          return atomHtml(
+            "cite",
+            seg.src,
+            `[${toRoman(index + 1)}]`,
+            "mx-px rounded-[3px] px-[2px] font-mono text-[0.85em] text-xn-ink-muted",
+          );
+        }
+        case "eqref": {
+          const n = ctx.eq.get(seg.id);
+          // An unresolved reference renders as a visible gap rather than a
+          // number, so a broken link is obvious instead of plausible.
+          return atomHtml(
+            "eqref",
+            seg.src,
+            n ? `(${n})` : "(?)",
+            "font-mono text-xn-ink-muted",
+          );
+        }
+      }
+    })
+    .join("");
+}
+
+/** Escape prose and resolve its markers, in one pass. */
+const inlineHtml = (text: string, ctx: MarkerCtx = DOC_CTX) =>
+  segsHtml(parseInline(text), ctx);
+
+/** A display formula as the block's only child — an atom, edited via the field. */
+const mathBodyHtml = (tex: string) => atomHtml("mathblock", tex, texHtml(tex, true), "");
+
+// ── The three highlight treatments ──────────────────────────
+//
+// HARNESS, not editor chrome. Two highlight systems reached this file from
+// opposite directions and disagree:
+//
+//   ==phrase==          one lime stroke with a hand-drawn edge, from the
+//                       reading surface, carrying no colour choice
+//   Highlighter button  five flat rectangles, from this editor, carrying no
+//                       text spelling
+//
+// The same phrase therefore looks like two different things depending on which
+// produced it, and `==phrase==` has no way to record which of five it was. That
+// is a decision about what a highlight IS, so it is shown rather than argued.
+//
+// ── Why a stylesheet and not three renders ──
+//
+// The document is built ONCE, at module load, and pinned in `useMemo` with no
+// deps — re-rendering it is the bug §13 records, where React re-applied
+// `dangerouslySetInnerHTML` and silently undid every edit. So a treatment
+// cannot change the HTML. It changes how that HTML is PAINTED: one attribute on
+// an ancestor outside the pinned node, and CSS does the rest. Switching costs
+// nothing and cannot touch the document or the caret.
+
+const HL_TREATMENTS = [
+  { id: "flat", label: "Flat · five" },
+  { id: "pen-one", label: "Pen · one" },
+  { id: "pen-five", label: "Pen · five" },
+] as const;
+
+type HlTreatment = (typeof HL_TREATMENTS)[number]["id"];
+
+/**
+ * One custom property per mark, so each treatment says "the mark's own colour"
+ * once instead of repeating five rules.
+ */
+const HL_CSS = `
+mark.xn-hl { --xn-hl-c: var(--xn-mark-yellow); }
+mark.xn-hl[data-mark="green"]  { --xn-hl-c: var(--xn-mark-green); }
+mark.xn-hl[data-mark="blue"]   { --xn-hl-c: var(--xn-mark-blue); }
+mark.xn-hl[data-mark="pink"]   { --xn-hl-c: var(--xn-mark-pink); }
+mark.xn-hl[data-mark="purple"] { --xn-hl-c: var(--xn-mark-purple); }
+
+[data-hl="flat"] mark.xn-hl {
+  background-color: var(--xn-hl-c);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+[data-hl="pen-one"] mark.xn-hl,
+[data-hl="pen-five"] mark.xn-hl {
+  border-radius: 0;
+  padding: 0.16em 0.3em;
+  margin: 0 -0.16em;
+  -webkit-mask-image: ${HIGHLIGHT_MASK};
+          mask-image: ${HIGHLIGHT_MASK};
+  -webkit-mask-size: 100% 100%;
+          mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-box-decoration-break: clone;
+          box-decoration-break: clone;
+}
+
+[data-hl="pen-one"] mark.xn-hl {
+  background-color: var(--xn-hl);
+  color: var(--xn-hl-ink);
+}
+
+/* Ink stays inherited here. The five were measured for exactly this — normal
+   ink on the mark, 5.26-5.29:1 — whereas --xn-hl-ink is near-black, chosen
+   against lime. Forcing it would put dark text on a dark mark. */
+[data-hl="pen-five"] mark.xn-hl {
+  background-color: var(--xn-hl-c);
+  color: inherit;
+}
+`;
+
+// ── Marker conformance ──────────────────────────────────────
+//
+// HARNESS. The seeded notes document exercises three markers — 18 formulas, one
+// highlight, one equation reference — and CANNOT exercise the fourth. A notes
+// document carries no reference list, so `NOTES_DOC.references` is empty by
+// design and there is nothing for a citation to resolve against.
+//
+// It reaches none of the FAILURE paths either, and those are the ones worth
+// looking at: a source id that resolves to nothing, a reference to an equation
+// that does not exist, LaTeX that will not parse. Left unexercised they would
+// ship unlooked-at and break on the first real document that hit one — which is
+// the dead-button lesson from §13, where the thing that could not be reached
+// was precisely the thing that would survive to break in front of someone.
+//
+// So these render through the SAME `inlineHtml`, against the research
+// document's context, each line stating what it should do.
+
+const CONFORMANCE_CTX: MarkerCtx = {
+  eq: numberEquations(RESEARCH_DOC),
+  refs: REFERENCES,
+};
+
+const CONFORMANCE: { expect: string; src: string }[] = [
+  {
+    // `eq-ratio` is a real derivation step in the research document. The first
+    // version of this line cited `eq-scaling`, which reads perfectly and does
+    // not exist — it is an EXAMPLE id from a doc comment. It rendered "(?)"
+    // beside three markers that had resolved, in a row captioned "all four".
+    expect: "all four markers, one line, one pass",
+    src: "Scaling by $1/\\sqrt{d_k}$ [@vaswani17] keeps ==the softmax out of saturation== — the ratio is [#eq-ratio].",
+  },
+  {
+    expect: "a citation inside a highlight still resolves as a citation",
+    src: "==The result holds [@ba16] at every depth.==",
+  },
+  {
+    expect: "unknown source id — stays as the characters written, not dropped",
+    src: "A claim citing [@nosuchsource] resolves against nothing.",
+  },
+  {
+    expect: "unknown equation id — a visible gap, never a plausible number",
+    src: "As shown in [#eq-does-not-exist], the term vanishes.",
+  },
+  {
+    expect: "malformed LaTeX — KaTeX's own error colour, in place, page survives",
+    src: "This formula does not close: $\\frac{1}{$.",
+  },
+  {
+    expect: "a lone dollar is not maths; bold still applies",
+    src: "It cost **$5** and change.",
+  },
+];
+
+/**
+ * The conformance list.
+ *
+ * `dangerouslySetInnerHTML` is safe here in a way it is not inside the document:
+ * this subtree is React's, nothing mutates it, and no toolbar operation can be
+ * undone by a re-render of it.
+ */
+function Conformance() {
+  return (
+    <details className="mt-6 rounded-xn-md border border-xn-border bg-xn-surface px-5 py-3">
+      <summary className="cursor-pointer font-mono text-micro uppercase tracking-widest text-xn-ink-soft">
+        marker conformance · {CONFORMANCE.length} cases the seeded document cannot reach
+      </summary>
+      <ul className="mt-4 space-y-4">
+        {CONFORMANCE.map((c) => (
+          <li key={c.src}>
+            <p className="font-mono text-micro uppercase tracking-widest text-xn-ink-soft">
+              {c.expect}
+            </p>
+            <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap font-mono text-xs text-xn-ink-muted">
+              {c.src}
+            </pre>
+            <p
+              className="mt-1.5 text-[17.5px] leading-[1.72] text-xn-ink"
+              dangerouslySetInnerHTML={{ __html: inlineHtml(c.src, CONFORMANCE_CTX) }}
+            />
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 /**
  * One block as HTML.
  *
@@ -153,30 +459,40 @@ const esc = (s: string) =>
 /** The three heading levels, which the reading design already sizes. */
 function headingHtml(level: 1 | 2 | 3, text: string): string {
   const size = level === 1 ? "text-[40px]" : level === 2 ? "text-[32px]" : "text-[24px]";
-  return `<h${level} data-block data-kind="h${level}" class="mb-3 mt-8 font-serif ${size} leading-tight text-xn-ink">${esc(text)}</h${level}>`;
+  return `<h${level} data-block data-kind="h${level}" class="mb-3 mt-8 font-serif ${size} leading-tight text-xn-ink">${inlineHtml(text)}</h${level}>`;
 }
 
 function blockHtml(b: Block): string {
   const cls = "text-[17.5px] leading-[1.72] text-xn-ink";
   switch (b.kind) {
     case "para":
-      return `<p data-block data-kind="para" class="${cls} my-4">${esc(b.text)}</p>`;
+      return `<p data-block data-kind="para" class="${cls} my-4">${inlineHtml(b.text)}</p>`;
     case "quote":
-      return `<blockquote data-block data-kind="quote" class="${cls} my-4 border-l-2 border-xn-border pl-4 italic text-xn-ink-muted">${esc(b.text)}</blockquote>`;
+      return `<blockquote data-block data-kind="quote" class="${cls} my-4 border-l-2 border-xn-border pl-4 italic text-xn-ink-muted">${inlineHtml(b.text)}</blockquote>`;
     case "code":
+      // NOT parsed. Code is literal by definition, and a `$` in a shell line is
+      // a prompt, not the start of a formula.
       return `<pre data-block data-kind="code" class="my-4 overflow-x-auto rounded-xn-sm bg-xn-surface-alt p-3 font-mono text-[14px] text-xn-ink">${esc(b.text)}</pre>`;
     case "list":
       return `<ul data-block data-kind="list" class="${cls} my-4 list-disc space-y-1 pl-5">${b.items
-        .map((i) => `<li>${esc(i)}</li>`)
+        .map((i) => `<li>${inlineHtml(i)}</li>`)
         .join("")}</ul>`;
     case "definition":
-      return `<p data-block data-kind="definition" class="${cls} my-4"><strong>${esc(b.term)}</strong> — ${esc(b.meaning)}</p>`;
+      return `<p data-block data-kind="definition" class="${cls} my-4"><strong>${inlineHtml(b.term)}</strong> — ${inlineHtml(b.meaning)}</p>`;
     case "math":
-      return `<p data-block data-kind="math" class="my-4 rounded-xn-sm bg-xn-surface-alt px-4 py-3 text-center font-mono text-[15px] text-xn-ink">${esc(b.tex)}</p>`;
+      // `data-tex` is the source of truth for the contextual LaTeX field. It
+      // used to read `textContent`, which worked only while the block held its
+      // LaTeX as plain text; now that the block renders, textContent is KaTeX's
+      // own output and says nothing about the formula that produced it.
+      return `<p data-block data-kind="math" data-tex="${escAttr(
+        b.tex,
+      )}" class="my-4 rounded-xn-sm bg-xn-surface-alt px-4 py-3 text-center text-[15px] text-xn-ink">${mathBodyHtml(
+        b.tex,
+      )}</p>`;
     case "table": {
-      const head = b.head.map((h) => `<th class="border border-xn-border px-3 py-2 text-left font-semibold">${esc(h)}</th>`).join("");
+      const head = b.head.map((h) => `<th class="border border-xn-border px-3 py-2 text-left font-semibold">${inlineHtml(h)}</th>`).join("");
       const rows = b.rows
-        .map((r) => `<tr>${r.map((c) => `<td class="border border-xn-border px-3 py-2">${esc(c)}</td>`).join("")}</tr>`)
+        .map((r) => `<tr>${r.map((c) => `<td class="border border-xn-border px-3 py-2">${inlineHtml(c)}</td>`).join("")}</tr>`)
         .join("");
       return `<table data-block data-kind="table" class="my-4 w-full border-collapse text-[15px] leading-normal text-xn-ink"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
     }
@@ -187,7 +503,7 @@ function blockHtml(b: Block): string {
 
 const DOC_HTML = NOTES_DOC.sections
   .flatMap((s) => [
-    `<h2 data-block data-kind="heading" class="mb-3 mt-9 font-serif text-[32px] leading-tight text-xn-ink">${esc(s.heading)}</h2>`,
+    `<h2 data-block data-kind="heading" class="mb-3 mt-9 font-serif text-[32px] leading-tight text-xn-ink">${inlineHtml(s.heading)}</h2>`,
     ...s.blocks.map(blockHtml),
   ])
   .join("");
@@ -244,12 +560,27 @@ function currentCell(root: HTMLElement | null): HTMLTableCellElement | null {
   return null;
 }
 
+/**
+ * Highlight the selection.
+ *
+ * ── The painting moved out of here, deliberately ──
+ *
+ * This used to write `style="background-color:var(--xn-mark-…)"` directly onto
+ * the element. An inline style beats any stylesheet, so a button-applied
+ * highlight could not be restyled afterwards — which made the two highlight
+ * systems impossible to compare: `==phrase==` was painted by CSS and this was
+ * painted by an attribute.
+ *
+ * Now both emit the same `mark.xn-hl[data-mark]` and a stylesheet decides how
+ * it looks, so the treatment switch moves all of them at once and the
+ * comparison is of one thing rather than two.
+ */
 function applyHighlight(mark: MarkId): "applied" | "empty" | "crosses" {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return "empty";
   const el = document.createElement("mark");
   el.dataset.mark = mark;
-  el.style.cssText = `background-color:var(--xn-mark-${mark});color:inherit;border-radius:2px;padding:0 1px`;
+  el.className = "xn-hl";
   try {
     sel.getRangeAt(0).surroundContents(el);
   } catch {
@@ -261,8 +592,46 @@ function applyHighlight(mark: MarkId): "applied" | "empty" | "crosses" {
   return "applied";
 }
 
-const countWords = (root: HTMLElement | null) =>
-  root ? (root.textContent ?? "").trim().split(/\s+/).filter(Boolean).length : 0;
+/**
+ * Words in the document: each block's source text, counted and summed.
+ *
+ * ── Two faults, and the measured numbers, because guessing got this wrong ──
+ *
+ * This read `root.textContent` and reported 240 for a document holding 254
+ * words. It was UNDER-counting, which is the opposite of what you would expect
+ * from maths that renders itself twice, so the mechanism is worth stating:
+ *
+ * 1. KaTeX emits each formula twice — MathML for assistive technology, then
+ *    positioned spans for sight — and puts no whitespace anywhere. So `($q$)`
+ *    arrived as `(𝑞q)`: not two extra words, ONE meaningless token built from
+ *    whichever glyphs happened to land beside it.
+ * 2. `textContent` across sibling blocks joins them with nothing at all, so the
+ *    last word of each block and the first of the next merged into one. With 16
+ *    blocks that is 15 words lost, which is exactly the gap measured between
+ *    counting the whole string at once and counting block by block.
+ *
+ * So: swap each atom for the characters it was written as, with NO padding —
+ * padding splits `($q$)` into three tokens and overshoots to 248 — then count
+ * per block, which is the only boundary that is a real separator.
+ *
+ * The answer is now the words a person typed, which is also what a save would
+ * write: the two agree by construction instead of being kept in step by hand.
+ */
+const countWords = (root: HTMLElement | null) => {
+  if (!root) return 0;
+  const words = (t: string | null) => (t ?? "").trim().split(/\s+/).filter(Boolean).length;
+
+  const clone = root.cloneNode(true) as HTMLElement;
+  for (const atom of clone.querySelectorAll<HTMLElement>("[data-src]")) {
+    atom.replaceWith(document.createTextNode(atom.dataset.src ?? ""));
+  }
+
+  const blocks = [...clone.querySelectorAll<HTMLElement>("[data-block]")];
+  // Before the first edit there is always at least one block; the fallback is
+  // for a document emptied down to bare text nodes.
+  if (blocks.length === 0) return words(clone.textContent);
+  return blocks.reduce((n, b) => n + words(b.textContent), 0);
+};
 
 /**
  * The toolbar.
@@ -622,6 +991,8 @@ export default function EditorPage() {
   const [words, setWords] = useState(0);
   /** The LaTeX of the formula the caret is in, mirrored into a field. */
   const [mathText, setMathTextState] = useState("");
+  /** Harness only — which highlight treatment is being looked at. */
+  const [hl, setHl] = useState<HlTreatment>("flat");
 
   /**
    * Undo, as one stack this editor owns.
@@ -739,7 +1110,9 @@ export default function EditorPage() {
       if (many.length) lastBlocksRef.current = many;
       setKind(b?.dataset.kind ?? "");
       // Mirror a formula's source into the field when the caret enters it.
-      if (b?.dataset.kind === "math") setMathTextState(b.textContent ?? "");
+      // From `data-tex`, not `textContent`: the block renders now, so its text
+      // is KaTeX's output and not the LaTeX that produced it.
+      if (b?.dataset.kind === "math") setMathTextState(b.dataset.tex ?? "");
       // Remember which cell, so "this row" means the row you are actually in.
       const c = currentCell(docRef.current);
       if (c) lastCellRef.current = c;
@@ -973,12 +1346,21 @@ export default function EditorPage() {
     if (/Mac|iPhone|iPad/.test(navigator.platform)) setModLabel("\u2318");
   }, []);
 
-  /** Write the field back into the formula block it came from. */
+  /**
+   * Write the field back into the formula block it came from, and re-render it.
+   *
+   * The LaTeX lives on `data-tex` and the rendered maths is a non-editable
+   * atom, so typing in the field is now the only way to change a formula —
+   * which is what the field was for. Re-rendering per keystroke is cheap next
+   * to KaTeX's own parse, and showing the formula resolve as it is typed is
+   * most of the field's value.
+   */
   const setMathText = useCallback((v: string) => {
     setMathTextState(v);
     const b = lastBlockRef.current;
     if (b && b.dataset.kind === "math" && docRef.current?.contains(b)) {
-      b.textContent = v;
+      b.dataset.tex = v;
+      b.innerHTML = mathBodyHtml(v);
     }
   }, []);
 
@@ -1083,9 +1465,47 @@ export default function EditorPage() {
     }
   }, [pushHistory]);
 
+  const lime = theme === "dark" ? HIGHLIGHT_LIME.dark : HIGHLIGHT_LIME.light;
+
   return (
     <div className="min-h-screen bg-xn-bg py-10">
-      <div className="mx-auto max-w-[1030px] px-6">
+      <style dangerouslySetInnerHTML={{ __html: HL_CSS }} />
+      {/* `data-hl` sits here, OUTSIDE the pinned document, which is the whole
+          reason a treatment can be switched at all. `--xn-hl` is set the same
+          way the reading surface sets it, from the same constant, so "Pen · one"
+          is the real stroke rather than something resembling it. */}
+      <div
+        data-hl={hl}
+        style={
+          { "--xn-hl": lime.bg, "--xn-hl-ink": lime.ink } as React.CSSProperties
+        }
+        className="mx-auto max-w-[1030px] px-6"
+      >
+        {/* HARNESS STRIP — not editor chrome, and it goes when the question is
+            settled. The five swatches in the toolbar apply a mark; this decides
+            what every mark LOOKS like, parsed or applied. */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="font-mono text-micro uppercase tracking-widest text-xn-ink-soft">
+            highlight
+          </span>
+          {HL_TREATMENTS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setHl(t.id)}
+              aria-pressed={hl === t.id}
+              className={[
+                "rounded-xn-sm border px-2.5 py-1 font-mono text-micro transition-colors duration-xn ease-xn",
+                hl === t.id
+                  ? "border-xn-ink bg-xn-ink text-xn-bg"
+                  : "border-xn-border text-xn-ink-muted hover:text-xn-ink",
+              ].join(" ")}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         {/* Mode control sits OUTSIDE the card — it is the app asking whether
             you are reading or editing, not part of the editor's own chrome. */}
         <div className="mb-4 flex items-center gap-3">
@@ -1208,6 +1628,8 @@ export default function EditorPage() {
             {surface}
           </div>
         </div>
+
+        <Conformance />
       </div>
     </div>
   );

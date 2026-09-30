@@ -712,6 +712,42 @@ function sourceText(el: HTMLElement): string {
   return clone.textContent ?? "";
 }
 
+/**
+ * Split the text nodes the selection starts and ends inside.
+ *
+ * After this every node is wholly inside the selection or wholly outside it,
+ * which is what lets a highlight be cleared from PART of a phrase.
+ *
+ * The end is split before the start on purpose: when both ends sit in the same
+ * text node — selecting a word inside one highlighted sentence, the ordinary
+ * case — splitting the start first shortens that node and the end offset then
+ * points past its new length.
+ */
+function splitBoundaries(range: Range) {
+  const { endContainer, endOffset } = range;
+  if (endContainer.nodeType === Node.TEXT_NODE) {
+    const t = endContainer as Text;
+    if (endOffset > 0 && endOffset < t.length) t.splitText(endOffset);
+  }
+  const { startContainer, startOffset } = range;
+  if (startContainer.nodeType === Node.TEXT_NODE) {
+    const t = startContainer as Text;
+    if (startOffset > 0 && startOffset < t.length) {
+      range.setStart(t.splitText(startOffset), 0);
+    }
+  }
+}
+
+/** True when the whole node lies within the range, not merely touching it. */
+function rangeCovers(range: Range, node: Node): boolean {
+  const end = node.nodeType === Node.TEXT_NODE ? (node as Text).length : node.childNodes.length;
+  try {
+    return range.comparePoint(node, 0) === 0 && range.comparePoint(node, end) === 0;
+  } catch {
+    return false;
+  }
+}
+
 /** A block that holds `<li>` children, so its items can be carried across. */
 function isListBlock(el: Element): el is HTMLUListElement | HTMLOListElement {
   return el instanceof HTMLUListElement || el instanceof HTMLOListElement;
@@ -907,8 +943,8 @@ function Tools({
         ))}
         <button
           type="button"
-          title="Remove highlights"
-          aria-label="Remove highlights"
+          title="Remove highlight from the selection"
+          aria-label="Remove highlight from the selection"
           onMouseDown={(e) => e.preventDefault()}
           onClick={clearMarks}
           className={icon}
@@ -1704,16 +1740,84 @@ export default function EditorPage() {
     [pushHistory],
   );
 
+  /**
+   * Remove highlighting from the SELECTION, and only from it.
+   *
+   * ── What this did before ──
+   *
+   * It emptied the document — every `mark` in the whole article, whatever you
+   * had selected, including the lime strokes generation itself produced from
+   * `==phrase==`. One press destroyed the model's own emphasis along with the
+   * reader's, and nothing distinguished the two. An eraser that ignores the
+   * selection is not an eraser.
+   *
+   * ── Erasing PART of a phrase, which is the case that decides the shape ──
+   *
+   * The obvious implementation — `extractContents`, unwrap, put it back — does
+   * nothing at all in the commonest case. When a range starts and ends in the
+   * same text node, the spec short-circuits and returns a bare text node with
+   * no clone of the `<mark>` around it, so there is nothing to unwrap and the
+   * text goes straight back inside the highlight it came from.
+   *
+   * So the boundaries are split first. Every node is then wholly in or wholly
+   * out, and each touched mark is rebuilt as a run of parts: the covered ones
+   * come out bare, the rest stay wrapped in a clone. Erasing CD from ABCDEF
+   * leaves `<mark>AB</mark>CD<mark>EF</mark>`.
+   */
   const clearMarks = useCallback(() => {
-    pushHistory();
     const root = docRef.current;
-    if (!root) return;
-    for (const m of [...root.querySelectorAll("mark[data-mark]")]) {
-      const p = m.parentNode;
-      if (!p) continue;
-      while (m.firstChild) p.insertBefore(m.firstChild, m);
-      p.removeChild(m);
+    const sel = window.getSelection();
+    if (!root || !sel || sel.rangeCount === 0) return;
+
+    const range = sel.getRangeAt(0);
+    if (range.collapsed) return setNote("Select some text first.");
+    if (!root.contains(range.commonAncestorContainer)) return;
+
+    // Nothing highlighted inside the selection means DO NOTHING — no unwrap,
+    // and no history entry either, so an idle press cannot cost an undo step.
+    const marks = () =>
+      [...root.querySelectorAll<HTMLElement>("mark[data-mark]")].filter((m) =>
+        range.intersectsNode(m),
+      );
+    if (marks().length === 0) return setNote("Nothing highlighted in that selection.");
+
+    pushHistory();
+    splitBoundaries(range);
+
+    // Decide everything before moving anything: rebuilding one mark would
+    // invalidate the range the next one is measured against.
+    const plans = marks().map((m) => ({
+      mark: m,
+      parts: [...m.childNodes].map((child) => ({ child, covered: rangeCovers(range, child) })),
+    }));
+
+    for (const { mark, parts } of plans) {
+      const parent = mark.parentNode;
+      if (!parent) continue;
+      // A mark with nothing covered is only touching the selection, so it is
+      // left exactly as it is.
+      if (!parts.some((p) => p.covered)) continue;
+
+      let keep: HTMLElement | null = null;
+      for (const { child, covered } of parts) {
+        if (covered) {
+          keep = null;
+          parent.insertBefore(child, mark);
+        } else {
+          if (!keep) {
+            keep = mark.cloneNode(false) as HTMLElement;
+            parent.insertBefore(keep, mark);
+          }
+          keep.appendChild(child);
+        }
+      }
+      parent.removeChild(mark);
     }
+
+    // Splitting leaves neighbouring text nodes behind; merge them so the
+    // document does not accumulate fragments with every erase.
+    root.normalize();
+    sel.removeAllRanges();
   }, [pushHistory]);
 
   const lime = theme === "dark" ? HIGHLIGHT_LIME.dark : HIGHLIGHT_LIME.light;

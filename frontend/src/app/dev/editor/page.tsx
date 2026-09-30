@@ -404,8 +404,13 @@ mark.xn-hl[data-mark="purple"] { --xn-hl-c: var(--xn-mark-purple); }
    which is the indicator this project already settled on for the skip link,
    and for the same reason: an outline around a block of prose reads as a
    selection or an error, an edge in the margin reads as "you are here". */
-.xn-doc:focus,
-.xn-doc:focus-visible { outline: none; }
+/* Suppressed ONLY while a block edge is actually showing. If the document has
+   been emptied to bare text, or focus arrives before any block is marked, there
+   is no edge — and then the global ring is the only thing telling a keyboard
+   user where focus went, so it has to come back. Using :has() makes that the
+   stylesheet's decision rather than something JS has to keep in step. */
+.xn-doc:focus:has([data-active]),
+.xn-doc:focus-visible:has([data-active]) { outline: none; }
 
 .xn-doc [data-block] { position: relative; }
 
@@ -736,6 +741,54 @@ function splitBoundaries(range: Range) {
       range.setStart(t.splitText(startOffset), 0);
     }
   }
+}
+
+/**
+ * Where a coverage decision is made, and where splitting must stop.
+ *
+ * A mark's own children are NOT the leaves: a highlight can wrap bold, and a
+ * selection can land inside that bold. An atom is a leaf whatever it contains,
+ * because there is nothing inside KaTeX's markup to take a highlight off.
+ */
+function isLeafNode(n: Node): boolean {
+  if (n.nodeType === Node.TEXT_NODE) return true;
+  if (!(n instanceof HTMLElement)) return true;
+  return n.hasAttribute("data-marker") || !n.hasChildNodes();
+}
+
+/**
+ * Split a subtree into runs of covered and uncovered content.
+ *
+ * Recursive, and every element on the way down is cloned once per run, so
+ * `<mark><strong>ab|cd|ef</strong></mark>` with `cd` selected comes back as
+ * three runs and rebuilds into
+ * `<mark><strong>ab</strong></mark><strong>cd</strong><mark><strong>ef</strong></mark>`.
+ *
+ * Coverage is passed in rather than measured here: this MOVES nodes, which
+ * invalidates the range it would otherwise be asking.
+ */
+function runsByCoverage(
+  node: Node,
+  covered: (n: Node) => boolean,
+): { covered: boolean; node: Node }[] {
+  if (isLeafNode(node)) return [{ covered: covered(node), node }];
+
+  const el = node as HTMLElement;
+  const runs: { covered: boolean; node: Node }[] = [];
+  let bucket: HTMLElement | null = null;
+  let bucketCovered: boolean | null = null;
+
+  for (const child of [...el.childNodes]) {
+    for (const part of runsByCoverage(child, covered)) {
+      if (!bucket || bucketCovered !== part.covered) {
+        bucket = el.cloneNode(false) as HTMLElement;
+        bucketCovered = part.covered;
+        runs.push({ covered: part.covered, node: bucket });
+      }
+      bucket.appendChild(part.node);
+    }
+  }
+  return runs;
 }
 
 /** True when the whole node lies within the range, not merely touching it. */
@@ -1193,6 +1246,15 @@ export default function EditorPage() {
    */
   const mathBurst = useRef(false);
   const mathTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * WHICH formula the open burst belongs to.
+   *
+   * A burst is one continuous edit to one formula. Without this, editing a
+   * second formula within 600ms of the first joined the first one's entry, and
+   * a single Revert rolled back both — an undo step that spans two things the
+   * user changed separately is worse than no grouping at all.
+   */
+  const mathBurstBlock = useRef<HTMLElement | null>(null);
 
   const pushHistory = useCallback(() => {
     const el = docRef.current;
@@ -1223,6 +1285,7 @@ export default function EditorPage() {
     // entry that no longer describes anything.
     if (mathTimer.current) clearTimeout(mathTimer.current);
     mathBurst.current = false;
+    mathBurstBlock.current = null;
   }, []);
 
   const undo = useCallback(() => {
@@ -1632,9 +1695,10 @@ export default function EditorPage() {
       // Snapshot BEFORE the write and once per burst — the same rule, and the
       // same reason, as `beforeinput` on the document: after the write, the
       // state being captured already contains the change.
-      if (!mathBurst.current) {
+      if (!mathBurst.current || mathBurstBlock.current !== b) {
         pushHistory();
         mathBurst.current = true;
+        mathBurstBlock.current = b;
       }
       if (mathTimer.current) clearTimeout(mathTimer.current);
       mathTimer.current = setTimeout(() => {
@@ -1784,31 +1848,36 @@ export default function EditorPage() {
     pushHistory();
     splitBoundaries(range);
 
-    // Decide everything before moving anything: rebuilding one mark would
-    // invalidate the range the next one is measured against.
-    const plans = marks().map((m) => ({
-      mark: m,
-      parts: [...m.childNodes].map((child) => ({ child, covered: rangeCovers(range, child) })),
-    }));
+    const touched = marks();
 
-    for (const { mark, parts } of plans) {
+    // ── Decide everything first, then move anything ──
+    //
+    // Rebuilding one mark moves nodes, which invalidates the range the next
+    // mark would be measured against. So coverage is recorded for every leaf
+    // while the range is still intact, and the rebuild reads the record.
+    const coverage = new Map<Node, boolean>();
+    const record = (n: Node) => {
+      if (isLeafNode(n)) return void coverage.set(n, rangeCovers(range, n));
+      for (const child of [...n.childNodes]) record(child);
+    };
+    for (const m of touched) record(m);
+
+    for (const mark of touched) {
       const parent = mark.parentNode;
       if (!parent) continue;
-      // A mark with nothing covered is only touching the selection, so it is
-      // left exactly as it is.
-      if (!parts.some((p) => p.covered)) continue;
 
-      let keep: HTMLElement | null = null;
-      for (const { child, covered } of parts) {
-        if (covered) {
-          keep = null;
-          parent.insertBefore(child, mark);
+      const runs = runsByCoverage(mark, (n) => coverage.get(n) ?? false);
+      // A mark only touching the selection, with nothing of it covered, is
+      // left exactly as it is.
+      if (!runs.some((r) => r.covered)) continue;
+
+      for (const run of runs) {
+        const el = run.node as HTMLElement;
+        if (run.covered) {
+          // Drop the highlight, keep whatever formatting was inside it.
+          while (el.firstChild) parent.insertBefore(el.firstChild, mark);
         } else {
-          if (!keep) {
-            keep = mark.cloneNode(false) as HTMLElement;
-            parent.insertBefore(keep, mark);
-          }
-          keep.appendChild(child);
+          parent.insertBefore(el, mark);
         }
       }
       parent.removeChild(mark);

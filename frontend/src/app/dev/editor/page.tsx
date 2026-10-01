@@ -103,6 +103,30 @@ import {
   type InlineSeg,
 } from "@/app/dev/output-blocks/inline";
 import { VIDEO } from "@/app/dev/social-templates/content";
+import { FACES, faceStack, facesByCategory, type FaceCategory } from "@/lib/fonts";
+
+/** Grouped once at module level — the registry does not change at runtime. */
+const FONT_GROUPS = facesByCategory();
+
+const CATEGORY_LABEL: Record<FaceCategory, string> = {
+  sans: "Sans",
+  serif: "Serif",
+  mono: "Mono",
+  display: "Display",
+  script: "Script",
+};
+
+/**
+ * One rule per family, generated from the registry.
+ *
+ * Written from `FACES` rather than by hand so a family added there is
+ * selectable here without anyone remembering to add a rule — the registry stays
+ * the only place a typeface is declared.
+ */
+const FONT_CSS = FACES.map(
+  (f) => `.xn-doc [data-font="${f.id}"] { font-family: ${faceStack(f)}; }`,
+).join("\n");
+
 
 /**
  * The highlighter's colours, default first.
@@ -386,6 +410,8 @@ mark.xn-hl[data-mark="green"]  { --xn-hl-c: var(--xn-mark-green); }
 mark.xn-hl[data-mark="blue"]   { --xn-hl-c: var(--xn-mark-blue); }
 mark.xn-hl[data-mark="pink"]   { --xn-hl-c: var(--xn-mark-pink); }
 mark.xn-hl[data-mark="purple"] { --xn-hl-c: var(--xn-mark-purple); }
+
+${FONT_CSS}
 
 /* ── Where focus is shown ──────────────────────────────────
    The document is ONE focusable element wrapping the whole article, so the
@@ -801,6 +827,111 @@ function rangeCovers(range: Range, node: Node): boolean {
   }
 }
 
+/**
+ * Take a wrapper off the selected part of its contents, leaving the rest wrapped.
+ *
+ * The eraser and the typeface control are the same operation on different
+ * elements — "remove this span from exactly what is selected, splitting it if
+ * the selection covers only part" — so they share it. The caller supplies the
+ * selector; everything else is identical.
+ *
+ * `onWillChange` fires once, after it is known that something WILL be rebuilt
+ * and before anything moves. That ordering is the whole point: an undo snapshot
+ * taken earlier records a press that changed nothing, and one taken later
+ * records the result instead of the state being left.
+ *
+ * Returns how many wrappers it rebuilt, so a caller can tell "nothing to do"
+ * from "done".
+ */
+function stripWrappers(
+  root: HTMLElement,
+  range: Range,
+  selector: string,
+  onWillChange?: () => void,
+): number {
+  const hits = () =>
+    [...root.querySelectorAll<HTMLElement>(selector)].filter((el) => range.intersectsNode(el));
+  if (hits().length === 0) return 0;
+
+  // Coverage for every leaf first: rebuilding one wrapper moves nodes, which
+  // invalidates the range the next would be measured against.
+  const coverage = new Map<Node, boolean>();
+  const record = (n: Node) => {
+    if (isLeafNode(n)) return void coverage.set(n, rangeCovers(range, n));
+    for (const child of [...n.childNodes]) record(child);
+  };
+  for (const el of hits()) record(el);
+
+  const holdsCovered = (n: Node): boolean =>
+    isLeafNode(n) ? (coverage.get(n) ?? false) : [...n.childNodes].some(holdsCovered);
+
+  const touched = hits().filter(holdsCovered);
+  if (touched.length === 0) return 0;
+  onWillChange?.();
+
+  for (const el of touched) {
+    const parent = el.parentNode;
+    if (!parent) continue;
+    for (const run of runsByCoverage(el, (n) => coverage.get(n) ?? false)) {
+      const part = run.node as HTMLElement;
+      if (run.covered) {
+        while (part.firstChild) parent.insertBefore(part.firstChild, el);
+      } else {
+        parent.insertBefore(part, el);
+      }
+    }
+    parent.removeChild(el);
+  }
+  return touched.length;
+}
+
+/**
+ * Set the typeface of the selection.
+ *
+ * Wraps each covered text node rather than the range as a whole, because a
+ * selection routinely crosses element boundaries and `surroundContents` throws
+ * on most of them. Boundaries are split first, so every text node is wholly in
+ * or out and the span lands on exactly what was selected.
+ *
+ * ATOMS ARE SKIPPED. A rendered formula is set in KaTeX's own fonts, and
+ * changing the family around it would at best do nothing and at worst disturb
+ * the metrics it positions itself with.
+ */
+function applyFont(root: HTMLElement, faceId: string): "applied" | "empty" | "outside" {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return "empty";
+  const range = sel.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) return "outside";
+
+  splitBoundaries(range);
+
+  const targets: Text[] = [];
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let n: Node | null;
+  while ((n = walk.nextNode())) {
+    const t = n as Text;
+    if (!t.data.trim()) continue;
+    if (t.parentElement?.closest("[data-marker]")) continue;
+    if (rangeCovers(range, t)) targets.push(t);
+  }
+  if (targets.length === 0) return "empty";
+
+  for (const t of targets) {
+    const owner = t.parentElement?.closest<HTMLElement>("[data-font]");
+    // Already in a span of its own — re-point it instead of nesting spans.
+    if (owner && owner.childNodes.length === 1 && owner.firstChild === t) {
+      owner.dataset.font = faceId;
+      continue;
+    }
+    const span = document.createElement("span");
+    span.dataset.font = faceId;
+    t.parentNode?.insertBefore(span, t);
+    span.appendChild(t);
+  }
+  sel.removeAllRanges();
+  return "applied";
+}
+
 /** A block that holds `<li>` children, so its items can be carried across. */
 function isListBlock(el: Element): el is HTMLUListElement | HTMLOListElement {
   return el instanceof HTMLUListElement || el instanceof HTMLOListElement;
@@ -859,6 +990,8 @@ function Tools({
   canUndo,
   canRedo,
   modLabel,
+  font,
+  setFont,
 }: {
   kind: string;
   runBlock: (a: BlockAction) => void;
@@ -872,6 +1005,8 @@ function Tools({
   canUndo: boolean;
   canRedo: boolean;
   modLabel: string;
+  font: string;
+  setFont: (id: string) => void;
 }) {
   // A plain element, not a component. Declaring a component inside another is
   // a new type every render and remounts its subtree — the caret-losing bug
@@ -915,6 +1050,32 @@ function Tools({
       </button>
 
       <span className="mx-2 h-6 w-px shrink-0 bg-xn-border" aria-hidden="true" />
+
+      {/* ── Typeface, immediately left of the style box ──
+          Both answer "what is this text", so they sit together: the face
+          first, then what the block IS. Grouped by category, because a flat
+          list of forty-four is a list nobody reads to the end of. */}
+      <label className="flex items-center gap-2">
+        <span className="sr-only">Typeface</span>
+        <select
+          value={font}
+          onMouseDown={(e) => e.stopPropagation()}
+          onChange={(e) => setFont(e.target.value)}
+          title="Typeface of the selection"
+          className="w-[140px] rounded-xn-sm border border-xn-border bg-xn-surface px-2.5 py-1.5 text-sm text-xn-ink"
+        >
+          <option value="">Default</option>
+          {FONT_GROUPS.map((g) => (
+            <optgroup key={g.category} label={CATEGORY_LABEL[g.category]}>
+              {g.faces.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
 
       {/* ── Style gallery, as a word processor has it ── */}
       <label className="flex items-center gap-2">
@@ -1198,6 +1359,15 @@ export default function EditorPage() {
   const [words, setWords] = useState(0);
   /** The LaTeX of the formula the caret is in, mirrored into a field. */
   const [mathText, setMathTextState] = useState("");
+  /**
+   * The typeface control's value.
+   *
+   * It is the last face APPLIED, not the face under the caret. Reading the
+   * caret's family back would mean resolving it through every ancestor and the
+   * block's own class, and showing "Default" for text that merely inherits the
+   * document's face would be a readout that lies in the common case.
+   */
+  const [font, setFontState] = useState("");
 
   /**
    * Undo, as one stack this editor owns.
@@ -1367,6 +1537,46 @@ export default function EditorPage() {
     document.addEventListener("selectionchange", onSel);
     return () => document.removeEventListener("selectionchange", onSel);
   }, []);
+
+  /**
+   * Set the selection's typeface, or take it off.
+   *
+   * "Default" strips the spans rather than applying a face named "default":
+   * removing the override is what returns the text to whatever the block and
+   * the document say, which is the only correct meaning of default here.
+   */
+  const setFont = useCallback(
+    (id: string) => {
+      const root = docRef.current;
+      const sel = window.getSelection();
+      if (!root || !sel || sel.rangeCount === 0 || sel.isCollapsed) {
+        return setNote("Select some text first.");
+      }
+
+      if (id === "") {
+        const range = sel.getRangeAt(0);
+        if (!root.contains(range.commonAncestorContainer)) return;
+        splitBoundaries(range);
+        // Snapshot only once something is actually going to change.
+        const probe = [...root.querySelectorAll("[data-font]")].some((el) =>
+          range.intersectsNode(el),
+        );
+        if (!probe) return setNote("That selection has no typeface set.");
+        pushHistory();
+        stripWrappers(root, range, "[data-font]");
+        root.normalize();
+        sel.removeAllRanges();
+        setFontState("");
+        return;
+      }
+
+      pushHistory();
+      const r = applyFont(root, id);
+      if (r === "empty") return setNote("Select some text first.");
+      setFontState(id);
+    },
+    [pushHistory],
+  );
 
   const mark = useCallback((m: MarkId) => {
     pushHistory();
@@ -1852,50 +2062,13 @@ export default function EditorPage() {
     // actually going to change.
     splitBoundaries(range);
 
-    // ── Decide everything first, then move anything ──
-    //
-    // Rebuilding one mark moves nodes, which invalidates the range the next
-    // mark would be measured against. So coverage is recorded for every leaf
-    // while the range is still intact, and the rebuild reads the record.
-    const coverage = new Map<Node, boolean>();
-    const record = (n: Node) => {
-      if (isLeafNode(n)) return void coverage.set(n, rangeCovers(range, n));
-      for (const child of [...n.childNodes]) record(child);
-    };
-    for (const m of marks()) record(m);
-
-    const holdsCovered = (n: Node): boolean =>
-      isLeafNode(n)
-        ? (coverage.get(n) ?? false)
-        : [...n.childNodes].some(holdsCovered);
-
-    // ── Only marks with covered CONTENT, decided before any rebuild ──
-    //
-    // `intersectsNode` is true for a mark the selection merely reaches the edge
-    // of, and such a mark has nothing to erase. Asking `runsByCoverage` first
-    // and skipping afterwards destroyed it: that call MOVES the children into
-    // detached clones, so bailing out left the original mark empty and the
-    // clones unattached — the highlighted text disappeared from the document.
-    const touched = marks().filter(holdsCovered);
-    if (touched.length === 0) return setNote("Nothing highlighted in that selection.");
-
-    pushHistory();
-
-    for (const mark of touched) {
-      const parent = mark.parentNode;
-      if (!parent) continue;
-
-      const runs = runsByCoverage(mark, (n) => coverage.get(n) ?? false);
-      for (const run of runs) {
-        const el = run.node as HTMLElement;
-        if (run.covered) {
-          // Drop the highlight, keep whatever formatting was inside it.
-          while (el.firstChild) parent.insertBefore(el.firstChild, mark);
-        } else {
-          parent.insertBefore(el, mark);
-        }
-      }
-      parent.removeChild(mark);
+    // The rebuild is shared with the typeface control: both take a wrapper off
+    // exactly what is selected and leave the rest wrapped. `pushHistory` is
+    // handed over rather than called here, so the snapshot happens only once
+    // something is known to change — `intersectsNode` is true for a mark the
+    // selection merely touches the edge of, and that has nothing to erase.
+    if (stripWrappers(root, range, "mark[data-mark]", pushHistory) === 0) {
+      return setNote("Nothing highlighted in that selection.");
     }
 
     // Splitting leaves neighbouring text nodes behind; merge them so the
@@ -1997,6 +2170,8 @@ export default function EditorPage() {
                 canUndo={canUndo}
                 canRedo={canRedo}
                 modLabel={modLabel}
+                font={font}
+                setFont={setFont}
               />
               {/* Contextual controls, only when the block has any. */}
               {(() => {

@@ -180,6 +180,7 @@ const commitMono = localFont({ src: "../fonts/commit-mono/CommitMonoV143-250Regu
 const facade = localFont({ src: "../fonts/facade/facade-est.woff2", variable: "--font-facade", display: "swap", preload: false });
 const gtl001 = localFont({ src: "../fonts/gtl001/GTL001-Regular.ttf", variable: "--font-gtl001", display: "swap", preload: false });
 const hasubiMono = localFont({ src: "../fonts/gtl001/HasubiMono-Regular.ttf", variable: "--font-hasubi-mono", display: "swap", preload: false });
+const haskoy = localFont({ src: "../fonts/haskoy/Haskoy-Regular.woff2", variable: "--font-haskoy", display: "swap", preload: false });
 const karrik = localFont({ src: "../fonts/karrik/karrik-regular.woff2", variable: "--font-karrik", display: "swap", preload: false });
 const murmure = localFont({ src: "../fonts/murmure/LeMurmure-Regular.woff2", variable: "--font-murmure", display: "swap", preload: false });
 const ostrichSans = localFont({ src: "../fonts/ostrich-sans/OstrichSans-Medium.otf", variable: "--font-ostrich-sans", display: "swap", preload: false });
@@ -229,6 +230,7 @@ export const FACES: Face[] = [
   { id: "alex-brush", name: "Alex Brush", category: "script", cssVar: "--font-alex-brush", fallback: SCRIPT, varClass: alexBrush.variable, preloaded: false },
 
   // ── Files in this repo, each beside its licence ──
+  { id: "haskoy", name: "Hasköy", category: "sans", cssVar: "--font-haskoy", fallback: SANS, varClass: haskoy.variable, preloaded: false },
   { id: "karrik", name: "Karrik", category: "sans", cssVar: "--font-karrik", fallback: SANS, varClass: karrik.variable, preloaded: false },
   { id: "ostrich-sans", name: "Ostrich Sans", category: "sans", cssVar: "--font-ostrich-sans", fallback: SANS, varClass: ostrichSans.variable, preloaded: false },
 

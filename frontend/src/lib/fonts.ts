@@ -186,6 +186,8 @@ const departureMono = localFont({ src: "../fonts/departure-mono/DepartureMono-Re
 const lctMogi = localFont({ src: "../fonts/lct-mogi/LCMogi-A.otf", variable: "--font-lct-mogi", display: "swap", preload: false });
 const apfelGrotezk = localFont({ src: "../fonts/apfel-grotezk/ApfelGrotezk-Regular.woff2", variable: "--font-apfel-grotezk", display: "swap", preload: false });
 const sprat = localFont({ src: "../fonts/sprat/Sprat-Regular.woff2", variable: "--font-sprat", display: "swap", preload: false });
+const manosque = localFont({ src: "../fonts/manosque/Manosque-Regular.woff2", variable: "--font-manosque", display: "swap", preload: false });
+const struggle = localFont({ src: "../fonts/struggle/struggle-regular.woff2", variable: "--font-struggle", display: "swap", preload: false });
 const haskoy = localFont({ src: "../fonts/haskoy/Haskoy-Regular.woff2", variable: "--font-haskoy", display: "swap", preload: false });
 const karrik = localFont({ src: "../fonts/karrik/karrik-regular.woff2", variable: "--font-karrik", display: "swap", preload: false });
 const murmure = localFont({ src: "../fonts/murmure/LeMurmure-Regular.woff2", variable: "--font-murmure", display: "swap", preload: false });
@@ -242,6 +244,7 @@ export const FACES: Face[] = [
   { id: "karrik", name: "Karrik", category: "sans", cssVar: "--font-karrik", fallback: SANS, varClass: karrik.variable, preloaded: false },
   { id: "ostrich-sans", name: "Ostrich Sans", category: "sans", cssVar: "--font-ostrich-sans", fallback: SANS, varClass: ostrichSans.variable, preloaded: false },
 
+  { id: "manosque", name: "Manosque", category: "serif", cssVar: "--font-manosque", fallback: SERIF, varClass: manosque.variable, preloaded: false },
   { id: "sprat", name: "Sprat", category: "serif", cssVar: "--font-sprat", fallback: SERIF, varClass: sprat.variable, preloaded: false },
   { id: "bagnard", name: "Bagnard", category: "serif", cssVar: "--font-bagnard", fallback: SERIF, varClass: bagnard.variable, preloaded: false },
   { id: "bluu-next", name: "Bluu Next", category: "serif", cssVar: "--font-bluu-next", fallback: SERIF, varClass: bluuNext.variable, preloaded: false },
@@ -251,6 +254,7 @@ export const FACES: Face[] = [
   { id: "hasubi-mono", name: "Hasubi Mono", category: "mono", cssVar: "--font-hasubi-mono", fallback: MONO, varClass: hasubiMono.variable, preloaded: false },
 
   { id: "lct-mogi", name: "LCT Mogi", category: "display", cssVar: "--font-lct-mogi", fallback: DISPLAY, varClass: lctMogi.variable, preloaded: false },
+  { id: "struggle", name: "Struggle", category: "display", cssVar: "--font-struggle", fallback: DISPLAY, varClass: struggle.variable, preloaded: false },
   { id: "chunk", name: "Chunk", category: "display", cssVar: "--font-chunk", fallback: DISPLAY, varClass: chunk.variable, preloaded: false },
   { id: "blackout", name: "Blackout", category: "display", cssVar: "--font-blackout", fallback: DISPLAY, varClass: blackout.variable, preloaded: false },
   { id: "facade", name: "Façade", category: "display", cssVar: "--font-facade", fallback: DISPLAY, varClass: facade.variable, preloaded: false },

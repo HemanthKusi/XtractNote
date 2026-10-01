@@ -184,6 +184,8 @@ const gtl001 = localFont({ src: "../fonts/gtl001/GTL001-Regular.ttf", variable: 
 const hasubiMono = localFont({ src: "../fonts/gtl001/HasubiMono-Regular.ttf", variable: "--font-hasubi-mono", display: "swap", preload: false });
 const departureMono = localFont({ src: "../fonts/departure-mono/DepartureMono-Regular.woff2", variable: "--font-departure-mono", display: "swap", preload: false });
 const lctMogi = localFont({ src: "../fonts/lct-mogi/LCMogi-A.otf", variable: "--font-lct-mogi", display: "swap", preload: false });
+const apfelGrotezk = localFont({ src: "../fonts/apfel-grotezk/ApfelGrotezk-Regular.woff2", variable: "--font-apfel-grotezk", display: "swap", preload: false });
+const sprat = localFont({ src: "../fonts/sprat/Sprat-Regular.woff2", variable: "--font-sprat", display: "swap", preload: false });
 const haskoy = localFont({ src: "../fonts/haskoy/Haskoy-Regular.woff2", variable: "--font-haskoy", display: "swap", preload: false });
 const karrik = localFont({ src: "../fonts/karrik/karrik-regular.woff2", variable: "--font-karrik", display: "swap", preload: false });
 const murmure = localFont({ src: "../fonts/murmure/LeMurmure-Regular.woff2", variable: "--font-murmure", display: "swap", preload: false });
@@ -236,9 +238,11 @@ export const FACES: Face[] = [
   // ── Files in this repo, each beside its licence ──
   { id: "atkinson", name: "Atkinson Hyperlegible", category: "sans", cssVar: "--font-atkinson", fallback: SANS, varClass: atkinson.variable, preloaded: false },
   { id: "haskoy", name: "Hasköy", category: "sans", cssVar: "--font-haskoy", fallback: SANS, varClass: haskoy.variable, preloaded: false },
+  { id: "apfel-grotezk", name: "Apfel Grotezk", category: "sans", cssVar: "--font-apfel-grotezk", fallback: SANS, varClass: apfelGrotezk.variable, preloaded: false },
   { id: "karrik", name: "Karrik", category: "sans", cssVar: "--font-karrik", fallback: SANS, varClass: karrik.variable, preloaded: false },
   { id: "ostrich-sans", name: "Ostrich Sans", category: "sans", cssVar: "--font-ostrich-sans", fallback: SANS, varClass: ostrichSans.variable, preloaded: false },
 
+  { id: "sprat", name: "Sprat", category: "serif", cssVar: "--font-sprat", fallback: SERIF, varClass: sprat.variable, preloaded: false },
   { id: "bagnard", name: "Bagnard", category: "serif", cssVar: "--font-bagnard", fallback: SERIF, varClass: bagnard.variable, preloaded: false },
   { id: "bluu-next", name: "Bluu Next", category: "serif", cssVar: "--font-bluu-next", fallback: SERIF, varClass: bluuNext.variable, preloaded: false },
 

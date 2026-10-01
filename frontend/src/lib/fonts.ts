@@ -29,6 +29,7 @@
 // Families that need their files committed carry their own licence and are
 // handled separately.
 
+import localFont from "next/font/local";
 import {
   Alex_Brush,
   Anonymous_Pro,
@@ -153,6 +154,39 @@ const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], display: "swap", preloa
 const workSans = Work_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-work-sans" });
 const yatraOne = Yatra_One({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-yatra-one", weight: "400" });
 
+// ── Families whose files live in this repo ─────────────────
+//
+// These are not on Google Fonts, so `next/font/local` reads the file from
+// `src/fonts/<family>/` instead of downloading one. Everything else is the
+// same: self-hosted, a CSS variable, and no preload.
+//
+// ── Each family ships its licence beside its files ──
+//
+// `src/fonts/<family>/LICENSE.txt` is not decoration. The SIL OFL REQUIRES the
+// licence to travel with the font, so a family here without one is a family
+// that cannot ship — which is why Outward is downloaded and absent from this
+// list. Its files came from a webfont on the foundry's own page and there is no
+// repository carrying its licence text.
+//
+// One file per family, deliberately. These are display and text faces for
+// landing pages and the editor's picker, not a type system — a second weight
+// gets added when something actually needs it.
+
+const bagnard = localFont({ src: "../fonts/bagnard/Bagnard.otf", variable: "--font-bagnard", display: "swap", preload: false });
+const blackout = localFont({ src: "../fonts/blackout/Blackout Midnight.ttf", variable: "--font-blackout", display: "swap", preload: false });
+const bluuNext = localFont({ src: "../fonts/bluu-next/BluuNext-Titling.otf", variable: "--font-bluu-next", display: "swap", preload: false });
+const chunk = localFont({ src: "../fonts/chunk/ChunkFive-Regular.otf", variable: "--font-chunk", display: "swap", preload: false });
+const commitMono = localFont({ src: "../fonts/commit-mono/CommitMonoV143-250Regular.otf", variable: "--font-commit-mono", display: "swap", preload: false });
+const facade = localFont({ src: "../fonts/facade/facade-est.woff2", variable: "--font-facade", display: "swap", preload: false });
+const gtl001 = localFont({ src: "../fonts/gtl001/GTL001-Regular.ttf", variable: "--font-gtl001", display: "swap", preload: false });
+const hasubiMono = localFont({ src: "../fonts/gtl001/HasubiMono-Regular.ttf", variable: "--font-hasubi-mono", display: "swap", preload: false });
+const karrik = localFont({ src: "../fonts/karrik/karrik-regular.woff2", variable: "--font-karrik", display: "swap", preload: false });
+const murmure = localFont({ src: "../fonts/murmure/LeMurmure-Regular.woff2", variable: "--font-murmure", display: "swap", preload: false });
+const ostrichSans = localFont({ src: "../fonts/ostrich-sans/OstrichSans-Medium.otf", variable: "--font-ostrich-sans", display: "swap", preload: false });
+const ouroboros = localFont({ src: "../fonts/ouroboros/ouroboros-regular.woff2", variable: "--font-ouroboros", display: "swap", preload: false });
+const pilowlava = localFont({ src: "../fonts/pilowlava/pilowlava-regular.woff2", variable: "--font-pilowlava", display: "swap", preload: false });
+const typefesse = localFont({ src: "../fonts/typefesse/Typefesse_Pleine.otf", variable: "--font-typefesse", display: "swap", preload: false });
+
 /**
  * The catalogue, in picker order: the working families first, then the ones
  * chosen for character.
@@ -193,6 +227,25 @@ export const FACES: Face[] = [
 
   { id: "kaushan-script", name: "Kaushan Script", category: "script", cssVar: "--font-kaushan-script", fallback: SCRIPT, varClass: kaushanScript.variable, preloaded: false },
   { id: "alex-brush", name: "Alex Brush", category: "script", cssVar: "--font-alex-brush", fallback: SCRIPT, varClass: alexBrush.variable, preloaded: false },
+
+  // ── Files in this repo, each beside its licence ──
+  { id: "karrik", name: "Karrik", category: "sans", cssVar: "--font-karrik", fallback: SANS, varClass: karrik.variable, preloaded: false },
+  { id: "ostrich-sans", name: "Ostrich Sans", category: "sans", cssVar: "--font-ostrich-sans", fallback: SANS, varClass: ostrichSans.variable, preloaded: false },
+
+  { id: "bagnard", name: "Bagnard", category: "serif", cssVar: "--font-bagnard", fallback: SERIF, varClass: bagnard.variable, preloaded: false },
+  { id: "bluu-next", name: "Bluu Next", category: "serif", cssVar: "--font-bluu-next", fallback: SERIF, varClass: bluuNext.variable, preloaded: false },
+
+  { id: "commit-mono", name: "Commit Mono", category: "mono", cssVar: "--font-commit-mono", fallback: MONO, varClass: commitMono.variable, preloaded: false },
+  { id: "hasubi-mono", name: "Hasubi Mono", category: "mono", cssVar: "--font-hasubi-mono", fallback: MONO, varClass: hasubiMono.variable, preloaded: false },
+
+  { id: "chunk", name: "Chunk", category: "display", cssVar: "--font-chunk", fallback: DISPLAY, varClass: chunk.variable, preloaded: false },
+  { id: "blackout", name: "Blackout", category: "display", cssVar: "--font-blackout", fallback: DISPLAY, varClass: blackout.variable, preloaded: false },
+  { id: "facade", name: "Façade", category: "display", cssVar: "--font-facade", fallback: DISPLAY, varClass: facade.variable, preloaded: false },
+  { id: "gtl001", name: "GTL001", category: "display", cssVar: "--font-gtl001", fallback: DISPLAY, varClass: gtl001.variable, preloaded: false },
+  { id: "murmure", name: "Le Murmure", category: "display", cssVar: "--font-murmure", fallback: DISPLAY, varClass: murmure.variable, preloaded: false },
+  { id: "ouroboros", name: "Ouroboros", category: "display", cssVar: "--font-ouroboros", fallback: DISPLAY, varClass: ouroboros.variable, preloaded: false },
+  { id: "pilowlava", name: "Pilowlava", category: "display", cssVar: "--font-pilowlava", fallback: DISPLAY, varClass: pilowlava.variable, preloaded: false },
+  { id: "typefesse", name: "Typefesse", category: "display", cssVar: "--font-typefesse", fallback: DISPLAY, varClass: typefesse.variable, preloaded: false },
 ];
 
 /** Every variable-defining class, for `<html>`. The only correct consumer. */

@@ -34,6 +34,7 @@ import {
   Alex_Brush,
   Anonymous_Pro,
   Anybody,
+  Atkinson_Hyperlegible,
   Barriecito,
   Cinzel,
   DM_Sans,
@@ -129,6 +130,7 @@ const jetbrainsMono = JetBrains_Mono({
 const alexBrush = Alex_Brush({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-alex-brush", weight: "400" });
 const anonymousPro = Anonymous_Pro({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-anonymous-pro", weight: ["400", "700"] });
 const anybody = Anybody({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-anybody" });
+const atkinson = Atkinson_Hyperlegible({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-atkinson", weight: ["400", "700"] });
 const barriecito = Barriecito({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-barriecito", weight: "400" });
 const cinzel = Cinzel({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-cinzel" });
 const firaMono = Fira_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-fira-mono", weight: ["400", "700"] });
@@ -180,6 +182,8 @@ const commitMono = localFont({ src: "../fonts/commit-mono/CommitMonoV143-250Regu
 const facade = localFont({ src: "../fonts/facade/facade-est.woff2", variable: "--font-facade", display: "swap", preload: false });
 const gtl001 = localFont({ src: "../fonts/gtl001/GTL001-Regular.ttf", variable: "--font-gtl001", display: "swap", preload: false });
 const hasubiMono = localFont({ src: "../fonts/gtl001/HasubiMono-Regular.ttf", variable: "--font-hasubi-mono", display: "swap", preload: false });
+const departureMono = localFont({ src: "../fonts/departure-mono/DepartureMono-Regular.woff2", variable: "--font-departure-mono", display: "swap", preload: false });
+const lctMogi = localFont({ src: "../fonts/lct-mogi/LCMogi-A.otf", variable: "--font-lct-mogi", display: "swap", preload: false });
 const haskoy = localFont({ src: "../fonts/haskoy/Haskoy-Regular.woff2", variable: "--font-haskoy", display: "swap", preload: false });
 const karrik = localFont({ src: "../fonts/karrik/karrik-regular.woff2", variable: "--font-karrik", display: "swap", preload: false });
 const murmure = localFont({ src: "../fonts/murmure/LeMurmure-Regular.woff2", variable: "--font-murmure", display: "swap", preload: false });
@@ -230,6 +234,7 @@ export const FACES: Face[] = [
   { id: "alex-brush", name: "Alex Brush", category: "script", cssVar: "--font-alex-brush", fallback: SCRIPT, varClass: alexBrush.variable, preloaded: false },
 
   // ── Files in this repo, each beside its licence ──
+  { id: "atkinson", name: "Atkinson Hyperlegible", category: "sans", cssVar: "--font-atkinson", fallback: SANS, varClass: atkinson.variable, preloaded: false },
   { id: "haskoy", name: "Hasköy", category: "sans", cssVar: "--font-haskoy", fallback: SANS, varClass: haskoy.variable, preloaded: false },
   { id: "karrik", name: "Karrik", category: "sans", cssVar: "--font-karrik", fallback: SANS, varClass: karrik.variable, preloaded: false },
   { id: "ostrich-sans", name: "Ostrich Sans", category: "sans", cssVar: "--font-ostrich-sans", fallback: SANS, varClass: ostrichSans.variable, preloaded: false },
@@ -237,9 +242,11 @@ export const FACES: Face[] = [
   { id: "bagnard", name: "Bagnard", category: "serif", cssVar: "--font-bagnard", fallback: SERIF, varClass: bagnard.variable, preloaded: false },
   { id: "bluu-next", name: "Bluu Next", category: "serif", cssVar: "--font-bluu-next", fallback: SERIF, varClass: bluuNext.variable, preloaded: false },
 
+  { id: "departure-mono", name: "Departure Mono", category: "mono", cssVar: "--font-departure-mono", fallback: MONO, varClass: departureMono.variable, preloaded: false },
   { id: "commit-mono", name: "Commit Mono", category: "mono", cssVar: "--font-commit-mono", fallback: MONO, varClass: commitMono.variable, preloaded: false },
   { id: "hasubi-mono", name: "Hasubi Mono", category: "mono", cssVar: "--font-hasubi-mono", fallback: MONO, varClass: hasubiMono.variable, preloaded: false },
 
+  { id: "lct-mogi", name: "LCT Mogi", category: "display", cssVar: "--font-lct-mogi", fallback: DISPLAY, varClass: lctMogi.variable, preloaded: false },
   { id: "chunk", name: "Chunk", category: "display", cssVar: "--font-chunk", fallback: DISPLAY, varClass: chunk.variable, preloaded: false },
   { id: "blackout", name: "Blackout", category: "display", cssVar: "--font-blackout", fallback: DISPLAY, varClass: blackout.variable, preloaded: false },
   { id: "facade", name: "Façade", category: "display", cssVar: "--font-facade", fallback: DISPLAY, varClass: facade.variable, preloaded: false },

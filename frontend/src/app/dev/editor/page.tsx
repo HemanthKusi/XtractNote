@@ -1854,8 +1854,18 @@ export default function EditorPage() {
       const fresh = wrap.firstElementChild;
       if (!(fresh instanceof HTMLElement)) return;
 
-      if (action === "code" || from instanceof HTMLTableElement) {
+      if (action === "code") {
+        // Literal, and NOT parsed — `blockHtml` escapes a code block's text for
+        // the same reason, so a `$` in a shell line stays a `$`.
         fresh.textContent = sourceText(from);
+      } else if (from instanceof HTMLTableElement) {
+        // Text, then PARSED back. `sourceText` turns every atom into its
+        // source, so a cell holding a formula becomes `$q$` — and setting that
+        // as textContent left the syntax on screen. The path this replaced ran
+        // the same string through `inlineHtml` on its way into `blockHtml`,
+        // which is what rendered it; taking the table off the move path has to
+        // keep that half, not just the `sourceText` half.
+        fresh.innerHTML = inlineHtml(sourceText(from));
       } else {
         while (from.firstChild) fresh.appendChild(from.firstChild);
         resolveTypedMarkers(fresh);

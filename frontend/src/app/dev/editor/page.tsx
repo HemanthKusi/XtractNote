@@ -744,6 +744,38 @@ function sourceText(el: HTMLElement): string {
 }
 
 /**
+ * Resolve marker syntax that is still sitting in the text, in place.
+ *
+ * Nothing parses markers as you type — they are parsed when HTML is built from
+ * source, which used to include every block conversion. Converting a block now
+ * MOVES its nodes instead, so bold and typefaces survive, and that re-parse has
+ * to be asked for rather than had as a side effect.
+ *
+ * Text nodes only, and never inside an atom: an already-rendered formula holds
+ * its own source in `data-src` and must not be read as syntax a second time.
+ * A marker split across a formatting boundary — `==a` outside a bold run and
+ * `b==` inside it — is left alone, because each half is its own text node and
+ * neither is a marker. That case was never reachable by typing.
+ */
+function resolveTypedMarkers(el: HTMLElement) {
+  const texts: Text[] = [];
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let n: Node | null;
+  while ((n = walk.nextNode())) {
+    const t = n as Text;
+    if (t.parentElement?.closest("[data-marker]")) continue;
+    texts.push(t);
+  }
+  for (const t of texts) {
+    const html = inlineHtml(t.data);
+    if (html === esc(t.data)) continue; // no marker in it
+    const wrap = document.createElement("span");
+    wrap.innerHTML = html;
+    t.replaceWith(...wrap.childNodes);
+  }
+}
+
+/**
  * Split the text nodes the selection starts and ends inside.
  *
  * After this every node is wholly inside the selection or wholly outside it,
@@ -865,7 +897,27 @@ function stripWrappers(
   const holdsCovered = (n: Node): boolean =>
     isLeafNode(n) ? (coverage.get(n) ?? false) : [...n.childNodes].some(holdsCovered);
 
-  const touched = hits().filter(holdsCovered);
+  // ── Innermost FIRST, or a nested wrapper survives the rebuild ──
+  //
+  // `runsByCoverage` clones every element on the way down. Rebuilding an OUTER
+  // wrapper therefore puts a CLONE of the inner one into the document and
+  // leaves the original emptied and detached — so reaching that original
+  // afterwards rebuilds a tree nothing can see, and the inner wrapper stays on
+  // the text. That is exactly how "Default" left a nested typeface in place:
+  // the outer span split correctly around the selection while the inner one
+  // went untouched.
+  //
+  // Deepest first means each wrapper is dissolved while it is still the live
+  // one, and its parent is rebuilt afterwards from what is actually there. The
+  // sort is stable, so siblings keep document order.
+  const depth = (el: HTMLElement) => {
+    let d = 0;
+    for (let p = el.parentElement; p && p !== root; p = p.parentElement) d += 1;
+    return d;
+  };
+  const touched = hits()
+    .filter(holdsCovered)
+    .sort((a, b) => depth(b) - depth(a));
   if (touched.length === 0) return 0;
   onWillChange?.();
 
@@ -896,8 +948,16 @@ function stripWrappers(
  * ATOMS ARE SKIPPED. A rendered formula is set in KaTeX's own fonts, and
  * changing the family around it would at best do nothing and at worst disturb
  * the metrics it positions itself with.
+ *
+ * `onWillChange` fires once it is known that a span WILL be written and before
+ * any is — the same contract `stripWrappers` keeps, so an undo snapshot never
+ * records a press that changed nothing.
  */
-function applyFont(root: HTMLElement, faceId: string): "applied" | "empty" | "outside" {
+function applyFont(
+  root: HTMLElement,
+  faceId: string,
+  onWillChange?: () => void,
+): "applied" | "empty" | "outside" {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return "empty";
   const range = sel.getRangeAt(0);
@@ -915,6 +975,7 @@ function applyFont(root: HTMLElement, faceId: string): "applied" | "empty" | "ou
     if (rangeCovers(range, t)) targets.push(t);
   }
   if (targets.length === 0) return "empty";
+  onWillChange?.();
 
   for (const t of targets) {
     const owner = t.parentElement?.closest<HTMLElement>("[data-font]");
@@ -1352,6 +1413,18 @@ export default function EditorPage() {
   const lastBlocksRef = useRef<HTMLElement[]>([]);
   /** The last table cell the caret was in, for row/column operations. */
   const lastCellRef = useRef<HTMLTableCellElement | null>(null);
+  /**
+   * The last non-empty selection made inside the document.
+   *
+   * The typeface control is a native `<select>`, the one toolbar control that
+   * hands focus to a widget the browser draws itself. Chromium keeps the
+   * document selection through opening it — measured, not assumed — so this is
+   * a belt over braces rather than a fix for a failure seen here. It is worth
+   * having anyway: the block-style box beside it already keeps a fallback of
+   * its own, and a control answering "Select some text first" over text that
+   * plainly IS selected is the worst way to learn another engine disagrees.
+   */
+  const lastRangeRef = useRef<Range | null>(null);
 
   const [editing, setEditing] = useState(true);
   const [kind, setKind] = useState("");
@@ -1520,6 +1593,11 @@ export default function EditorPage() {
       // field all pointing at the same block while any of them is in use.
       if (!root.contains(sel.getRangeAt(0).startContainer)) return;
 
+      // Cloned, because the live range is a view onto a selection that is about
+      // to move: holding the object itself would remember wherever it went.
+      const live = sel.getRangeAt(0);
+      if (!live.collapsed) lastRangeRef.current = live.cloneRange();
+
       const b = currentBlock(root);
       if (b) lastBlockRef.current = b;
       markActive(root, b);
@@ -1544,35 +1622,52 @@ export default function EditorPage() {
    * "Default" strips the spans rather than applying a face named "default":
    * removing the override is what returns the text to whatever the block and
    * the document say, which is the only correct meaning of default here.
+   *
+   * NOTHING here snapshots before it knows it will change the document. Both
+   * paths hand `pushHistory` to the function doing the work and let it decide,
+   * because only that function can tell a selection with a typeface in it from
+   * one that merely touches the edge of a span.
    */
   const setFont = useCallback(
     (id: string) => {
       const root = docRef.current;
       const sel = window.getSelection();
-      if (!root || !sel || sel.rangeCount === 0 || sel.isCollapsed) {
-        return setNote("Select some text first.");
+      if (!root || !sel) return setNote("Select some text first.");
+
+      // Fall back to the last selection made in the document when the live one
+      // is gone. See `lastRangeRef`: a stale range can point at nodes that have
+      // since been removed, so it is only used while it is still in the tree.
+      if (sel.rangeCount === 0 || sel.isCollapsed) {
+        const saved = lastRangeRef.current;
+        if (!saved || !root.contains(saved.commonAncestorContainer)) {
+          return setNote("Select some text first.");
+        }
+        sel.removeAllRanges();
+        sel.addRange(saved.cloneRange());
       }
 
       if (id === "") {
         const range = sel.getRangeAt(0);
         if (!root.contains(range.commonAncestorContainer)) return;
         splitBoundaries(range);
-        // Snapshot only once something is actually going to change.
-        const probe = [...root.querySelectorAll("[data-font]")].some((el) =>
-          range.intersectsNode(el),
-        );
-        if (!probe) return setNote("That selection has no typeface set.");
-        pushHistory();
-        stripWrappers(root, range, "[data-font]");
+        // `intersectsNode` is true at a shared boundary, so it cannot decide
+        // whether anything will change — it was a probe here and it let a
+        // selection merely touching a span record an undo entry for nothing.
+        // The count `stripWrappers` returns is the answer, and the snapshot is
+        // its business.
+        if (stripWrappers(root, range, "[data-font]", pushHistory) === 0) {
+          return setNote("That selection has no typeface set.");
+        }
         root.normalize();
         sel.removeAllRanges();
         setFontState("");
         return;
       }
 
-      pushHistory();
-      const r = applyFont(root, id);
+      const r = applyFont(root, id, pushHistory);
       if (r === "empty") return setNote("Select some text first.");
+      // "outside" meant the readout moved to a face nothing had been set to.
+      if (r === "outside") return;
       setFontState(id);
     },
     [pushHistory],
@@ -1687,40 +1782,54 @@ export default function EditorPage() {
       return;
     }
 
-    // ── Every other kind re-renders each selected block from its SOURCE ──
+    // ── Every other kind CARRIES ITS CONTENTS OVER, it does not re-render ──
     //
-    // `sourceText`, never `textContent`. Since the markers render, a formula in
-    // the DOM is KaTeX's output, so `textContent` returns its glyphs rather
-    // than the `$q$` that produced them — converting a paragraph holding a
-    // formula to a quote used to rebuild it from that garble. The atoms carry
-    // `data-src` for exactly this.
+    // This used to rebuild each block from `sourceText`, and a string cannot
+    // hold what has no spelling in the source: a typeface span, which has none
+    // at all, and bold, whose `**` the serialiser does not write. Converting a
+    // paragraph to a heading therefore returned it as flat text, losing both.
+    // The list branch above already moves its nodes for exactly this reason.
+    //
+    // So the shell is built empty — from the same renderer, so a converted
+    // block is indistinguishable from one that was always that kind — and the
+    // contents are MOVED into it. Atoms move already rendered, carrying their
+    // `data-src`, which is what the old text round-trip was protecting.
+    //
+    // CODE is the exception and stays on text. It is literal by definition: a
+    // rendered formula or a chosen typeface means nothing inside it, and
+    // `sourceText` is what puts `$q$` back rather than KaTeX's glyphs.
     //
     // A LIST contributes one block per item, mirroring the rule going the other
-    // way: one block in, one item out. Flattening it with `textContent` glued
-    // every item into a single run of words with no space between them.
+    // way: one block in, one item out.
     const made: HTMLElement[] = [];
 
-    const emit = (text: string, at: Element) => {
+    const emit = (from: HTMLElement, at: Element) => {
       const wrap = document.createElement("div");
       if (action === "h1" || action === "h2" || action === "h3") {
-        wrap.innerHTML = headingHtml(Number(action[1]) as 1 | 2 | 3, text);
+        wrap.innerHTML = headingHtml(Number(action[1]) as 1 | 2 | 3, "");
       } else {
-        wrap.innerHTML = blockHtml({ kind: action, text } as Block);
+        wrap.innerHTML = blockHtml({ kind: action, text: "" } as Block);
       }
       const fresh = wrap.firstElementChild;
-      if (fresh instanceof HTMLElement) {
-        at.before(fresh);
-        made.push(fresh);
+      if (!(fresh instanceof HTMLElement)) return;
+
+      if (action === "code") {
+        fresh.textContent = sourceText(from);
+      } else {
+        while (from.firstChild) fresh.appendChild(from.firstChild);
+        resolveTypedMarkers(fresh);
       }
+      at.before(fresh);
+      made.push(fresh);
     };
 
     for (const b of blocks) {
       if (isListBlock(b)) {
         for (const li of [...b.children]) {
-          if (li instanceof HTMLElement) emit(sourceText(li), b);
+          if (li instanceof HTMLElement) emit(li, b);
         }
       } else {
-        emit(sourceText(b), b);
+        emit(b, b);
       }
       b.remove();
     }

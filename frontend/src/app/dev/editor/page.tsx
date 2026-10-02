@@ -64,6 +64,7 @@
 // NOTHING PERSISTS. There is no save; reloading resets.
 // ─────────────────────────────────────────────────────────────
 
+import type { MouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -81,6 +82,7 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  ChevronDown,
 } from "lucide-react";
 
 import katex from "katex";
@@ -598,12 +600,34 @@ function blockHtml(b: Block): string {
   }
 }
 
-const DOC_HTML = NOTES_DOC.sections
-  .flatMap((s) => [
-    `<h2 data-block data-kind="heading" class="mb-3 mt-9 font-serif text-[32px] leading-tight text-xn-ink">${inlineHtml(s.heading)}</h2>`,
-    ...s.blocks.map(blockHtml),
-  ])
-  .join("");
+/**
+ * The title is the document's FIRST BLOCK, not chrome above it.
+ *
+ * It used to be JSX outside the editable region, which made it the one piece of
+ * generated prose nobody could correct — and the editor's whole model is that
+ * the WHOLE document is handed over. A title that cannot be edited is a hole in
+ * that claim.
+ *
+ * It is a kind of its own rather than an `h1`, because a document has exactly
+ * one and an `h1` is a heading you can have any number of. That distinction is
+ * what `TITLE_KIND` protects everywhere below, and it is also how the decided
+ * save shape wants it: a typed `title` block, not a heading that happens to be
+ * first.
+ */
+const TITLE_KIND = "title";
+
+const TITLE_HTML = `<h1 data-block data-kind="${TITLE_KIND}" class="mt-5 max-w-[18ch] font-serif text-[52px] leading-[1.05] text-xn-ink">${inlineHtml(
+  NOTES_DOC.title,
+)}</h1>`;
+
+const DOC_HTML =
+  TITLE_HTML +
+  NOTES_DOC.sections
+    .flatMap((s) => [
+      `<h2 data-block data-kind="heading" class="mb-3 mt-9 font-serif text-[32px] leading-tight text-xn-ink">${inlineHtml(s.heading)}</h2>`,
+      ...s.blocks.map(blockHtml),
+    ])
+    .join("");
 
 // ── DOM operations, because the document is uncontrolled ─────
 
@@ -630,6 +654,74 @@ function currentBlock(root: HTMLElement | null): HTMLElement | null {
  * `intersectsNode` is the whole trick: it answers "does the range touch this
  * element" without any reasoning about offsets or partial containment.
  */
+/** True when the collapsed caret sits before every character of the block. */
+function atBlockStart(block: HTMLElement, range: Range): boolean {
+  const r = document.createRange();
+  r.selectNodeContents(block);
+  r.setEnd(range.startContainer, range.startOffset);
+  return r.toString().length === 0;
+}
+
+/** True when the collapsed caret sits after every character of the block. */
+function atBlockEnd(block: HTMLElement, range: Range): boolean {
+  const r = document.createRange();
+  r.selectNodeContents(block);
+  r.setStart(range.endContainer, range.endOffset);
+  return r.toString().length === 0;
+}
+
+/**
+ * Stop an edit that would delete the title block or merge it with its neighbour.
+ *
+ * The title is editable TEXT and a fixed STRUCTURE — you can rewrite it, you
+ * cannot make the document stop having one. Three deletions would otherwise do
+ * exactly that, and none of them looks destructive while you are doing it:
+ *
+ * - backspace at the very start of the title, which pulls it into nothing
+ * - forward-delete at its end, which drags the next block up into it
+ * - backspace at the start of the block BELOW it, which merges that block into
+ *   the title — the one most likely to happen by accident
+ *
+ * Returns true when it has cancelled the edit.
+ *
+ * **What this does NOT cover, stated rather than implied:** a selection that
+ * starts inside the title and ends outside it is cancelled wholesale rather
+ * than partly applied, because deleting the selected half of a title and the
+ * selected half of a paragraph leaves a question — which block survives — that
+ * a specimen has no answer for yet.
+ */
+function guardTitle(root: HTMLElement | null, e: InputEvent): boolean {
+  if (!root || !e.inputType?.startsWith("delete")) return false;
+  const title = root.querySelector<HTMLElement>(`[data-kind="${TITLE_KIND}"]`);
+  const sel = window.getSelection();
+  if (!title || !sel || sel.rangeCount === 0) return false;
+  const range = sel.getRangeAt(0);
+
+  if (!range.collapsed) {
+    const spansTitle = range.intersectsNode(title) && !title.contains(range.commonAncestorContainer);
+    if (spansTitle) {
+      e.preventDefault();
+      return true;
+    }
+    return false;
+  }
+
+  const block = currentBlock(root);
+  const backward = e.inputType === "deleteContentBackward" || e.inputType === "deleteWordBackward";
+  const forward = e.inputType === "deleteContentForward" || e.inputType === "deleteWordForward";
+
+  const hitsTitle =
+    (backward && block === title && atBlockStart(title, range)) ||
+    (forward && block === title && atBlockEnd(title, range)) ||
+    (backward && !!block && block.previousElementSibling === title && atBlockStart(block, range));
+
+  if (hitsTitle) {
+    e.preventDefault();
+    return true;
+  }
+  return false;
+}
+
 function blocksInSelection(root: HTMLElement | null): HTMLElement[] {
   const sel = window.getSelection();
   if (!root || !sel || sel.rangeCount === 0) return [];
@@ -1048,6 +1140,252 @@ const countWords = (root: HTMLElement | null) => {
  * the document and collapses the selection BEFORE click fires, so without it
  * a highlight button always finds nothing selected.
  */
+/**
+ * ── WHY THESE TWO CONTROLS ARE NOT `<select>` ANY MORE ──
+ *
+ * A native select paints its arrow against the BORDER box, and padding does not
+ * move it — measured, not assumed: 40px of `padding-right` left the glyph
+ * exactly where 10px did, sitting all but on the border. Turning the UA control
+ * off with `appearance: none` is the only way to inset it, and that is also
+ * what hands the popup back to the browser's generic dropdown: on this platform
+ * the native control opens a Mac popup MENU, overlaying the box with a check
+ * against the current item, and `appearance: none` loses it.
+ *
+ * So the choice was never arrow-or-list, it was native-or-ours. These are ours.
+ *
+ * `onMouseDown` + `preventDefault` on every trigger and every row is the part
+ * that is easy to miss: the document is `contenteditable`, and a mousedown
+ * anywhere else collapses the selection the control is about to act on. Every
+ * other button in this bar does the same for the same reason.
+ */
+function Picker({
+  label,
+  width,
+  trigger,
+  panel,
+  children,
+}: {
+  label: string;
+  width: string;
+  trigger: ReactNode;
+  panel: string;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: Event) => {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrap} className="relative">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onMouseDown={(e: MouseEvent<HTMLButtonElement>) => e.preventDefault()}
+        onClick={() => setOpen((o) => !o)}
+        className={`${width} flex items-center justify-between gap-2 rounded-xn-sm border border-xn-border bg-xn-surface py-1.5 pl-2.5 pr-2.5 text-sm text-xn-ink transition-colors duration-xn ease-xn hover:bg-xn-surface-alt`}
+      >
+        {trigger}
+        <ChevronDown size={14} strokeWidth={2} aria-hidden="true" className="shrink-0 text-xn-ink-muted" />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label={label}
+          className={`absolute left-0 top-full z-30 mt-1.5 overflow-y-auto rounded-xn-sm border border-xn-border bg-xn-surface p-2 shadow-xn-lg ${panel}`}
+        >
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ROW =
+  "flex w-full items-center gap-2 truncate rounded-xn-sm px-2 py-1.5 text-left transition-colors duration-xn ease-xn hover:bg-xn-surface-alt";
+
+/**
+ * The typeface picker: LANDSCAPE, and every name set in its own face.
+ *
+ * A column of eighty-three names is a column nobody reads to the end of, and a
+ * name in the UI's own font tells you nothing about the font. So the panel is
+ * wide rather than tall, families flow across it under full-width category
+ * headings, and each name is drawn in the face it names — the specimen IS the
+ * label, so you know what you are choosing before you choose it.
+ *
+ * **This is what makes the panel fetch fonts.** Every family is declared
+ * `preload: false`, so nothing is downloaded until something renders in it —
+ * and rendering all eighty-three names in their own faces is exactly that.
+ * The cost lands when the panel opens, on a deliberate action, instead of on
+ * every page load; that trade is the whole reason `preload: false` is there.
+ *
+ * The filter is not decoration either: it replaces the type-ahead that came
+ * free with the native control and that eighty-three items genuinely need.
+ */
+function FontPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const [query, setQuery] = useState("");
+  const current = FACES.find((f) => f.id === value);
+  const q = query.trim().toLowerCase();
+
+  return (
+    <Picker
+      label="Typeface"
+      width="w-[140px]"
+      panel="w-[min(760px,calc(100vw-4rem))] max-h-[min(58vh,430px)]"
+      trigger={
+        <span className="truncate" style={current ? { fontFamily: faceStack(current) } : undefined}>
+          {current ? current.name : "Default"}
+        </span>
+      }
+    >
+      {(close) => {
+        const groups = FONT_GROUPS.map((g) => ({
+          ...g,
+          faces: q ? g.faces.filter((f) => f.name.toLowerCase().includes(q)) : g.faces,
+        })).filter((g) => g.faces.length > 0);
+
+        return (
+          <>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter typefaces"
+              aria-label="Filter typefaces"
+              className="mb-2 w-full rounded-xn-sm border border-xn-border bg-xn-surface-alt px-2.5 py-1.5 text-sm text-xn-ink placeholder:text-xn-ink-soft"
+            />
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === ""}
+              onMouseDown={(e: MouseEvent<HTMLButtonElement>) => e.preventDefault()}
+              onClick={() => {
+                onChange("");
+                close();
+              }}
+              className={`${ROW} mb-1 text-[15px] ${value === "" ? "bg-xn-surface-alt text-xn-ink" : "text-xn-ink-muted"}`}
+            >
+              Default
+              <span className="ml-auto font-mono text-micro text-xn-ink-soft">no override</span>
+            </button>
+
+            {groups.map((g) => (
+              <section key={g.category} className="mb-1.5 last:mb-0">
+                <h3 className="px-2 pb-1 pt-1.5 font-mono text-micro uppercase tracking-widest text-xn-ink-soft">
+                  {CATEGORY_LABEL[g.category]}
+                </h3>
+                <div className="grid grid-cols-2 gap-x-1 gap-y-0.5 sm:grid-cols-3 lg:grid-cols-4">
+                  {g.faces.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      role="option"
+                      aria-selected={value === f.id}
+                      title={f.name}
+                      onMouseDown={(e: MouseEvent<HTMLButtonElement>) => e.preventDefault()}
+                      onClick={() => {
+                        onChange(f.id);
+                        close();
+                      }}
+                      style={{ fontFamily: faceStack(f) }}
+                      className={`${ROW} text-[17px] leading-tight ${
+                        value === f.id ? "bg-xn-surface-alt text-xn-ink" : "text-xn-ink"
+                      }`}
+                    >
+                      {f.name}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+
+            {groups.length === 0 && (
+              <p className="px-2 py-3 text-sm text-xn-ink-muted">No typeface matches that.</p>
+            )}
+          </>
+        );
+      }}
+    </Picker>
+  );
+}
+
+const HL_ICON =
+  "inline-flex h-8 w-8 items-center justify-center rounded-xn-sm text-xn-ink-muted transition-colors duration-xn ease-xn hover:bg-xn-surface-alt hover:text-xn-ink";
+
+/**
+ * The highlighter: six colours STACKED, spreading on hover or focus.
+ *
+ * It was the widest group in the bar — a decorative pen doing nothing, six
+ * 24px swatches and the eraser, 235px of it. Overlapped, the cluster is 135px
+ * and spreads back to its full width when you reach for it. Chosen over a
+ * popover, which was narrower still at 64px but put a click in front of every
+ * highlight; the six staying one click away is the point.
+ *
+ * **It must not single lime out, and §13 is why.** Lime is the default because
+ * it is what generation produces; the other five are the reader's, to mark
+ * different things with afterwards; and the six are identical ON PURPOSE —
+ * ringing the default was tried and rejected. Stacking them keeps them equal.
+ *
+ * Circles rather than the squares the bar used, because a stack of overlapping
+ * discs reads as ink and a stack of overlapping rectangles reads as a
+ * rendering fault. `group-focus-within` is what keeps it reachable from the
+ * keyboard: tabbing into the cluster spreads it exactly as hovering does.
+ */
+function HighlighterFan({
+  mark,
+  clearMarks,
+}: {
+  mark: (m: MarkId) => void;
+  clearMarks: () => void;
+}) {
+  return (
+    <span className="group flex items-center gap-1.5">
+      <Highlighter size={17} strokeWidth={2} className="text-xn-ink-muted" aria-hidden="true" />
+      <span className="flex items-center">
+        {MARKS.map((m, i) => (
+          <button
+            key={m}
+            type="button"
+            title={`Highlight ${m}`}
+            aria-label={`Highlight ${m}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => mark(m)}
+            style={{ backgroundColor: MARK_VAR[m], zIndex: MARKS.length - i }}
+            className={`relative h-6 w-6 rounded-full border border-xn-border transition-[margin,transform] duration-xn ease-xn hover:z-10 hover:scale-125 ${
+              i === 0 ? "" : "-ml-3.5 group-hover:ml-1.5 group-focus-within:ml-1.5"
+            }`}
+          />
+        ))}
+      </span>
+      <button
+        type="button"
+        title="Remove highlight from the selection"
+        aria-label="Remove highlight from the selection"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={clearMarks}
+        className={HL_ICON}
+      >
+        <Eraser size={16} strokeWidth={2} />
+      </button>
+    </span>
+  );
+}
+
 function Tools({
   kind,
   runBlock,
@@ -1088,8 +1426,13 @@ function Tools({
     "inline-flex h-8 w-8 items-center justify-center rounded-xn-sm text-xn-ink-muted transition-colors duration-xn ease-xn hover:bg-xn-surface-alt hover:text-xn-ink";
 
   // The gallery shows what the caret is in, so the bar reports as well as acts.
-  const styleValue =
-    (STYLE_ACTIONS as readonly string[]).includes(kind) ? kind : kind === "heading" ? "h2" : "";
+  const styleValue = (STYLE_ACTIONS as readonly string[]).includes(kind)
+    ? kind
+    : kind === "heading"
+      ? "h2"
+      : kind === TITLE_KIND
+        ? TITLE_KIND
+        : "";
 
   return (
     <div className="flex flex-wrap items-center gap-y-2">
@@ -1126,47 +1469,66 @@ function Tools({
           Both answer "what is this text", so they sit together: the face
           first, then what the block IS. Grouped by category, because a flat
           list of forty-four is a list nobody reads to the end of. */}
-      <label className="flex items-center gap-2">
-        <span className="sr-only">Typeface</span>
-        <select
-          value={font}
-          onMouseDown={(e) => e.stopPropagation()}
-          onChange={(e) => setFont(e.target.value)}
-          title="Typeface of the selection"
-          className="w-[140px] rounded-xn-sm border border-xn-border bg-xn-surface px-2.5 py-1.5 text-sm text-xn-ink"
-        >
-          <option value="">Default</option>
-          {FONT_GROUPS.map((g) => (
-            <optgroup key={g.category} label={CATEGORY_LABEL[g.category]}>
-              {g.faces.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
+      <FontPicker value={font} onChange={setFont} />
 
-      {/* ── Style gallery, as a word processor has it ── */}
-      <label className="flex items-center gap-2">
-        <span className="sr-only">Paragraph style</span>
-        <select
-          value={styleValue}
-          onChange={(e) => runBlock(e.target.value as BlockAction)}
-          className="w-[150px] rounded-xn-sm border border-xn-border bg-xn-surface px-2.5 py-1.5 text-sm text-xn-ink"
+      {/* ── Style gallery, as a word processor has it ──
+          `ml-1.5` because the bar sets no horizontal gap: icon buttons space
+          themselves with their own padding, so two bare selects sit flush
+          against each other and read as one control. */}
+      {/* The style box is OURS too, for one reason: a bar that is half native
+          popup and half our own panel reads as a bug. Seven short items want a
+          plain column, not the typeface panel's landscape grid. */}
+      <span className="ml-1.5">
+        <Picker
+          label="Paragraph style"
+          width="w-[150px]"
+          panel="w-[190px]"
+          trigger={
+            <span className="truncate">
+              {styleValue === ""
+                ? "Mixed"
+                : styleValue === TITLE_KIND
+                  ? "Title"
+                  : (BLOCK_ACTIONS.find((x) => x.id === styleValue)?.label ?? "Mixed")}
+            </span>
+          }
         >
-          {styleValue === "" && <option value="">Mixed</option>}
-          {STYLE_ACTIONS.map((id) => {
-            const a = BLOCK_ACTIONS.find((x) => x.id === id);
-            return a ? (
-              <option key={id} value={id}>
-                {a.label}
-              </option>
-            ) : null;
-          })}
-        </select>
-      </label>
+          {(close) => (
+            <>
+              {/* Reported, never offered: with the caret in the title the box
+                  must say so rather than read "Mixed", which would be a readout
+                  that lies — and the title is not convertible, so it gets no
+                  row to pick. */}
+              {styleValue === TITLE_KIND && (
+                <p className="mb-1 rounded-xn-sm bg-xn-surface-alt px-2 py-1.5 text-sm text-xn-ink-muted">
+                  Title — keeps its own style
+                </p>
+              )}
+              {STYLE_ACTIONS.map((id) => {
+                const a = BLOCK_ACTIONS.find((x) => x.id === id);
+                return a ? (
+                  <button
+                    key={id}
+                    type="button"
+                    role="option"
+                    aria-selected={styleValue === id}
+                    onMouseDown={(e: MouseEvent<HTMLButtonElement>) => e.preventDefault()}
+                    onClick={() => {
+                      runBlock(id as BlockAction);
+                      close();
+                    }}
+                    className={`${ROW} text-sm ${
+                      styleValue === id ? "bg-xn-surface-alt text-xn-ink" : "text-xn-ink"
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                ) : null;
+              })}
+            </>
+          )}
+        </Picker>
+      </span>
 
       {sep}
 
@@ -1211,32 +1573,8 @@ function Tools({
 
       {sep}
 
-      {/* ── Highlighter: the pen, then its colours ── */}
-      <span className="flex items-center gap-1.5">
-        <Highlighter size={17} strokeWidth={2} className="text-xn-ink-muted" aria-hidden="true" />
-        {MARKS.map((m) => (
-          <button
-            key={m}
-            type="button"
-            title={`Highlight ${m}`}
-            aria-label={`Highlight ${m}`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => mark(m)}
-            className="h-6 w-6 rounded-xn-sm border border-xn-border transition-transform duration-xn ease-xn hover:scale-110"
-            style={{ backgroundColor: MARK_VAR[m] }}
-          />
-        ))}
-        <button
-          type="button"
-          title="Remove highlight from the selection"
-          aria-label="Remove highlight from the selection"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={clearMarks}
-          className={icon}
-        >
-          <Eraser size={16} strokeWidth={2} />
-        </button>
-      </span>
+      {/* ── Highlighter: the six, stacked ── */}
+      <HighlighterFan mark={mark} clearMarks={clearMarks} />
 
       {sep}
 
@@ -1729,10 +2067,21 @@ export default function EditorPage() {
       ? live
       : lastBlocksRef.current.filter((b) => root?.contains(b));
     const fallback = lastBlockRef.current;
-    const blocks =
+    const picked =
       targets.length > 0 ? targets : fallback && root?.contains(fallback) ? [fallback] : [];
 
-    if (blocks.length === 0) return setNote("Select some text first.");
+    // ── The title is not convertible ──
+    //
+    // Dropped from the targets rather than refused outright, so selecting the
+    // whole document and pressing Quote still converts everything else instead
+    // of failing on account of one block that cannot come along.
+    const blocks = picked.filter((b) => b.dataset.kind !== TITLE_KIND);
+
+    if (blocks.length === 0) {
+      return setNote(
+        picked.length ? "The title keeps its own style." : "Select some text first.",
+      );
+    }
 
     if (action === "ul" || action === "ol") {
       const wantKind = action === "ol" ? "ol" : "list";
@@ -1992,7 +2341,8 @@ export default function EditorPage() {
      * moment the pre-change state exists to be captured. The burst flag keeps
      * it to one snapshot per phrase rather than one per character.
      */
-    const onBeforeInput = () => {
+    const onBeforeInput = (e: Event) => {
+      if (guardTitle(docRef.current, e as InputEvent)) return;
       if (!typingBurst.current) {
         pushHistory();
         typingBurst.current = true;
@@ -2291,6 +2641,7 @@ export default function EditorPage() {
           </button>
         </div>
 
+
         {/* ── The card is the EDITOR's, not the document's ──
             Hemanth, 2026-09-29: seeing the whole card while editing is fine,
             but pressing Done has to return the content to the OUTPUT page's
@@ -2376,9 +2727,10 @@ export default function EditorPage() {
               From YouTube · {VIDEO.channel}
             </span>
 
-            <h1 className="mt-5 max-w-[18ch] font-serif text-[52px] leading-[1.05] text-xn-ink">
-              {NOTES_DOC.title}
-            </h1>
+            {/* The title is NOT here any more — it is the document's first
+                block, so it can be edited like everything else. The chip above
+                stays outside: provenance is not authored content, and where a
+                video came from is not the writer's to rewrite. */}
 
             {/* NO AUTHOR ROW. The reference carries a name, an avatar and a
                 draft number. This product holds none of them for a document —

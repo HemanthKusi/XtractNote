@@ -753,9 +753,19 @@ function sourceText(el: HTMLElement): string {
  *
  * Text nodes only, and never inside an atom: an already-rendered formula holds
  * its own source in `data-src` and must not be read as syntax a second time.
- * A marker split across a formatting boundary — `==a` outside a bold run and
- * `b==` inside it — is left alone, because each half is its own text node and
- * neither is a marker. That case was never reachable by typing.
+ *
+ * ── A marker SPLIT by formatting stays literal, and that is the trade ──
+ *
+ * Put a typeface on the `==` closing `==ab==` and the syntax lives in two text
+ * nodes either side of a span. Neither half is a marker, so neither resolves
+ * and the `==` stays visible. The whole-block re-parse this replaced did
+ * resolve it — **by rebuilding the block from text, which is exactly how it
+ * destroyed the span in the first place.**
+ *
+ * So the two cannot both be had: parsing across a span means discarding it.
+ * Keeping the formatting is the behaviour that was asked for, and this is its
+ * price. An earlier version of this comment claimed the case was unreachable
+ * by typing. It is not — the typeface control is what splits the node.
  */
 function resolveTypedMarkers(el: HTMLElement) {
   const texts: Text[] = [];
@@ -1423,6 +1433,12 @@ export default function EditorPage() {
    * having anyway: the block-style box beside it already keeps a fallback of
    * its own, and a control answering "Select some text first" over text that
    * plainly IS selected is the worst way to learn another engine disagrees.
+   *
+   * **It is cleared the moment a caret is placed in the document.** Without
+   * that it is not a fallback but a second, invisible selection that outlives
+   * the real one — which is precisely the bug it caused: a face applied to a
+   * phrase the user had selected, then clicked away from. A guard written for
+   * a failure nobody had seen went on to cause one.
    */
   const lastRangeRef = useRef<Range | null>(null);
 
@@ -1595,8 +1611,18 @@ export default function EditorPage() {
 
       // Cloned, because the live range is a view onto a selection that is about
       // to move: holding the object itself would remember wherever it went.
+      //
+      // A COLLAPSED selection inside the document CLEARS it. Keeping the old
+      // range through a caret move is what let a typeface land on text the user
+      // had already walked away from: select a phrase, click elsewhere, choose a
+      // face, and the phrase changed rather than nothing. Placing a caret IS
+      // abandoning the selection, so the fallback has to forget it.
+      //
+      // Focus leaving the document entirely is the case this exists for, and it
+      // does not reach here — the guard above returns first, so the last real
+      // selection survives exactly that.
       const live = sel.getRangeAt(0);
-      if (!live.collapsed) lastRangeRef.current = live.cloneRange();
+      lastRangeRef.current = live.collapsed ? null : live.cloneRange();
 
       const b = currentBlock(root);
       if (b) lastBlockRef.current = b;
@@ -1795,9 +1821,24 @@ export default function EditorPage() {
     // contents are MOVED into it. Atoms move already rendered, carrying their
     // `data-src`, which is what the old text round-trip was protecting.
     //
-    // CODE is the exception and stays on text. It is literal by definition: a
-    // rendered formula or a chosen typeface means nothing inside it, and
-    // `sourceText` is what puts `$q$` back rather than KaTeX's glyphs.
+    // TWO kinds still take the text path, because moving their nodes is wrong
+    // rather than merely lossy:
+    //
+    // - **CODE as the DESTINATION.** It is literal by definition: a rendered
+    //   formula or a chosen typeface means nothing inside it, and `sourceText`
+    //   is what puts `$q$` back rather than KaTeX's glyphs.
+    // - **A TABLE as the SOURCE.** Its children are `<thead>` and `<tbody>` —
+    //   structure, not inline content. Moving them into a paragraph produced
+    //   `<blockquote><thead>…` , which is malformed, stops rendering as a table
+    //   and gets captured by the next undo snapshot in that state.
+    //
+    // **The move path is for blocks whose children are INLINE.** That is the
+    // line, and a table is the one block on the far side of it.
+    //
+    // Converting a table still glues its cells into one run of words, exactly
+    // as it did before any of this. That is not good, and it is not a
+    // regression — what a table SHOULD become is an open design question, and
+    // inventing an answer here is not this fix's job.
     //
     // A LIST contributes one block per item, mirroring the rule going the other
     // way: one block in, one item out.
@@ -1813,7 +1854,7 @@ export default function EditorPage() {
       const fresh = wrap.firstElementChild;
       if (!(fresh instanceof HTMLElement)) return;
 
-      if (action === "code") {
+      if (action === "code" || from instanceof HTMLTableElement) {
         fresh.textContent = sourceText(from);
       } else {
         while (from.firstChild) fresh.appendChild(from.firstChild);

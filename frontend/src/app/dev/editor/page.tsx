@@ -1859,13 +1859,28 @@ export default function EditorPage() {
         // the same reason, so a `$` in a shell line stays a `$`.
         fresh.textContent = sourceText(from);
       } else if (from instanceof HTMLTableElement) {
-        // Text, then PARSED back. `sourceText` turns every atom into its
-        // source, so a cell holding a formula becomes `$q$` — and setting that
-        // as textContent left the syntax on screen. The path this replaced ran
-        // the same string through `inlineHtml` on its way into `blockHtml`,
-        // which is what rendered it; taking the table off the move path has to
-        // keep that half, not just the `sourceText` half.
-        fresh.innerHTML = inlineHtml(sourceText(from));
+        // ── EACH CELL PARSED ON ITS OWN, never the table as one string ──
+        //
+        // Text, then parsed back: `sourceText` turns every atom into its
+        // source, so a cell holding a formula becomes `$q$`, and writing that
+        // as textContent left the syntax on screen. `blockHtml` had been doing
+        // the parse — taking the table off the move path has to keep that half
+        // too, not only the `sourceText` half.
+        //
+        // But parsing the WHOLE table as one string lets syntax form across a
+        // boundary the document has: cells holding `$5` and `and $6` glue into
+        // `$5and $6`, which is a formula, and two currency values were rendered
+        // away as maths. Per cell makes that impossible by construction rather
+        // than by escaping, and the separator is what stops the words gluing as
+        // well — which they always did, and which only became dangerous once
+        // the glued string was being parsed.
+        //
+        // What a table SHOULD become is still an open design question. This is
+        // only the part of it that was wrong.
+        const cells = [...from.querySelectorAll<HTMLElement>("th, td")];
+        fresh.innerHTML = cells.length
+          ? cells.map((c) => inlineHtml(sourceText(c))).join(" ")
+          : inlineHtml(sourceText(from));
       } else {
         while (from.firstChild) fresh.appendChild(from.firstChild);
         resolveTypedMarkers(fresh);

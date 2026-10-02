@@ -33,33 +33,63 @@ import localFont from "next/font/local";
 import {
   Alex_Brush,
   Anonymous_Pro,
+  Anton,
   Anybody,
+  Archivo,
+  Asap,
   Atkinson_Hyperlegible,
+  Azeret_Mono,
   Barriecito,
+  Be_Vietnam_Pro,
+  Bebas_Neue,
   Cinzel,
+  Crimson_Pro,
   DM_Sans,
+  Dancing_Script,
+  Epilogue,
+  Familjen_Grotesk,
   Fira_Mono,
+  Fira_Sans,
   Gluten,
   Grandstander,
+  Hind,
   Inconsolata,
   Instrument_Serif,
   Inter,
   JetBrains_Mono,
+  Kalam,
+  Karma,
   Kaushan_Script,
+  Khand,
   League_Gothic,
   Linden_Hill,
+  Literata,
   Lora,
   Major_Mono_Display,
   Manrope,
   Martian_Mono,
+  Merriweather_Sans,
+  Montserrat,
   Neuton,
+  Nunito,
   Oi,
   Open_Sans,
+  Oswald,
+  Outfit,
   PT_Mono,
+  Plus_Jakarta_Sans,
+  Poppins,
   Prociono,
+  Public_Sans,
+  Quicksand,
+  Rajdhani,
   Rakkas,
+  Red_Hat_Display,
   Rokkitt,
+  Sora,
   Space_Grotesk,
+  Spline_Sans,
+  Teko,
   Work_Sans,
   Yatra_One,
 } from "next/font/google";
@@ -129,30 +159,60 @@ const jetbrainsMono = JetBrains_Mono({
 
 const alexBrush = Alex_Brush({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-alex-brush", weight: "400" });
 const anonymousPro = Anonymous_Pro({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-anonymous-pro", weight: ["400", "700"] });
+const anton = Anton({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-anton", weight: "400" });
 const anybody = Anybody({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-anybody" });
+const archivo = Archivo({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-archivo" });
+const asap = Asap({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-asap" });
 const atkinson = Atkinson_Hyperlegible({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-atkinson", weight: ["400", "700"] });
+const azeretMono = Azeret_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-azeret-mono" });
 const barriecito = Barriecito({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-barriecito", weight: "400" });
+const beVietnamPro = Be_Vietnam_Pro({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-be-vietnam-pro", weight: ["400", "700"] });
+const bebasNeue = Bebas_Neue({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-bebas-neue", weight: "400" });
 const cinzel = Cinzel({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-cinzel" });
+const crimsonPro = Crimson_Pro({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-crimson-pro" });
+const dancingScript = Dancing_Script({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-dancing-script" });
+const epilogue = Epilogue({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-epilogue" });
+const familjenGrotesk = Familjen_Grotesk({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-familjen-grotesk" });
 const firaMono = Fira_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-fira-mono", weight: ["400", "700"] });
+const firaSans = Fira_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-fira-sans", weight: ["400", "700"] });
 const gluten = Gluten({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-gluten" });
 const grandstander = Grandstander({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-grandstander" });
+const hind = Hind({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-hind", weight: ["400", "700"] });
 const inconsolata = Inconsolata({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-inconsolata" });
 const inter = Inter({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-inter" });
+const kalam = Kalam({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-kalam", weight: ["400", "700"] });
+const karma = Karma({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-karma", weight: ["400", "700"] });
 const kaushanScript = Kaushan_Script({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-kaushan-script", weight: "400" });
+const khand = Khand({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-khand", weight: ["400", "700"] });
 const leagueGothic = League_Gothic({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-league-gothic" });
 const lindenHill = Linden_Hill({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-linden-hill", weight: "400", style: ["normal", "italic"] });
+const literata = Literata({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-literata" });
 const lora = Lora({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-lora" });
 const majorMono = Major_Mono_Display({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-major-mono", weight: "400" });
 const manrope = Manrope({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-manrope" });
 const martianMono = Martian_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-martian-mono" });
+const merriweatherSans = Merriweather_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-merriweather-sans" });
+const montserrat = Montserrat({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-montserrat" });
 const neuton = Neuton({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-neuton", weight: ["300", "400", "700"] });
+const nunito = Nunito({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-nunito" });
 const oi = Oi({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-oi", weight: "400" });
 const openSans = Open_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-open-sans" });
+const oswald = Oswald({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-oswald" });
+const outfit = Outfit({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-outfit" });
 const ptMono = PT_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-pt-mono", weight: "400" });
+const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-plus-jakarta-sans" });
+const poppins = Poppins({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-poppins", weight: ["400", "700"] });
 const prociono = Prociono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-prociono", weight: "400" });
+const publicSans = Public_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-public-sans" });
+const quicksand = Quicksand({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-quicksand" });
+const rajdhani = Rajdhani({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-rajdhani", weight: ["400", "700"] });
 const rakkas = Rakkas({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-rakkas", weight: "400" });
+const redHatDisplay = Red_Hat_Display({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-red-hat-display" });
 const rokkitt = Rokkitt({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-rokkitt" });
+const sora = Sora({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-sora" });
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-space-grotesk" });
+const splineSans = Spline_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-spline-sans" });
+const teko = Teko({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-teko" });
 const workSans = Work_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-work-sans" });
 const yatraOne = Yatra_One({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-yatra-one", weight: "400" });
 
@@ -165,10 +225,12 @@ const yatraOne = Yatra_One({ subsets: ["latin"], display: "swap", preload: false
 // ── Each family ships its licence beside its files ──
 //
 // `src/fonts/<family>/LICENSE.txt` is not decoration. The SIL OFL REQUIRES the
-// licence to travel with the font, so a family here without one is a family
-// that cannot ship — which is why Outward is downloaded and absent from this
-// list. Its files came from a webfont on the foundry's own page and there is no
-// repository carrying its licence text.
+// licence to travel with the font, so a family without one is a family that
+// cannot ship — and cannot sit in this directory either. Committing a font
+// file publishes it whether or not anything imports it, so leaving an
+// unlicensed one here unused is still distributing it. Outward was removed for
+// exactly that: its files came from a webfont on the foundry's own page, and
+// no repository carries its licence text.
 //
 // One file per family, deliberately. These are display and text faces for
 // landing pages and the editor's picker, not a type system — a second weight
@@ -192,6 +254,7 @@ const haskoy = localFont({ src: "../fonts/haskoy/Haskoy-Regular.woff2", variable
 const karrik = localFont({ src: "../fonts/karrik/karrik-regular.woff2", variable: "--font-karrik", display: "swap", preload: false });
 const murmure = localFont({ src: "../fonts/murmure/LeMurmure-Regular.woff2", variable: "--font-murmure", display: "swap", preload: false });
 const ostrichSans = localFont({ src: "../fonts/ostrich-sans/OstrichSans-Medium.otf", variable: "--font-ostrich-sans", display: "swap", preload: false });
+const roundo = localFont({ src: "../fonts/roundo/Roundo-Regular.otf", variable: "--font-roundo", display: "swap", preload: false });
 const ouroboros = localFont({ src: "../fonts/ouroboros/ouroboros-regular.woff2", variable: "--font-ouroboros", display: "swap", preload: false });
 const pilowlava = localFont({ src: "../fonts/pilowlava/pilowlava-regular.woff2", variable: "--font-pilowlava", display: "swap", preload: false });
 const typefesse = localFont({ src: "../fonts/typefesse/Typefesse_Pleine.otf", variable: "--font-typefesse", display: "swap", preload: false });
@@ -211,6 +274,27 @@ export const FACES: Face[] = [
   { id: "work-sans", name: "Work Sans", category: "sans", cssVar: "--font-work-sans", fallback: SANS, varClass: workSans.variable, preloaded: false },
   { id: "space-grotesk", name: "Space Grotesk", category: "sans", cssVar: "--font-space-grotesk", fallback: SANS, varClass: spaceGrotesk.variable, preloaded: false },
   { id: "anybody", name: "Anybody", category: "sans", cssVar: "--font-anybody", fallback: SANS, varClass: anybody.variable, preloaded: false },
+  { id: "archivo", name: "Archivo", category: "sans", cssVar: "--font-archivo", fallback: SANS, varClass: archivo.variable, preloaded: false },
+  { id: "asap", name: "Asap", category: "sans", cssVar: "--font-asap", fallback: SANS, varClass: asap.variable, preloaded: false },
+  { id: "be-vietnam-pro", name: "Be Vietnam Pro", category: "sans", cssVar: "--font-be-vietnam-pro", fallback: SANS, varClass: beVietnamPro.variable, preloaded: false },
+  { id: "epilogue", name: "Epilogue", category: "sans", cssVar: "--font-epilogue", fallback: SANS, varClass: epilogue.variable, preloaded: false },
+  { id: "familjen-grotesk", name: "Familjen Grotesk", category: "sans", cssVar: "--font-familjen-grotesk", fallback: SANS, varClass: familjenGrotesk.variable, preloaded: false },
+  { id: "fira-sans", name: "Fira Sans", category: "sans", cssVar: "--font-fira-sans", fallback: SANS, varClass: firaSans.variable, preloaded: false },
+  { id: "hind", name: "Hind", category: "sans", cssVar: "--font-hind", fallback: SANS, varClass: hind.variable, preloaded: false },
+  { id: "khand", name: "Khand", category: "sans", cssVar: "--font-khand", fallback: SANS, varClass: khand.variable, preloaded: false },
+  { id: "merriweather-sans", name: "Merriweather Sans", category: "sans", cssVar: "--font-merriweather-sans", fallback: SANS, varClass: merriweatherSans.variable, preloaded: false },
+  { id: "montserrat", name: "Montserrat", category: "sans", cssVar: "--font-montserrat", fallback: SANS, varClass: montserrat.variable, preloaded: false },
+  { id: "nunito", name: "Nunito", category: "sans", cssVar: "--font-nunito", fallback: SANS, varClass: nunito.variable, preloaded: false },
+  { id: "outfit", name: "Outfit", category: "sans", cssVar: "--font-outfit", fallback: SANS, varClass: outfit.variable, preloaded: false },
+  { id: "plus-jakarta-sans", name: "Plus Jakarta Sans", category: "sans", cssVar: "--font-plus-jakarta-sans", fallback: SANS, varClass: plusJakartaSans.variable, preloaded: false },
+  { id: "poppins", name: "Poppins", category: "sans", cssVar: "--font-poppins", fallback: SANS, varClass: poppins.variable, preloaded: false },
+  { id: "public-sans", name: "Public Sans", category: "sans", cssVar: "--font-public-sans", fallback: SANS, varClass: publicSans.variable, preloaded: false },
+  { id: "quicksand", name: "Quicksand", category: "sans", cssVar: "--font-quicksand", fallback: SANS, varClass: quicksand.variable, preloaded: false },
+  { id: "rajdhani", name: "Rajdhani", category: "sans", cssVar: "--font-rajdhani", fallback: SANS, varClass: rajdhani.variable, preloaded: false },
+  { id: "red-hat-display", name: "Red Hat Display", category: "sans", cssVar: "--font-red-hat-display", fallback: SANS, varClass: redHatDisplay.variable, preloaded: false },
+  { id: "sora", name: "Sora", category: "sans", cssVar: "--font-sora", fallback: SANS, varClass: sora.variable, preloaded: false },
+  { id: "spline-sans", name: "Spline Sans", category: "sans", cssVar: "--font-spline-sans", fallback: SANS, varClass: splineSans.variable, preloaded: false },
+  { id: "teko", name: "Teko", category: "sans", cssVar: "--font-teko", fallback: SANS, varClass: teko.variable, preloaded: false },
 
   { id: "lora", name: "Lora", category: "serif", cssVar: "--font-lora", fallback: SERIF, varClass: lora.variable, preloaded: false },
   { id: "neuton", name: "Neuton", category: "serif", cssVar: "--font-neuton", fallback: SERIF, varClass: neuton.variable, preloaded: false },
@@ -218,6 +302,9 @@ export const FACES: Face[] = [
   { id: "prociono", name: "Prociono", category: "serif", cssVar: "--font-prociono", fallback: SERIF, varClass: prociono.variable, preloaded: false },
   { id: "cinzel", name: "Cinzel", category: "serif", cssVar: "--font-cinzel", fallback: SERIF, varClass: cinzel.variable, preloaded: false },
   { id: "rokkitt", name: "Rokkitt", category: "serif", cssVar: "--font-rokkitt", fallback: SERIF, varClass: rokkitt.variable, preloaded: false },
+  { id: "crimson-pro", name: "Crimson Pro", category: "serif", cssVar: "--font-crimson-pro", fallback: SERIF, varClass: crimsonPro.variable, preloaded: false },
+  { id: "karma", name: "Karma", category: "serif", cssVar: "--font-karma", fallback: SERIF, varClass: karma.variable, preloaded: false },
+  { id: "literata", name: "Literata", category: "serif", cssVar: "--font-literata", fallback: SERIF, varClass: literata.variable, preloaded: false },
 
   { id: "inconsolata", name: "Inconsolata", category: "mono", cssVar: "--font-inconsolata", fallback: MONO, varClass: inconsolata.variable, preloaded: false },
   { id: "fira-mono", name: "Fira Mono", category: "mono", cssVar: "--font-fira-mono", fallback: MONO, varClass: firaMono.variable, preloaded: false },
@@ -225,6 +312,7 @@ export const FACES: Face[] = [
   { id: "anonymous-pro", name: "Anonymous Pro", category: "mono", cssVar: "--font-anonymous-pro", fallback: MONO, varClass: anonymousPro.variable, preloaded: false },
   { id: "martian-mono", name: "Martian Mono", category: "mono", cssVar: "--font-martian-mono", fallback: MONO, varClass: martianMono.variable, preloaded: false },
   { id: "major-mono", name: "Major Mono Display", category: "mono", cssVar: "--font-major-mono", fallback: MONO, varClass: majorMono.variable, preloaded: false },
+  { id: "azeret-mono", name: "Azeret Mono", category: "mono", cssVar: "--font-azeret-mono", fallback: MONO, varClass: azeretMono.variable, preloaded: false },
 
   { id: "oi", name: "Oi", category: "display", cssVar: "--font-oi", fallback: DISPLAY, varClass: oi.variable, preloaded: false },
   { id: "league-gothic", name: "League Gothic", category: "display", cssVar: "--font-league-gothic", fallback: DISPLAY, varClass: leagueGothic.variable, preloaded: false },
@@ -233,9 +321,14 @@ export const FACES: Face[] = [
   { id: "barriecito", name: "Barriecito", category: "display", cssVar: "--font-barriecito", fallback: DISPLAY, varClass: barriecito.variable, preloaded: false },
   { id: "grandstander", name: "Grandstander", category: "display", cssVar: "--font-grandstander", fallback: DISPLAY, varClass: grandstander.variable, preloaded: false },
   { id: "gluten", name: "Gluten", category: "display", cssVar: "--font-gluten", fallback: DISPLAY, varClass: gluten.variable, preloaded: false },
+  { id: "anton", name: "Anton", category: "display", cssVar: "--font-anton", fallback: DISPLAY, varClass: anton.variable, preloaded: false },
+  { id: "bebas-neue", name: "Bebas Neue", category: "display", cssVar: "--font-bebas-neue", fallback: DISPLAY, varClass: bebasNeue.variable, preloaded: false },
+  { id: "oswald", name: "Oswald", category: "display", cssVar: "--font-oswald", fallback: DISPLAY, varClass: oswald.variable, preloaded: false },
 
   { id: "kaushan-script", name: "Kaushan Script", category: "script", cssVar: "--font-kaushan-script", fallback: SCRIPT, varClass: kaushanScript.variable, preloaded: false },
   { id: "alex-brush", name: "Alex Brush", category: "script", cssVar: "--font-alex-brush", fallback: SCRIPT, varClass: alexBrush.variable, preloaded: false },
+  { id: "dancing-script", name: "Dancing Script", category: "script", cssVar: "--font-dancing-script", fallback: SCRIPT, varClass: dancingScript.variable, preloaded: false },
+  { id: "kalam", name: "Kalam", category: "script", cssVar: "--font-kalam", fallback: SCRIPT, varClass: kalam.variable, preloaded: false },
 
   // ── Files in this repo, each beside its licence ──
   { id: "atkinson", name: "Atkinson Hyperlegible", category: "sans", cssVar: "--font-atkinson", fallback: SANS, varClass: atkinson.variable, preloaded: false },
@@ -243,6 +336,7 @@ export const FACES: Face[] = [
   { id: "apfel-grotezk", name: "Apfel Grotezk", category: "sans", cssVar: "--font-apfel-grotezk", fallback: SANS, varClass: apfelGrotezk.variable, preloaded: false },
   { id: "karrik", name: "Karrik", category: "sans", cssVar: "--font-karrik", fallback: SANS, varClass: karrik.variable, preloaded: false },
   { id: "ostrich-sans", name: "Ostrich Sans", category: "sans", cssVar: "--font-ostrich-sans", fallback: SANS, varClass: ostrichSans.variable, preloaded: false },
+  { id: "roundo", name: "Roundo", category: "sans", cssVar: "--font-roundo", fallback: SANS, varClass: roundo.variable, preloaded: false },
 
   { id: "manosque", name: "Manosque", category: "serif", cssVar: "--font-manosque", fallback: SERIF, varClass: manosque.variable, preloaded: false },
   { id: "sprat", name: "Sprat", category: "serif", cssVar: "--font-sprat", fallback: SERIF, varClass: sprat.variable, preloaded: false },

@@ -1,42 +1,27 @@
 import type { Metadata } from "next";
-import { DM_Sans, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { FACE_VAR_CLASSES } from "@/lib/fonts";
 import { ThemeProvider } from "@/components/shared/theme-provider";
 import { ToastProvider } from "@/components/shared/toast-provider";
 
 // ── Font Loading ────────────────────────────────────────────
-// next/font downloads these at build time and self-hosts them, so no
-// request leaves the user's browser for a font and there is no
-// third-party origin in the critical path.
+// next/font downloads every family at build time and self-hosts it, so no
+// request leaves the user's browser for a font and there is no third-party
+// origin in the critical path.
 //
-// Each font exposes a CSS variable that tailwind.config.ts maps to a
-// family. Three families, each with a job: sans for interface text,
-// serif for editorial headings, mono for anything measured.
+// The families themselves now live in `lib/fonts.ts`, because a picker has to
+// enumerate them and landing pages, headers and footers all draw on the same
+// set — a list that has to be data rather than a pile of imports here.
+//
+// What this file still owns is putting the CSS variables on the document.
+// `FACE_VAR_CLASSES` is that and nothing else: each class DEFINES a custom
+// property, it does not apply a font. Only three families preload; the rest
+// define their variable and are fetched when something first uses them.
 //
 // The serif was previously pulled in with an @import at the top of
 // globals.css — a render-blocking request to an external origin, and
 // the reason that file carried a rule about @import having to come
 // first. It is supported here like the others, so that is gone.
-
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-dm-sans",
-  display: "swap",
-});
-
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  variable: "--font-instrument-serif",
-  display: "swap",
-  weight: "400",
-  style: ["normal", "italic"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
 
 // ── Metadata ────────────────────────────────────────────────
 
@@ -74,7 +59,7 @@ export default function RootLayout({
     <html
       lang="en"
       data-theme="light"
-      className={`${dmSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`}
+      className={FACE_VAR_CLASSES}
       suppressHydrationWarning
     >
       <body>

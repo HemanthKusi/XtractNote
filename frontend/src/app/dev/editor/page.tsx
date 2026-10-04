@@ -1305,8 +1305,10 @@ function Picker({
     const active = document.activeElement as HTMLElement | null;
     const here = active ? opts.indexOf(active) : -1;
 
-    // Arrowing out of the filter field drops into the list rather than moving a caret.
-    if (here === -1 && e.key !== "ArrowDown" && e.key !== "Home" && e.key !== "End") return;
+    // Arrowing out of the filter field drops into the list rather than moving a
+    // caret. ONLY ArrowDown: Home and End belong to the text while it has focus,
+    // and taking them was this handler reaching into a field it does not own.
+    if (here === -1 && e.key !== "ArrowDown") return;
     e.preventDefault();
 
     const columns = (i: number) => {

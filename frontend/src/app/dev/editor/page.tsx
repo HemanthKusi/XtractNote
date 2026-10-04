@@ -1906,13 +1906,22 @@ export default function EditorPage() {
   /**
    * The last non-empty selection made inside the document.
    *
-   * The typeface control is a native `<select>`, the one toolbar control that
-   * hands focus to a widget the browser draws itself. Chromium keeps the
-   * document selection through opening it — measured, not assumed — so this is
-   * a belt over braces rather than a fix for a failure seen here. It is worth
-   * having anyway: the block-style box beside it already keeps a fallback of
-   * its own, and a control answering "Select some text first" over text that
-   * plainly IS selected is the worst way to learn another engine disagrees.
+   * This began as a belt over braces, for a native `<select>` that measurement
+   * said did not drop the selection anyway. **It is load-bearing now.** The
+   * typeface and style controls are our own panels, and the typeface panel
+   * focuses its filter field on open — which does move the selection out of the
+   * document, so in this engine a face picked there arrives with no live
+   * selection to act on and the saved range is what carries it.
+   *
+   * `setFont` still PREFERS the live selection and reaches for this ref only
+   * when that one is gone or collapsed. Both paths are real: the picker cannot
+   * do without the ref, and the ref is not the only way a face is applied —
+   * an engine that kept the selection through the focus move would take the
+   * live path and never touch it.
+   *
+   * Focus leaving the editable region does not clear it: `onSel` returns early
+   * for a selection outside the document, which is exactly what makes the
+   * filter safe to focus.
    *
    * **It is cleared the moment a caret is placed in the document.** Without
    * that it is not a fallback but a second, invisible selection that outlives

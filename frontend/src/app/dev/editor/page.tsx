@@ -1907,11 +1907,17 @@ export default function EditorPage() {
    * The last non-empty selection made inside the document.
    *
    * This began as a belt over braces, for a native `<select>` that measurement
-   * said did not drop the selection anyway. **It is now load-bearing.** The
-   * typeface and style controls are our own panels, the typeface panel focuses
-   * its filter field on open, and that genuinely moves the selection out of the
-   * document — so every face applied from it reaches the text through this ref
-   * and nothing else.
+   * said did not drop the selection anyway. **It is load-bearing now.** The
+   * typeface and style controls are our own panels, and the typeface panel
+   * focuses its filter field on open — which does move the selection out of the
+   * document, so in this engine a face picked there arrives with no live
+   * selection to act on and the saved range is what carries it.
+   *
+   * `setFont` still PREFERS the live selection and reaches for this ref only
+   * when that one is gone or collapsed. Both paths are real: the picker cannot
+   * do without the ref, and the ref is not the only way a face is applied —
+   * an engine that kept the selection through the focus move would take the
+   * live path and never touch it.
    *
    * Focus leaving the editable region does not clear it: `onSel` returns early
    * for a selection outside the document, which is exactly what makes the

@@ -64,7 +64,7 @@
 // NOTHING PERSISTS. There is no save; reloading resets.
 // ─────────────────────────────────────────────────────────────
 
-import type { MouseEvent, ReactNode } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -684,27 +684,54 @@ function atBlockEnd(block: HTMLElement, range: Range): boolean {
  *
  * Returns true when it has cancelled the edit.
  *
- * **What this does NOT cover, stated rather than implied:** a selection that
- * starts inside the title and ends outside it is cancelled wholesale rather
- * than partly applied, because deleting the selected half of a title and the
- * selected half of a paragraph leaves a question — which block survives — that
- * a specimen has no answer for yet.
+ * ── A SELECTION IS REPLACED BY MORE THAN DELETE ──
+ *
+ * This guard was deletion-shaped once, and that was the wrong shape: select the
+ * whole document and PASTE, and the browser replaces the selection — title
+ * included — without a single `delete*` input type involved. Typing a character
+ * and dropping text do the same. The rule is not "do not delete across the
+ * title", it is **do not let anything REPLACE a selection that crosses it**, so
+ * the cross-boundary case is checked for every input type and only the
+ * caret-merge cases below are delete-specific.
+ *
+ * The overlap test is `compareBoundaryPoints`, not `intersectsNode`, because
+ * `intersectsNode` is true at a shared boundary — a selection starting exactly
+ * where the title ends does not touch a character of it, and refusing to type
+ * there would be this guard inventing a rule nobody asked for.
+ *
+ * **What this does NOT do, stated rather than implied:** a selection crossing
+ * the boundary is cancelled WHOLESALE rather than partly applied, because
+ * replacing the selected half of a title and the selected half of a paragraph
+ * leaves a question — which block survives — that a specimen has no answer for.
  */
 function guardTitle(root: HTMLElement | null, e: InputEvent): boolean {
-  if (!root || !e.inputType?.startsWith("delete")) return false;
+  if (!root) return false;
   const title = root.querySelector<HTMLElement>(`[data-kind="${TITLE_KIND}"]`);
   const sel = window.getSelection();
   if (!title || !sel || sel.rangeCount === 0) return false;
   const range = sel.getRangeAt(0);
 
   if (!range.collapsed) {
-    const spansTitle = range.intersectsNode(title) && !title.contains(range.commonAncestorContainer);
-    if (spansTitle) {
+    // Does the selection actually hold any of the title's TEXT?
+    //
+    // Asked by cloning the selection and looking, rather than by comparing
+    // boundary points: `intersectsNode` is true where two ranges merely touch,
+    // and the boundary-point comparisons are easy to get backwards — the first
+    // attempt here did, and refused typing over a selection that began exactly
+    // where the title ends. A clone carrying no title characters is not an
+    // overlap, and that is a question with no ambiguity in it.
+    const clone = range.cloneContents();
+    const inside = clone.querySelector(`[data-kind="${TITLE_KIND}"]`);
+    const overlapsTitle = (inside?.textContent?.length ?? 0) > 0;
+    const reachesOutside = !title.contains(range.commonAncestorContainer);
+    if (overlapsTitle && reachesOutside) {
       e.preventDefault();
       return true;
     }
     return false;
   }
+
+  if (!e.inputType?.startsWith("delete")) return false;
 
   const block = currentBlock(root);
   const backward = e.inputType === "deleteContentBackward" || e.inputType === "deleteWordBackward";
@@ -1173,6 +1200,7 @@ function Picker({
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement | null>(null);
+  const sheet = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -1190,6 +1218,116 @@ function Picker({
     };
   }, [open]);
 
+  /**
+   * ── KEEP THE PANEL INSIDE WHATEVER CLIPS IT ──
+   *
+   * The panel is absolutely positioned and the editor card is `overflow-hidden`,
+   * so anything past the card's right edge is not merely off-screen, it is
+   * UNREACHABLE. At 375px that was 42 of the 84 typefaces, "Default" among them
+   * — the panel ran to 437px while the card stopped at 351.
+   *
+   * So it is measured against its nearest clipping ancestor and pulled back
+   * inside: capped in width, then shifted left only as far as it must be. The
+   * offset is written relative to the trigger because that is what the panel is
+   * positioned against.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const el = sheet.current;
+    const anchor = wrap.current;
+    if (!el || !anchor) return;
+
+    const fit = () => {
+      let clip: HTMLElement | null = anchor.parentElement;
+      while (clip && clip !== document.body) {
+        const o = getComputedStyle(clip);
+        if (/hidden|auto|scroll/.test(o.overflowX + o.overflowY)) break;
+        clip = clip.parentElement;
+      }
+      const bounds =
+        clip && clip !== document.body
+          ? clip.getBoundingClientRect()
+          : ({ left: 0, right: window.innerWidth, width: window.innerWidth } as DOMRect);
+
+      const gutter = 8;
+      const room = Math.max(200, bounds.width - gutter * 2);
+      el.style.maxWidth = `${room}px`;
+
+      const t = anchor.getBoundingClientRect();
+      const w = Math.min(el.offsetWidth, room);
+      let left = t.left;
+      if (left + w > bounds.right - gutter) left = bounds.right - gutter - w;
+      if (left < bounds.left + gutter) left = bounds.left + gutter;
+      el.style.left = `${Math.round(left - t.left)}px`;
+    };
+
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [open]);
+
+  /**
+   * Opening puts focus where typing should go: the filter if there is one,
+   * otherwise the current choice, otherwise the first row. Without this the
+   * arrow keys below have nothing to move FROM, and a keyboard user lands on
+   * the panel with no indication they are in it.
+   *
+   * Taking focus is safe for the document's selection — see `lastRangeRef`.
+   * Focus leaving the editable region does not clear the saved range; only a
+   * caret placed back inside the document does.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const el = sheet.current;
+    if (!el) return;
+    const field = el.querySelector<HTMLElement>("input");
+    const chosen = el.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
+    const first = el.querySelector<HTMLElement>('[role="option"]');
+    (field ?? chosen ?? first)?.focus();
+  }, [open]);
+
+  /**
+   * Arrow keys, because a listbox that can only be Tabbed through is a listbox
+   * in name only — and the typeface panel has eighty-four rows.
+   *
+   * Left/Right step one row. Up/Down step a whole ROW of the grid, read from
+   * that option's own `grid-template-columns` rather than assumed, because the
+   * column count is responsive and the Default row sits outside any grid.
+   */
+  const onPanelKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const keys = ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(e.key)) return;
+    const el = sheet.current;
+    if (!el) return;
+    const opts = [...el.querySelectorAll<HTMLElement>('[role="option"]')];
+    if (opts.length === 0) return;
+
+    const active = document.activeElement as HTMLElement | null;
+    const here = active ? opts.indexOf(active) : -1;
+
+    // Arrowing out of the filter field drops into the list rather than moving a caret.
+    if (here === -1 && e.key !== "ArrowDown" && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+
+    const columns = (i: number) => {
+      const grid = opts[i]?.parentElement;
+      if (!grid) return 1;
+      const cols = getComputedStyle(grid).gridTemplateColumns;
+      return cols && cols !== "none" ? cols.split(" ").filter(Boolean).length : 1;
+    };
+
+    let next = here;
+    if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = opts.length - 1;
+    else if (here === -1) next = 0;
+    else if (e.key === "ArrowRight") next = here + 1;
+    else if (e.key === "ArrowLeft") next = here - 1;
+    else if (e.key === "ArrowDown") next = here + columns(here);
+    else if (e.key === "ArrowUp") next = here - columns(here);
+
+    opts[Math.max(0, Math.min(opts.length - 1, next))]?.focus();
+  };
+
   return (
     <div ref={wrap} className="relative">
       <button
@@ -1206,8 +1344,10 @@ function Picker({
       </button>
       {open && (
         <div
+          ref={sheet}
           role="listbox"
           aria-label={label}
+          onKeyDown={onPanelKey}
           className={`absolute left-0 top-full z-30 mt-1.5 overflow-y-auto rounded-xn-sm border border-xn-border bg-xn-surface p-2 shadow-xn-lg ${panel}`}
         >
           {children(() => setOpen(false))}

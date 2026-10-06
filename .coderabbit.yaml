@@ -14,9 +14,23 @@
 # `staging` and `main` (promotion diffs are already-reviewed code), so this is
 # what covers them, and hotfix pull requests into `main` in particular.
 #
-# ⚠ This file is read from the DEFAULT branch, not from the pull request branch.
-# A change here takes effect only once it is merged into `develop`, so the first
-# promotion afterwards is what proves it rather than this file's presence.
+# ⚠ This file is read from the PULL REQUEST'S OWN BRANCH, so a change here can
+# affect the review of the pull request that makes it.
+#
+# An earlier version of this comment claimed the opposite — that the file is read
+# from the default branch and takes effect only once merged. That was wrong, and
+# it was wrong against evidence already in hand: on the pull request that added
+# this file, it existed on the feature branch alone and the review reported using
+# it. The vendor's own documentation says the configuration on the pull request's
+# branch is used for that review.
+#
+# The consequence is why this file has to exist on `main`: hotfix branches are cut
+# from `main`, so without it there they inherit no configuration at all, the
+# defaults apply, and `base_branches` falls back to the default branch alone —
+# leaving a hotfix into production unreviewed.
+#
+# To check what is actually active on a pull request rather than inferring it,
+# comment `@coderabbitai configuration` on that pull request.
 reviews:
   auto_review:
     base_branches:

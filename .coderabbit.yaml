@@ -1,36 +1,33 @@
 # Review every pull request, whatever branch it targets.
 #
-# Entries in `base_branches` are regular expressions, and the list EXTENDS the
-# repository's default branch rather than replacing it. Left unset it defaults to
-# an empty list — which means the default branch alone, so pull requests into
-# `staging` and `main` would draw no review at all. That default is quiet: there
-# is no warning, only a promotion that happens to collect no comments.
+# `base_branches` entries are regexes, and the list EXTENDS the default branch
+# rather than replacing it — the default branch is always reviewed. Left unset it
+# is an empty list, meaning the default branch alone, so pull requests into
+# `staging` and `main` would get nothing from this file. That default is quiet:
+# no warning, just a promotion that collects no comments.
 #
-# `.*` matches any target, so a branch type added later is covered without anyone
-# remembering to extend this list. That is the deliberate failure mode for a
-# safety tool — review too much rather than too little.
+# The regexes are NOT anchored — `develop` would also match `develop-2`. `.*` is
+# unaffected, but anchor with `^` and `$` if this is ever narrowed to named
+# branches.
 #
-# This matters here because the other configured reviewer deliberately skips
-# `staging` and `main` (promotion diffs are already-reviewed code), so this is
-# what covers them, and hotfix pull requests into `main` in particular.
+# `.*` rather than naming branches, so a branch type added later is covered
+# without anyone remembering to extend the list. For a safety tool the right
+# failure mode is reviewing too much.
 #
-# ⚠ This file is read from the PULL REQUEST'S OWN BRANCH, so a change here can
-# affect the review of the pull request that makes it.
+# This file carries weight because the other configured reviewer deliberately
+# skips `staging` and `main` — promotion diffs are already-reviewed code — so
+# this is what covers them, and hotfix pull requests into `main` in particular.
 #
-# An earlier version of this comment claimed the opposite — that the file is read
-# from the default branch and takes effect only once merged. That was wrong, and
-# it was wrong against evidence already in hand: on the pull request that added
-# this file, it existed on the feature branch alone and the review reported using
-# it. The vendor's own documentation says the configuration on the pull request's
-# branch is used for that review.
+# ⚠ It is read from the PULL REQUEST'S OWN BRANCH: "the configuration present in
+# the feature branch under review will be automatically detected and used by
+# CodeRabbit for that review". Two consequences. A change here can affect the
+# review of the pull request that makes it. And a hotfix, cut from `main`, gets
+# nothing from this file unless it is on `main` too — repository YAML is one
+# source among several, so that alone may not leave a hotfix unreviewed, but
+# keeping the file on `main` stops the question needing an answer.
 #
-# The consequence is why this file has to exist on `main`: hotfix branches are cut
-# from `main`, so without it there they inherit no configuration at all, the
-# defaults apply, and `base_branches` falls back to the default branch alone —
-# leaving a hotfix into production unreviewed.
-#
-# To check what is actually active on a pull request rather than inferring it,
-# comment `@coderabbitai configuration` on that pull request.
+# To see what is active and which source supplied it, comment
+# `@coderabbitai configuration` on a pull request rather than inferring it.
 reviews:
   auto_review:
     base_branches:

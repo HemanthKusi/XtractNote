@@ -1,0 +1,120 @@
+# The gates, run on every pull request into a long-lived branch.
+#
+# These are the same commands that are required by hand before a commit.
+# Running them here does not replace running them locally — it removes the
+# dependence on remembering, which is where it starts to matter as the backend
+# work grows.
+#
+# Branch protection is deliberately not part of this file. Making a red check
+# actually block a merge is a repository setting, so until that is applied a
+# failing run here is visible but stops nothing.
+
+name: Checks
+
+on:
+  pull_request:
+    branches:
+      # All three long-lived branches, not just main. Under this project's
+      # branching model a feature never targets main, so a workflow guarding
+      # main alone would let everything through at the point it matters.
+      - develop
+      - staging
+      - main
+
+# A newer push to the same pull request cancels the run still in flight. Only
+# the newest head is worth a verdict, and a stale run finishing later is the
+# thing that makes a check look like it passed on code it never saw.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only. Nothing here comments, pushes, or deploys.
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend — typecheck, lint, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Node 24 is what the project is developed on, and package.json's
+      # `engines` requires >=22.18.0. That lower bound is not cosmetic:
+      # ESLint 10 refuses to start below 20.19, so a runner on an older
+      # default would fail at the lint step rather than at install, which
+      # reads as our bug instead of a version mismatch.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `--legacy-peer-deps` is required for this dependency tree and will
+      # otherwise fail the install immediately. `npm ci` installs exactly what
+      # the lockfile pins, which is what a check wants over `npm install`.
+      - name: Install
+        run: npm ci --legacy-peer-deps
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # `npm run lint` is ESLint plus the two zero-dependency check scripts,
+      # left exactly as the local gate runs it — warnings reported, errors
+      # fatal. `--max-warnings=0` is not used: it would fail the current tree
+      # on three warnings that are tracked cleanups rather than defects, so the
+      # gate would arrive already red and teach everyone to ignore it.
+      - name: Lint
+        run: npm run lint
+
+      # No environment variables, on purpose. This was verified rather than
+      # assumed: the build succeeds with the Supabase and API values unset,
+      # because they are read inside functions that no prerender path calls.
+      # The frontend check therefore needs no secrets at all.
+      - name: Build
+        run: npm run build
+
+  backend:
+    name: Backend — tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    # Placeholders, not secrets. `app.config` builds its Settings object at
+    # import and declares these two with no default, so importing the app
+    # fails without them. No test reaches the network — the Supabase client is
+    # built on first call rather than at import — so these only need to exist.
+    # If a test ever genuinely needs to talk to Supabase, it needs a real
+    # secret and a decision, not a longer placeholder.
+    env:
+      SUPABASE_URL: https://ci-placeholder.supabase.co
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-not-a-real-key
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # 3.13 exactly. This project forbids 3.14 because pydantic-core
+      # publishes no wheels for it, and a runner quietly picking it up would
+      # fail in a way that looks like our code rather than our setup. The same
+      # trap exists locally, where `python3` on PATH is 3.14.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # `python -m pytest` rather than `pytest`, so the interpreter running the
+      # suite is unambiguously the one just set up. pytest.ini supplies the
+      # test path and the import path.
+      - name: Tests
+        run: python -m pytest

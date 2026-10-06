@@ -10,11 +10,24 @@ uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
 
-# AI — LangGraph multi-agent pipeline
-langgraph==0.2.61
-langchain==0.3.14
-langchain-openai==0.2.14
-langchain-anthropic==0.3.2
+# AI — LangGraph pipeline
+#
+# Upgraded 2026-10-04, before the pipeline was written rather than after: these
+# were pinned when the project started and nothing had ever imported langgraph,
+# so the migration cost was zero and it will never be lower again.
+#
+# langgraph 1.x requires langchain-core 1.x, so this is a major-version move for
+# the whole stack, not a single bump. It was checked against the backend's real
+# usage in a throwaway environment first — the three imports in
+# services/generate.py are unchanged, both model builders accept the same
+# kwargs, and invoke/stream/astream/astream_events all survive.
+#
+# What it buys: per-node streaming and checkpointing, which are what make the
+# generating screen's stages honest and give cancel something to interrupt.
+langgraph==1.2.12
+langchain==1.4.3
+langchain-openai==1.6.7
+langchain-anthropic==1.7.5
 
 # Supabase — database + auth
 supabase==2.11.0

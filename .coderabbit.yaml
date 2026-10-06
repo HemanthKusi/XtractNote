@@ -1,0 +1,23 @@
+# Review every pull request, whatever branch it targets.
+#
+# Entries in `base_branches` are regular expressions, and the list EXTENDS the
+# repository's default branch rather than replacing it. Left unset it defaults to
+# an empty list — which means the default branch alone, so pull requests into
+# `staging` and `main` would draw no review at all. That default is quiet: there
+# is no warning, only a promotion that happens to collect no comments.
+#
+# `.*` matches any target, so a branch type added later is covered without anyone
+# remembering to extend this list. That is the deliberate failure mode for a
+# safety tool — review too much rather than too little.
+#
+# This matters here because the other configured reviewer deliberately skips
+# `staging` and `main` (promotion diffs are already-reviewed code), so this is
+# what covers them, and hotfix pull requests into `main` in particular.
+#
+# ⚠ This file is read from the DEFAULT branch, not from the pull request branch.
+# A change here takes effect only once it is merged into `develop`, so the first
+# promotion afterwards is what proves it rather than this file's presence.
+reviews:
+  auto_review:
+    base_branches:
+      - ".*"

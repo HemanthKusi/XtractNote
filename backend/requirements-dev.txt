@@ -1,0 +1,18 @@
+# ──────────────────────────────────────
+# XtractNote Backend — Development Dependencies
+# ──────────────────────────────────────
+#
+# Test-only dependencies. Install them alongside the runtime ones:
+#
+#     pip install -r requirements.txt -r requirements-dev.txt
+#
+# Why this is a separate file rather than more lines in requirements.txt:
+# the host that runs the API installs only requirements.txt, so nothing here
+# reaches the server. Adding a test runner to the runtime list would ship it.
+
+# Test runner.
+#
+# The frontend's checks are deliberately zero-dependency scripts, which suits
+# a handful of assertions. The backend suite is expected to grow alongside the
+# pipeline work instead of staying small, so it gets a real framework.
+pytest==9.1.1

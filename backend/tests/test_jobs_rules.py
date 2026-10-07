@@ -25,6 +25,8 @@ from app.services.jobs import (
     TERMINAL_STATUSES,
     JobError,
     _utc_now_iso,
+    advance_target_error,
+    failure_code_error,
     is_legal_status,
     patch_for_status,
     progress_for,
@@ -188,6 +190,75 @@ def test_patch_is_a_fresh_dict_each_call() -> None:
     first = patch_for_status("completed")
     first["result_id"] = "leaked"
     assert "result_id" not in patch_for_status("completed")
+
+
+# --- advance_target_error -----------------------------------------------------
+#
+# The reason a terminal status is refused here is not tidiness. `advance` writes
+# the status and sometimes a percentage — nothing else. Finishing a job that way
+# would leave it `completed` with no `result_id` and no `completed_at`, and
+# because every update excludes jobs that have already finished, `complete` could
+# never attach them afterwards. The job would be permanently done with nothing to
+# show for it.
+
+
+@pytest.mark.parametrize("status", sorted(LEGAL_STATUSES - TERMINAL_STATUSES))
+def test_advance_accepts_every_non_terminal_status(status: str) -> None:
+    assert advance_target_error(status) is None
+
+
+@pytest.mark.parametrize("status", sorted(TERMINAL_STATUSES))
+def test_advance_refuses_terminal_statuses(status: str) -> None:
+    """The job would finish with none of the fields a finished job needs."""
+    reason = advance_target_error(status)
+    assert reason is not None
+    assert "complete()" in reason and "fail()" in reason
+
+
+@pytest.mark.parametrize("status", ["cancelled", "", "COMPLETED", "nonsense"])
+def test_advance_refuses_statuses_outside_the_schema(status: str) -> None:
+    assert advance_target_error(status) is not None
+
+
+def test_every_status_is_either_advanceable_or_terminal() -> None:
+    """
+    No status is quietly unreachable. Each of the eight is either a valid
+    `advance` target or one of the two that `complete` and `fail` write.
+    """
+    advanceable = {s for s in LEGAL_STATUSES if advance_target_error(s) is None}
+    assert advanceable | TERMINAL_STATUSES == LEGAL_STATUSES
+    assert advanceable & TERMINAL_STATUSES == set()
+
+
+# --- failure_code_error -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["generation-failed", "transcript-too-long", "invalid-structured-output"],
+)
+def test_failure_code_accepts_real_codes(code: str) -> None:
+    assert failure_code_error(code) is None
+
+
+@pytest.mark.parametrize("code", ["", "   ", "\n", "\t"], ids=["empty", "spaces", "newline", "tab"])
+def test_failure_code_refuses_blank(code: str) -> None:
+    """
+    The screen maps a reason to its copy and there is no copy for "". Only
+    emptiness is refused — the codes come from generation, the transcript
+    service and later the pipeline's nodes, so a closed list here would be a
+    second place to update for every new failure, and the one most likely to be
+    forgotten.
+    """
+    assert failure_code_error(code) is not None
+
+
+def test_failure_code_does_not_police_the_vocabulary() -> None:
+    """
+    An unfamiliar code is accepted on purpose. This module owns the job row, not
+    the taxonomy of everything that can go wrong upstream of it.
+    """
+    assert failure_code_error("some-future-pipeline-node-failed") is None
 
 
 # --- JobError -----------------------------------------------------------------

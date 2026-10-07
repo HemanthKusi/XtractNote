@@ -118,6 +118,45 @@ def patch_for_status(status: str) -> dict[str, Any]:
     return patch
 
 
+def advance_target_error(status: str) -> str | None:
+    """
+    Why `status` is not a valid target for `advance`, or None if it is.
+
+    **A terminal status is rejected here even though the schema allows it.**
+    `advance` writes only the status and sometimes a percentage, so finishing a
+    job this way would leave it `completed` with no `result_id` and no
+    `completed_at` — and because every update excludes jobs that have already
+    finished, `complete` could never attach them afterwards. The job would be
+    permanently done with nothing to show for it.
+
+    Finishing goes through `complete` or `fail`, which write the whole set of
+    fields a finished job needs.
+    """
+    if not is_legal_status(status):
+        return f"{status!r} is not a job status."
+    if status in TERMINAL_STATUSES:
+        return (
+            f"{status!r} is terminal — use complete() or fail(), so the row "
+            "carries the fields a finished job needs."
+        )
+    return None
+
+
+def failure_code_error(code: str) -> str | None:
+    """
+    Why `code` is not usable as a failure reason, or None if it is.
+
+    Only emptiness is rejected. The codes come from several places — generation,
+    the transcript service, and the pipeline's nodes later — so a closed list
+    here would be a second place to update every time a new failure exists, and
+    the one most likely to be forgotten. What cannot be allowed is a blank one:
+    the screen maps a reason to its copy, and there is no copy for "".
+    """
+    if not code or not code.strip():
+        return "A failed job needs a reason code."
+    return None
+
+
 def _utc_now_iso() -> str:
     """
     An explicit UTC timestamp for `completed_at`.
@@ -163,7 +202,12 @@ def advance(job_id: str, user_id: str, status: str) -> dict[str, Any]:
     `user_id` is required even though the caller usually created the job. It
     goes into the statement's predicate, so a job belonging to someone else is
     never matched — which keeps this safe no matter who calls it later.
+
+    A terminal status is refused: finishing goes through `complete` or `fail`.
+    See `advance_target_error` for why that matters rather than being tidiness.
     """
+    if (reason := advance_target_error(status)) is not None:
+        raise JobError("illegal-status", reason)
     return _update_unfinished(job_id, user_id, patch_for_status(status))
 
 
@@ -190,8 +234,12 @@ def fail(job_id: str, user_id: str, code: str, message: str) -> dict[str, Any]:
 
     `code` is the stable reason the generating screen maps to its own copy;
     `message` is prose for a human and must not be parsed. Both are stored
-    because neither can serve the other's purpose.
+    because neither can serve the other's purpose — which is also why an empty
+    code is refused rather than stored.
     """
+    if (reason := failure_code_error(code)) is not None:
+        raise JobError("missing-failure-code", reason)
+
     patch = patch_for_status("failed")
     patch["error_code"] = code
     patch["error_message"] = message

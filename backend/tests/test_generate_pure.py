@@ -151,6 +151,9 @@ def test_clean_str(value: Any, expected: str) -> None:
         (None, ""),
         ([], ""),
         ({}, ""),
+        (float("nan"), ""),
+        (float("inf"), ""),
+        (float("-inf"), ""),
     ],
 )
 def test_clean_option(value: Any, expected: str) -> None:
@@ -431,6 +434,40 @@ def test_quiz_rejects_duplicates_even_when_the_answer_is_identifiable() -> None:
     with pytest.raises(GenerationError) as excinfo:
         _build_quiz_body(quiz_payload(options=["a", "b", "b"], answerIndex=0))
     assert excinfo.value.code == "invalid-structured-output"
+
+
+def test_quiz_rejects_non_finite_numeric_options() -> None:
+    """
+    `json.loads` accepts the non-standard `NaN` and `Infinity` and returns
+    Python floats. Without a guard those stringify into options reading "nan"
+    and "inf", which a reader would be asked to choose between — and one of
+    which could be marked correct.
+
+    The raw JSON is passed here rather than built with `json.dumps`, because
+    that is how the text arrives from a model.
+    """
+    with pytest.raises(GenerationError) as excinfo:
+        _build_quiz_body(
+            '{"questions":[{"question":"How many?",'
+            '"options":[NaN, Infinity, -Infinity],'
+            '"answerIndex":0,"explanation":"x"}]}'
+        )
+    assert excinfo.value.code == "invalid-structured-output"
+
+
+def test_quiz_keeps_finite_numbers_beside_rejected_ones() -> None:
+    """
+    A single non-finite value costs itself, not the whole question — and the
+    answer still points where the model meant, since `NaN` is dropped the same
+    way any other unusable option is.
+    """
+    question = only_question(
+        '{"questions":[{"question":"How many?",'
+        '"options":[1, NaN, 3],'
+        '"answerIndex":2,"explanation":"x"}]}'
+    )
+    assert question["options"] == ["1", "3"]
+    assert question["options"][question["answerIndex"]] == "3"
 
 
 def test_quiz_keeps_options_that_only_look_similar() -> None:

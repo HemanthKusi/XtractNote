@@ -22,7 +22,10 @@ alter table public.generation_jobs
 
 comment on column public.generation_jobs.error_code is
   'Stable reason string for a failed job, e.g. transcript-too-long. Pairs with '
-  'error_message, which is prose for a human and must not be parsed.';
+  'error_message, which is prose for a human and must not be parsed. The set is '
+  'OPEN, not a fixed vocabulary: codes come from generation, the transcript '
+  'service and later the pipeline nodes, so no CHECK constrains it and the '
+  'application rejects only an empty one.';
 
 -- ── 2. status must not be NULL ──
 --

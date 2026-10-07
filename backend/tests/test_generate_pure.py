@@ -3,10 +3,14 @@ Generation's pure layer: parsing and validating the model's structured output.
 
 Five helpers, in two groups.
 
-`_parse_json_object`, `_build_flashcards_body` and `_build_quiz_body` take the
-model's response as a string and return a storage body, or raise
-`GenerationError`. `_clean_str` and `_clean_option` take a value of any type and
-return a string — "" when it cannot become a useful one.
+`_parse_json_object` takes the model's response as a string and returns the JSON
+object it parsed — whatever the model sent, unexamined. `_build_flashcards_body`
+and `_build_quiz_body` take that same string and return a storage body, with the
+`kind` discriminant attached here rather than taken from the model. All three
+raise `GenerationError` on input they cannot use.
+
+`_clean_str` and `_clean_option` take a value of any type and return a string —
+"" when it cannot become a useful one.
 
 No provider, no network, no database, no mocking, which is why they are worth
 testing and the orchestration around them is not. They are also the part that

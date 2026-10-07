@@ -100,10 +100,17 @@ reviews:
       instructions: |
         - This service authenticates to the database with a service-role key,
           which BYPASSES row-level security entirely. Policies never fire for
-          these queries. Ownership must therefore be enforced in application
-          code: check affected rows after an update, and validate that any
-          foreign-key target belongs to the same user before linking to it.
+          these queries, so ownership has to be enforced in application code.
           Flag any handler that assumes the database will filter for it.
+        - Put the owner predicate in the statement itself. An update or delete
+          filtered only by record id WILL modify another user's row; inspecting
+          the affected-row count afterwards reports the mismatch only once the
+          write has already happened. Filtering by owner means a row that is not
+          yours is never matched.
+        - Use the affected-row count to tell "no such row, or not yours" apart
+          for the response — not as the ownership check itself.
+        - Validate that any foreign-key target belongs to the same user before
+          linking to it.
         - Errors should carry a stable `code` that the route layer maps to an
           HTTP status, following the existing typed-error pattern, rather than
           raising bare exceptions across a boundary.
@@ -136,7 +143,11 @@ reviews:
 
     - path: "frontend/scripts/*.mjs"
       instructions: |
-        - These checks are deliberately zero-dependency Node scripts. Flag any
-          import of a third-party package.
+        - These checks must not add NEW third-party dependencies. They may
+          import packages the build already depends on — `check-design-tokens`
+          uses `postcss` and `tailwindcss` to inspect the CSS actually
+          generated — but a package added solely for a check is weight the lint
+          step should not carry. `check-fold` imports nothing beyond Node
+          built-ins and the module under test.
         - They run inside the lint step, so a failure must exit non-zero rather
           than only printing.

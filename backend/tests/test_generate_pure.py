@@ -384,13 +384,18 @@ def test_quiz_drops_questions_with_indistinguishable_options(
     options: list[Any], why: str
 ) -> None:
     """
-    Two options that read identically make the question unanswerable: one is
-    marked correct and the other wrong, while the reader sees the same text
-    twice and is told their choice was wrong for picking it.
+    A question whose cleaned options repeat is malformed, and every such
+    question is rejected — the reader is shown the same text twice and asked to
+    choose between them.
 
-    Dropped rather than de-duplicated because there is no correct answer to
-    recover: if the model marked one of a pair correct, nothing says which of
-    the two it meant.
+    Where the duplicated option is the marked one there is additionally no
+    answer to recover, since nothing says which of the pair was meant. That is
+    the worst case rather than the only one, which
+    `test_quiz_rejects_duplicates_even_when_the_answer_is_identifiable` pins.
+
+    Not de-duplicated: `source_positions` would keep `answerIndex` correct
+    through a de-duplication, so this is a judgement about question quality
+    rather than a mechanical necessity.
     """
     with pytest.raises(GenerationError) as excinfo:
         _build_quiz_body(quiz_payload(options=options, answerIndex=0))
@@ -419,6 +424,18 @@ def test_quiz_duplicate_question_is_skipped_not_fatal() -> None:
     )
     assert [q["question"] for q in body["questions"]] == ["Q1", "Q3"]
     assert body["questions"][1]["options"][body["questions"][1]["answerIndex"]] == "d"
+
+
+def test_quiz_rejects_duplicates_even_when_the_answer_is_identifiable() -> None:
+    """
+    The duplicated pair is `"b"`; the marked answer is `"a"` and perfectly
+    recoverable. It is rejected anyway, because the rule is about the question
+    being well formed rather than about rescuing an answer — and this is the
+    case that distinguishes the two.
+    """
+    with pytest.raises(GenerationError) as excinfo:
+        _build_quiz_body(quiz_payload(options=["a", "b", "b"], answerIndex=0))
+    assert excinfo.value.code == "invalid-structured-output"
 
 
 def test_quiz_keeps_options_that_only_look_similar() -> None:

@@ -304,17 +304,19 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
         if len(options) < 2:  # need at least two for a choice
             continue
 
-        # Two options that read identically make the question unanswerable: one
-        # is marked correct and the other wrong, while the reader sees the same
-        # text twice and is told their choice was wrong for picking it. A model
-        # repeating itself does this, and so does `["3", 3]`, since both sides
-        # clean to "3".
+        # A question whose cleaned options repeat is malformed, and EVERY such
+        # question is rejected — a quality rule, not a recovery problem. The
+        # reader is shown the same text twice and asked to choose between them.
+        # A model repeating itself does this, and so does `["3", 3]`, since both
+        # sides clean to "3".
         #
-        # Dropped rather than de-duplicated, and not for a mechanical reason —
-        # `source_positions` would keep `answerIndex` pointing correctly through
-        # a de-duplication. It is that **there is no correct answer to recover.**
-        # If the model marked one of a pair correct, nothing says which of the
-        # two it meant, and the reader could not tell them apart either.
+        # Where the duplicated option is the MARKED one there is additionally no
+        # answer to recover, because nothing says which of the pair was meant.
+        # That is the worst case rather than the only one: `["a", "b", "b"]`
+        # marked at "a" has an identifiable answer and is still rejected.
+        #
+        # Not de-duplicated, and not for a mechanical reason — `source_positions`
+        # would keep `answerIndex` pointing correctly through a de-duplication.
         if len(set(options)) != len(options):
             continue
 

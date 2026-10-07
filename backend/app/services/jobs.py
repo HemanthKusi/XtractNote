@@ -9,13 +9,14 @@ writes to that table.
 grants users insert and update policies on this table, so a client holding the
 anon key can write to it directly without going through anything here.
 
-It does no generation, fetches no transcript, and makes no HTTP call.
+It does no generation and fetches no transcript. Its only outbound calls are the
+database requests below — every `.execute()` is an HTTP round trip to PostgREST.
 
 **Nothing calls this module yet.** Generation still runs on the request; there is
 no worker, no polling endpoint, and no job id handed back. The intent is that a
 worker and, later, the pipeline's nodes report *through* here rather than
 touching the table themselves, so the rules about what a job may do stay in one
-place — but none of that exists, and `generation_jobs` stays empty until it does.
+place — but none of that exists, so no job row originates from this service.
 
 **Two layers, deliberately.** The rules — which statuses exist, what each one
 writes — are pure functions over strings, testable without a database. The

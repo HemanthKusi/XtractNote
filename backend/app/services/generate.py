@@ -304,19 +304,16 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
         if len(options) < 2:  # need at least two for a choice
             continue
 
-        # A question whose cleaned options repeat is malformed, and EVERY such
-        # question is rejected — a quality rule, not a recovery problem. The
-        # reader is shown the same text twice and asked to choose between them.
+        # Reject the question when two cleaned options read the same. The reader
+        # is shown identical choices and asked to pick between them, which is a
+        # malformed question whichever of them is marked correct.
+        #
         # A model repeating itself does this, and so does `["3", 3]`, since both
         # sides clean to "3".
         #
-        # Where the duplicated option is the MARKED one there is additionally no
-        # answer to recover, because nothing says which of the pair was meant.
-        # That is the worst case rather than the only one: `["a", "b", "b"]`
-        # marked at "a" has an identifiable answer and is still rejected.
-        #
-        # Not de-duplicated, and not for a mechanical reason — `source_positions`
-        # would keep `answerIndex` pointing correctly through a de-duplication.
+        # Rejected rather than de-duplicated: de-duplication changes which
+        # options the question offers, and one that arrived malformed is not
+        # worth reconstructing.
         if len(set(options)) != len(options):
             continue
 

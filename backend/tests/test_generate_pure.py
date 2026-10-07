@@ -384,18 +384,10 @@ def test_quiz_drops_questions_with_indistinguishable_options(
     options: list[Any], why: str
 ) -> None:
     """
-    A question whose cleaned options repeat is malformed, and every such
-    question is rejected — the reader is shown the same text twice and asked to
-    choose between them.
-
-    Where the duplicated option is the marked one there is additionally no
-    answer to recover, since nothing says which of the pair was meant. That is
-    the worst case rather than the only one, which
-    `test_quiz_rejects_duplicates_even_when_the_answer_is_identifiable` pins.
-
-    Not de-duplicated: `source_positions` would keep `answerIndex` correct
-    through a de-duplication, so this is a judgement about question quality
-    rather than a mechanical necessity.
+    The reader is shown identical choices and asked to pick between them, which
+    is a malformed question whichever of them is marked correct —
+    `test_quiz_rejects_duplicates_even_when_the_answer_is_identifiable` pins
+    that it applies even when the marked option is not one of the pair.
     """
     with pytest.raises(GenerationError) as excinfo:
         _build_quiz_body(quiz_payload(options=options, answerIndex=0))
@@ -428,10 +420,9 @@ def test_quiz_duplicate_question_is_skipped_not_fatal() -> None:
 
 def test_quiz_rejects_duplicates_even_when_the_answer_is_identifiable() -> None:
     """
-    The duplicated pair is `"b"`; the marked answer is `"a"` and perfectly
-    recoverable. It is rejected anyway, because the rule is about the question
-    being well formed rather than about rescuing an answer — and this is the
-    case that distinguishes the two.
+    The duplicated pair is `"b"`; the marked answer is `"a"`. It is rejected
+    anyway — the rule is about the question being well formed, not about which
+    option was marked.
     """
     with pytest.raises(GenerationError) as excinfo:
         _build_quiz_body(quiz_payload(options=["a", "b", "b"], answerIndex=0))

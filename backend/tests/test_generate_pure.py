@@ -388,13 +388,37 @@ def test_quiz_drops_questions_with_indistinguishable_options(
     marked correct and the other wrong, while the reader sees the same text
     twice and is told their choice was wrong for picking it.
 
-    Dropped rather than de-duplicated — removing one would shift the positions
-    `answerIndex` is counted against, which is the fault the surrounding code
-    exists to prevent.
+    Dropped rather than de-duplicated because there is no correct answer to
+    recover: if the model marked one of a pair correct, nothing says which of
+    the two it meant.
     """
     with pytest.raises(GenerationError) as excinfo:
         _build_quiz_body(quiz_payload(options=options, answerIndex=0))
     assert excinfo.value.code == "invalid-structured-output", why
+
+
+def test_quiz_duplicate_question_is_skipped_not_fatal() -> None:
+    """
+    A duplicate-option question costs itself and nothing else.
+
+    The single-question cases above cannot show this: with one question, being
+    skipped and raising immediately produce the same outcome. Only a mixed
+    response distinguishes them, and discarding valid questions because one
+    neighbour was malformed would be the worse failure of the two.
+    """
+    body = _build_quiz_body(
+        json.dumps(
+            {
+                "questions": [
+                    {"question": "Q1", "options": ["a", "b"], "answerIndex": 0},
+                    {"question": "Q2", "options": ["3", 3, "5"], "answerIndex": 0},
+                    {"question": "Q3", "options": ["c", "d"], "answerIndex": 1},
+                ]
+            }
+        )
+    )
+    assert [q["question"] for q in body["questions"]] == ["Q1", "Q3"]
+    assert body["questions"][1]["options"][body["questions"][1]["answerIndex"]] == "d"
 
 
 def test_quiz_keeps_options_that_only_look_similar() -> None:

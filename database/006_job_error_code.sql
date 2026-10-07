@@ -2,7 +2,11 @@
 -- XtractNote — Migration 006: Job error codes, and a status that cannot be NULL
 -- ──────────────────────────────────────
 -- Two changes to generation_jobs, both needed before anything writes to it.
--- Re-runnable: each statement is guarded or idempotent.
+--
+-- Re-applying after a successful run is safe. The FIRST run has a precondition,
+-- stated with the status change below — "idempotent" would overstate it, since
+-- that statement can fail on its first application and succeed on every one
+-- after.
 
 -- ── 1. A typed error code alongside the human message ──
 --
@@ -27,8 +31,17 @@ comment on column public.generation_jobs.error_code is
 -- the eight-value vocabulary entirely, leaving a job in no state at all — which
 -- no reader could interpret and no poll could resolve.
 --
--- Safe to apply: the table has never been written to, so there are no rows to
--- violate it. If this fails, a row exists with a NULL status and should be
--- inspected rather than forced.
+-- PRECONDITION: no existing row may have a NULL status.
+--
+-- This cannot be guaranteed from the repository, and is stated rather than
+-- assumed. Nothing in the schema or the policies prevents a NULL status — the
+-- insert policy constrains user_id, not status — and the project's notes record
+-- that the table has never been written to, which if still true makes this a
+-- no-op over zero rows.
+--
+-- If it fails, rows with a NULL status exist. Inspect them and decide which
+-- state each belongs in. Do not force the constraint: a NULL status is a job in
+-- no state at all, and picking one on its behalf invents history that no reader
+-- could tell from the real thing.
 alter table public.generation_jobs
   alter column status set not null;

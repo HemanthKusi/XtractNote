@@ -304,6 +304,22 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
         if len(options) < 2:  # need at least two for a choice
             continue
 
+        # Two options that read identically make the question unanswerable: one
+        # of them is marked correct and the other wrong, while the reader sees
+        # the same text twice and is told their choice was wrong for picking it.
+        #
+        # Two ways in. A model can simply repeat itself, which has always been
+        # possible. And coercing numbers means `["3", 3]` now arrives here as
+        # `["3", "3"]`, where previously the integer was discarded — so the
+        # coercion that keeps numeric questions alive also opened this.
+        #
+        # Dropped rather than de-duplicated: removing one would shift the
+        # positions the answer is counted against, which is the fault this
+        # block exists to prevent, and a question whose options repeat was
+        # badly formed before it got here.
+        if len(set(options)) != len(options):
+            continue
+
         # Models occasionally emit answerIndex as a string ("2") despite the
         # prompt asking for an integer.
         raw_index = item.get("answerIndex")

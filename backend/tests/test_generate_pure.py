@@ -1,8 +1,14 @@
 """
 Generation's pure layer: parsing and validating the model's structured output.
 
-These four functions take a string and return a dict or raise `GenerationError`.
-No provider, no network, no database, no mocking — which is why they are worth
+Five helpers, in two groups.
+
+`_parse_json_object`, `_build_flashcards_body` and `_build_quiz_body` take the
+model's response as a string and return a storage body, or raise
+`GenerationError`. `_clean_str` and `_clean_option` take a value of any type and
+return a string — "" when it cannot become a useful one.
+
+No provider, no network, no database, no mocking, which is why they are worth
 testing and the orchestration around them is not. They are also the part that
 survives the pipeline rewrite: whatever produces the text, something still has
 to parse and validate it.
@@ -363,6 +369,41 @@ def test_quiz_answer_survives_dropped_options(
         quiz_payload(options=options, answerIndex=answer_index)
     )
     assert question["options"][question["answerIndex"]] == expected_correct
+
+
+@pytest.mark.parametrize(
+    ("options", "why"),
+    [
+        (["3", 3, "5"], "coercion turns the integer into the same string"),
+        (["Paris", "Paris", "London"], "the model simply repeated itself"),
+        (["  Paris  ", "Paris", "London"], "they differ only by whitespace"),
+    ],
+    ids=["coerced-duplicate", "repeated-literal", "whitespace-only-difference"],
+)
+def test_quiz_drops_questions_with_indistinguishable_options(
+    options: list[Any], why: str
+) -> None:
+    """
+    Two options that read identically make the question unanswerable: one is
+    marked correct and the other wrong, while the reader sees the same text
+    twice and is told their choice was wrong for picking it.
+
+    Dropped rather than de-duplicated — removing one would shift the positions
+    `answerIndex` is counted against, which is the fault the surrounding code
+    exists to prevent.
+    """
+    with pytest.raises(GenerationError) as excinfo:
+        _build_quiz_body(quiz_payload(options=options, answerIndex=0))
+    assert excinfo.value.code == "invalid-structured-output", why
+
+
+def test_quiz_keeps_options_that_only_look_similar() -> None:
+    """
+    The check is on exact equality after cleaning, not on resemblance. `3` and
+    `3.0` are different strings and both stay — a reader can tell them apart.
+    """
+    question = only_question(quiz_payload(options=[3, 3.0, "5"], answerIndex=0))
+    assert question["options"] == ["3", "3.0", "5"]
 
 
 def test_quiz_drops_question_when_the_answer_option_is_dropped() -> None:

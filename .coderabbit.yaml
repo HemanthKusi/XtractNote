@@ -1,34 +1,142 @@
-# Review every pull request, whatever branch it targets.
-#
-# `base_branches` entries are regexes, and the list EXTENDS the default branch
-# rather than replacing it — the default branch is always reviewed. Left unset it
-# is an empty list, meaning the default branch alone, so pull requests into
-# `staging` and `main` would get nothing from this file. That default is quiet:
-# no warning, just a promotion that collects no comments.
-#
-# The regexes are NOT anchored — `develop` would also match `develop-2`. `.*` is
-# unaffected, but anchor with `^` and `$` if this is ever narrowed to named
-# branches.
-#
-# `.*` rather than naming branches, so a branch type added later is covered
-# without anyone remembering to extend the list. For a safety tool the right
-# failure mode is reviewing too much.
-#
-# This file carries weight because the other configured reviewer deliberately
-# skips `staging` and `main` — promotion diffs are already-reviewed code — so
-# this is what covers them, and hotfix pull requests into `main` in particular.
-#
-# ⚠ It is read from the PULL REQUEST'S OWN BRANCH: "the configuration present in
-# the feature branch under review will be automatically detected and used by
-# CodeRabbit for that review". Two consequences. A change here can affect the
-# review of the pull request that makes it. And a hotfix, cut from `main`, gets
-# nothing from this file unless it is on `main` too — repository YAML is one
-# source among several, so that alone may not leave a hotfix unreviewed, but
-# keeping the file on `main` stops the question needing an answer.
-#
-# To see what is active and which source supplied it, comment
-# `@coderabbitai configuration` on a pull request rather than inferring it.
+# ─────────────────────────────────────────────────────────────────────────────
+# Automated review configuration.
+# ─────────────────────────────────────────────────────────────────────────────
+
 reviews:
+  # `assertive` rather than the `chill` default: more feedback, and documented as
+  # potentially nitpicky. Accepted deliberately — a finding that is not worth
+  # acting on costs one dismissal, and a missed one costs a bug. Judge findings
+  # against this project's goals rather than the severity badge on them.
+  profile: assertive
+
+  # The walkthrough, change table, effort estimate and architecture summary are
+  # all produced by default and then folded into a collapsed block, which is why
+  # the output reads as thinner than it is. Expanded, it is legible without
+  # clicking.
+  collapse_walkthrough: false
+
+  # Review every pull request, whatever branch it targets.
+  #
+  # `base_branches` entries are regexes, and the list EXTENDS the default branch
+  # rather than replacing it — the default branch is always reviewed. Left unset
+  # it is an empty list, meaning the default branch alone, so pull requests into
+  # `staging` and `main` would get nothing from this file. That default is quiet:
+  # no warning, just a promotion that collects no comments.
+  #
+  # The regexes are NOT anchored — `develop` would also match `develop-2`. `.*`
+  # is unaffected, but anchor with `^` and `$` if this is ever narrowed to named
+  # branches.
+  #
+  # `.*` rather than naming branches, so a branch type added later is covered
+  # without anyone remembering to extend the list. For a safety tool the right
+  # failure mode is reviewing too much.
+  #
+  # This carries weight because the other configured reviewer deliberately skips
+  # `staging` and `main` — promotion diffs are already-reviewed code — so this is
+  # what covers them, and hotfix pull requests into `main` in particular.
+  #
+  # ⚠ It is read from the PULL REQUEST'S OWN BRANCH: "the configuration present
+  # in the feature branch under review will be automatically detected and used by
+  # CodeRabbit for that review". Two consequences. A change here can affect the
+  # review of the pull request that makes it. And a hotfix, cut from `main`, gets
+  # nothing from this file unless it is on `main` too — repository YAML is one
+  # source among several, so that alone may not leave a hotfix unreviewed, but
+  # keeping the file on `main` stops the question needing an answer.
+  #
+  # To see what is active and which source supplied it, comment
+  # `@coderabbitai configuration` on a pull request rather than inferring it.
   auto_review:
     base_branches:
       - ".*"
+
+  # Project-specific review rules, by area. Generic review already finds generic
+  # problems; these are the conventions this codebase has been bitten by, so they
+  # are the ones worth stating. Entries are minimatch globs.
+  path_instructions:
+    - path: "**"
+      instructions: |
+        Comment accuracy is treated as a correctness issue here, not style.
+
+        - A comment must not assert a property the code does not have. If a
+          comment says something is handled, guarded, dropped, cancelled, or
+          always true, check that the code actually does it and flag it if not.
+          A wrong comment is worse than no comment, because it tells the next
+          reader the case is covered and removes their reason to look.
+        - Comments go stale when the surrounding code is REPLACED, not only when
+          it is edited. Flag comments describing code, files or controls that are
+          no longer there.
+        - Flag absolute claims — "always", "never", "nothing else" — unless the
+          code supports them. Describe the branch that runs, not the case that is
+          common.
+        - Comments should explain why, not what.
+        - Flag dead code, commented-out blocks, and TODOs with no tracking issue.
+
+    - path: "frontend/src/**/*.{ts,tsx}"
+      instructions: |
+        - Flag every `any`, every non-null assertion used to silence the
+          compiler, and every `@ts-ignore`.
+        - Errors crossing a boundary should be discriminated result unions, not
+          thrown exceptions.
+        - Every async surface needs loading, empty and error states. Flag any
+          that is missing one.
+        - Wrap every JSON parse. A malformed 200 response must raise rather than
+          flow on as data.
+        - Anything async a user can interrupt needs a race guard: take a token
+          before the first `await` and re-check it after every one. The token
+          must be a ref, never state — state read inside a closure returns the
+          value from the render that began the run, which is the stale value the
+          guard exists to catch.
+        - Props should express intent (`variant`, `tone`, `format`), never
+          appearance.
+        - Business and domain logic belongs in `lib/`, not inside components.
+          Flag large multi-purpose components.
+        - Validate and sanitise anything read from a query parameter, especially
+          redirect targets, against open redirects.
+        - Never put user data in URL parameters, and never log secrets.
+        - On-screen copy must not claim something the code does not do. A wrong
+          readout misleads every user, not just the next developer.
+
+    - path: "backend/app/**/*.py"
+      instructions: |
+        - This service authenticates to the database with a service-role key,
+          which BYPASSES row-level security entirely. Policies never fire for
+          these queries. Ownership must therefore be enforced in application
+          code: check affected rows after an update, and validate that any
+          foreign-key target belongs to the same user before linking to it.
+          Flag any handler that assumes the database will filter for it.
+        - Errors should carry a stable `code` that the route layer maps to an
+          HTTP status, following the existing typed-error pattern, rather than
+          raising bare exceptions across a boundary.
+        - Validate input before any paid API call.
+        - Keep the pure part separate from the effectful part, so the pure part
+          is testable without a database or network.
+        - Never log or return secrets. The service-role key must never appear in
+          a response or a log line.
+        - Python 3.13 is required. Flag syntax or dependencies that assume
+          otherwise.
+
+    - path: "backend/tests/**/*.py"
+      instructions: |
+        - Tests must not require network access or a live database.
+        - Prefer testing the pure layer. A test that mostly asserts a
+          third-party library behaves like itself carries little value and
+          breaks when that library is upgraded.
+        - A test asserting a guarantee should be able to fail. Flag assertions
+          that would pass even if the behaviour under test were removed.
+
+    - path: "database/**/*.sql"
+      instructions: |
+        - Every table needs row-level security enabled, with policies covering
+          select, insert, update and delete.
+        - Row-level security filtering is silent: an excluded row produces no
+          error, only a smaller result set.
+        - Any `security definer` function must pin its search path.
+        - Migrations are applied by hand and never re-run. Flag anything that is
+          not safe to apply exactly once.
+
+    - path: "frontend/scripts/*.mjs"
+      instructions: |
+        - These checks are deliberately zero-dependency Node scripts. Flag any
+          import of a third-party package.
+        - They run inside the lint step, so a failure must exit non-zero rather
+          than only printing.

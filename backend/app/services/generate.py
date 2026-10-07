@@ -304,6 +304,19 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
         if len(options) < 2:  # need at least two for a choice
             continue
 
+        # Reject the question when two cleaned options read the same. The reader
+        # is shown identical choices and asked to pick between them, which is a
+        # malformed question whichever of them is marked correct.
+        #
+        # A model repeating itself does this, and so does `["3", 3]`, since both
+        # sides clean to "3".
+        #
+        # Rejected rather than de-duplicated: de-duplication changes which
+        # options the question offers, and one that arrived malformed is not
+        # worth reconstructing.
+        if len(set(options)) != len(options):
+            continue
+
         # Models occasionally emit answerIndex as a string ("2") despite the
         # prompt asking for an integer.
         raw_index = item.get("answerIndex")

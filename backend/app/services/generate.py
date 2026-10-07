@@ -195,9 +195,15 @@ def _clean_option(value: Any) -> str:
 
     Unlike `_clean_str` this coerces numbers rather than discarding them. A quiz
     about quantities, years or percentages gets `[3, 5, 7, 9]` from the model —
-    JSON numbers, because they are numbers — and discarding those costs the
-    whole question. Coercing keeps it, and keeps the options array the same
-    length, which is what `answerIndex` is counted against.
+    JSON numbers, because they are numbers — and discarding those left fewer
+    than two usable options, which cost the whole question. Coercing keeps the
+    question.
+
+    **This does not guarantee the options array keeps its length**, and nothing
+    should be built on the assumption that it does: the caller still drops empty
+    strings, `None`, `bool` and anything non-scalar. Keeping `answerIndex`
+    pointing at the right option comes from the positional translation in
+    `_build_quiz_body`, not from here.
 
     `bool` is excluded even though it is an `int` subclass: `true` as an option
     is a malformed response, not the number 1.

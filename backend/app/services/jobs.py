@@ -64,6 +64,11 @@ LEGAL_STATUSES: frozenset[str] = frozenset(
     }
 )
 
+#: The state a job is created in. `create_job` writes it as part of the insert,
+#: and `advance` refuses it: moving a running job back to `pending` would reset
+#: its progress to zero and claim it had not started.
+CREATION_STATUS = "pending"
+
 #: Once a job reaches one of these it is finished and nothing moves it again.
 #: The guard matters because an abandoned run finishes anyway — the user has
 #: navigated away and nobody is waiting, but its late write would otherwise
@@ -131,9 +136,24 @@ def advance_target_error(status: str) -> str | None:
 
     Finishing goes through `complete` or `fail`, which write the whole set of
     fields a finished job needs.
+
+    **The creation state is rejected too.** A job moved back to `pending` would
+    have its progress reset to zero, claiming it had not started — and nothing
+    legitimate goes backwards, since a run that stops does so by failing.
+
+    The remaining stages are accepted even though no node writes them yet. They
+    are the vocabulary the schema defines and the pipeline is designed around;
+    refusing one for being early would put implementation state into a rules
+    module, where it goes stale and has to be edited again for every node that
+    lands.
     """
     if not is_legal_status(status):
         return f"{status!r} is not a job status."
+    if status == CREATION_STATUS:
+        return (
+            f"{status!r} is the state a job is created in, not somewhere to "
+            "move it back to."
+        )
     if status in TERMINAL_STATUSES:
         return (
             f"{status!r} is terminal — use complete() or fail(), so the row "

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from app.services.jobs import (
+    CREATION_STATUS,
     LEGAL_STATUSES,
     PROGRESS_BY_STATUS,
     TERMINAL_STATUSES,
@@ -202,9 +203,28 @@ def test_patch_is_a_fresh_dict_each_call() -> None:
 # show for it.
 
 
-@pytest.mark.parametrize("status", sorted(LEGAL_STATUSES - TERMINAL_STATUSES))
-def test_advance_accepts_every_non_terminal_status(status: str) -> None:
+@pytest.mark.parametrize(
+    "status", ["fetching", "reading", "understanding", "drafting", "polishing"]
+)
+def test_advance_accepts_the_working_stages(status: str) -> None:
+    """
+    All five are accepted even though no node writes most of them yet. They are
+    the vocabulary the schema defines and the pipeline is designed around —
+    refusing one for being early would put implementation state into a rules
+    module and mean editing this file again for every node that lands.
+    """
     assert advance_target_error(status) is None
+
+
+def test_advance_refuses_the_creation_state() -> None:
+    """
+    Moving a running job back to `pending` would reset its progress to zero and
+    claim it had not started. Nothing legitimate goes backwards: a run that
+    stops does so by failing.
+    """
+    reason = advance_target_error(CREATION_STATUS)
+    assert reason is not None
+    assert "created in" in reason
 
 
 @pytest.mark.parametrize("status", sorted(TERMINAL_STATUSES))
@@ -220,14 +240,23 @@ def test_advance_refuses_statuses_outside_the_schema(status: str) -> None:
     assert advance_target_error(status) is not None
 
 
-def test_every_status_is_either_advanceable_or_terminal() -> None:
+def test_the_statuses_partition_into_three_roles() -> None:
     """
-    No status is quietly unreachable. Each of the eight is either a valid
-    `advance` target or one of the two that `complete` and `fail` write.
+    Every status has exactly one role: the state a job is created in, a stage it
+    can be advanced to, or an end it finishes at.
+
+    A status in none of them would be unreachable — writable by the schema and
+    by nothing in this module. A status in two would be ambiguous about which
+    function owns it. Asserting a partition catches both, including for a status
+    added later.
     """
     advanceable = {s for s in LEGAL_STATUSES if advance_target_error(s) is None}
-    assert advanceable | TERMINAL_STATUSES == LEGAL_STATUSES
+    creation = {CREATION_STATUS}
+
+    assert creation | advanceable | TERMINAL_STATUSES == LEGAL_STATUSES
+    assert creation & advanceable == set()
     assert advanceable & TERMINAL_STATUSES == set()
+    assert creation & TERMINAL_STATUSES == set()
 
 
 # --- failure_code_error -------------------------------------------------------

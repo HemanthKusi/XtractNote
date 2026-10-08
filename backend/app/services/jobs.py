@@ -188,6 +188,11 @@ def failure_code_error(code: str) -> str | None:
     return None
 
 
+#: How old an unfinished job must be before the restart sweep fails it. It must
+#: exceed the longest a run can take; a test holds the provider call's limits
+#: below it.
+INTERRUPTED_AFTER = timedelta(minutes=15)
+
 #: The failure recorded on a job the restart sweep finds unfinished.
 INTERRUPTED_CODE = "interrupted"
 INTERRUPTED_MESSAGE = "This generation was interrupted before it finished."

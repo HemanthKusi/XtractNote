@@ -57,7 +57,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 # ── Create the FastAPI app ──
 app = FastAPI(
     title="XtractNote API",
-    description="Multi-agent YouTube to content generator",
+    description="Turns YouTube videos into written content",
     version="0.2.0",
     docs_url="/docs",      # Interactive API docs at http://localhost:8000/docs
     redoc_url="/redoc",    # Alternative docs at http://localhost:8000/redoc

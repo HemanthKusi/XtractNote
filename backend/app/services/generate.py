@@ -34,6 +34,7 @@ character cap.
 """
 
 import json
+import math
 import re
 from typing import Any
 
@@ -207,13 +208,19 @@ def _clean_option(value: Any) -> str:
 
     `bool` is excluded even though it is an `int` subclass: `true` as an option
     is a malformed response, not the number 1.
+
+    Non-finite floats are excluded too. `json.loads` accepts the non-standard
+    `NaN`, `Infinity` and `-Infinity` and hands back Python floats, which would
+    otherwise be offered to a reader as options reading "nan" and "inf".
     """
     if isinstance(value, str):
         return value.strip()
     if isinstance(value, bool):
         return ""
-    if isinstance(value, (int, float)):
+    if isinstance(value, int):
         return str(value)
+    if isinstance(value, float):
+        return str(value) if math.isfinite(value) else ""
     return ""
 
 

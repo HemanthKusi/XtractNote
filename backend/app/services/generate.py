@@ -34,6 +34,7 @@ character cap.
 """
 
 import json
+import math
 import re
 from typing import Any
 
@@ -189,6 +190,40 @@ def _clean_str(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _clean_option(value: Any) -> str:
+    """
+    Normalise one quiz option to a string, or "" if it cannot become one.
+
+    Unlike `_clean_str` this coerces numbers rather than discarding them. A quiz
+    about quantities, years or percentages gets `[3, 5, 7, 9]` from the model —
+    JSON numbers, because they are numbers — and discarding those left fewer
+    than two usable options, which cost the whole question. Coercing keeps the
+    question.
+
+    **This does not guarantee the options array keeps its length**, and nothing
+    should be built on the assumption that it does: the caller still drops empty
+    strings, `None`, `bool` and anything non-scalar. Keeping `answerIndex`
+    pointing at the right option comes from the positional translation in
+    `_build_quiz_body`, not from here.
+
+    `bool` is excluded even though it is an `int` subclass: `true` as an option
+    is a malformed response, not the number 1.
+
+    Non-finite floats are excluded too. `json.loads` accepts the non-standard
+    `NaN`, `Infinity` and `-Infinity` and hands back Python floats, which would
+    otherwise be offered to a reader as options reading "nan" and "inf".
+    """
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(value) if math.isfinite(value) else ""
+    return ""
+
+
 def _build_flashcards_body(content: str) -> dict[str, Any]:
     """
     Validate flashcard JSON and build the storage body.
@@ -229,10 +264,17 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
     Validate quiz JSON and build the storage body.
 
     Expects {"questions": [{"question", "options", "answerIndex",
-    "explanation"}, ...]}. Validation is strict where a bad value would break
-    the renderer (answerIndex must be an in-range int) and lenient elsewhere
-    (an option count other than 4 still renders fine, so it is accepted).
-    Unusable questions are dropped; we only error if none survive.
+    "explanation"}, ...]}. Validation is strict where a bad value would mislead
+    the reader and lenient elsewhere — an option count other than 4 still
+    renders fine, so it is accepted. Unusable questions are dropped; we only
+    error if none survive.
+
+    **`answerIndex` is counted against the options the model sent**, so it is
+    translated to this list's indexing rather than used directly. Dropping an
+    option ahead of the answer would otherwise make a different option the
+    correct one, which is worse than a crash: it renders perfectly and is
+    wrong. If the answer's own option did not survive, the question is dropped
+    rather than pointed somewhere else.
     """
     parsed = _parse_json_object(content)
     raw_questions = parsed.get("questions")
@@ -251,17 +293,39 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
         if not question:
             continue
 
-        # Keep only non-empty string options; need at least two for a choice.
         raw_options = item.get("options")
         if not isinstance(raw_options, list):
             continue
-        options = [opt for opt in (_clean_str(o) for o in raw_options) if opt]
-        if len(options) < 2:
+
+        # Keep the usable options AND the position each came from. `answerIndex`
+        # counts against the ORIGINAL array, so dropping an option silently
+        # moves every later one — an option removed ahead of the answer makes a
+        # different option the "correct" one, with nothing to signal it.
+        options: list[str] = []
+        source_positions: list[int] = []
+        for position, raw_option in enumerate(raw_options):
+            option = _clean_option(raw_option)
+            if option:
+                options.append(option)
+                source_positions.append(position)
+        if len(options) < 2:  # need at least two for a choice
+            continue
+
+        # Reject the question when two cleaned options read the same. The reader
+        # is shown identical choices and asked to pick between them, which is a
+        # malformed question whichever of them is marked correct.
+        #
+        # A model repeating itself does this, and so does `["3", 3]`, since both
+        # sides clean to "3".
+        #
+        # Rejected rather than de-duplicated: de-duplication changes which
+        # options the question offers, and one that arrived malformed is not
+        # worth reconstructing.
+        if len(set(options)) != len(options):
             continue
 
         # Models occasionally emit answerIndex as a string ("2") despite the
-        # prompt. Coerce, then require it to point at a real option — an
-        # out-of-range index would crash the renderer downstream.
+        # prompt asking for an integer.
         raw_index = item.get("answerIndex")
         if isinstance(raw_index, bool):  # bool is an int subclass; reject it
             continue
@@ -271,8 +335,14 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
             answer_index = int(raw_index.strip())
         else:
             continue
-        if not 0 <= answer_index < len(options):
+
+        # Translate the model's index into this list. Absence covers three cases
+        # at once: the answer's own option was dropped, the index was out of
+        # range, or it was negative. None of them leaves a correct answer to
+        # mark, so the question goes rather than pointing at the wrong option.
+        if answer_index not in source_positions:
             continue
+        answer_index = source_positions.index(answer_index)
 
         explanation = _clean_str(item.get("explanation"))
         questions.append(

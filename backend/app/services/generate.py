@@ -61,6 +61,16 @@ MAX_TRANSCRIPT_CHARS = 500_000
 # Cap on generated output length in tokens. A long blog post fits comfortably.
 MAX_OUTPUT_TOKENS = 8_000
 
+# How long the HTTP client waits on the provider, per attempt, and how many
+# times it retries. The clients' own defaults are no limit and two retries, so a
+# provider that never answers would hold the call open indefinitely.
+#
+# The two are set together because the restart sweep (jobs.INTERRUPTED_AFTER)
+# fails any job still unfinished after a fixed time, and this call is what makes
+# a run long. A test holds timeout × attempts below that threshold.
+PROVIDER_TIMEOUT_SECONDS = 300
+PROVIDER_MAX_RETRIES = 1
+
 # Matches a leading ```json (or bare ```) fence and its closing fence. The
 # structured prompts forbid fences, but models add them often enough that
 # stripping is cheaper than failing a paid generation over formatting.
@@ -382,6 +392,8 @@ def _build_openai(json_mode: bool = False) -> ChatOpenAI:
         "model": settings.openai_model,
         "api_key": settings.openai_api_key,
         "max_tokens": MAX_OUTPUT_TOKENS,
+        "timeout": PROVIDER_TIMEOUT_SECONDS,
+        "max_retries": PROVIDER_MAX_RETRIES,
     }
     if json_mode:
         kwargs["model_kwargs"] = {"response_format": {"type": "json_object"}}
@@ -402,4 +414,6 @@ def _build_anthropic() -> ChatAnthropic:
         model=settings.anthropic_model,
         api_key=settings.anthropic_api_key,
         max_tokens=MAX_OUTPUT_TOKENS,
+        timeout=PROVIDER_TIMEOUT_SECONDS,
+        max_retries=PROVIDER_MAX_RETRIES,
     )

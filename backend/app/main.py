@@ -17,7 +17,7 @@ from app.api import youtube, generate, content, folders
 app = FastAPI(
     title="XtractNote API",
     description="Multi-agent YouTube to content generator",
-    version="0.1.0",
+    version="0.2.0",
     docs_url="/docs",      # Interactive API docs at http://localhost:8000/docs
     redoc_url="/redoc",    # Alternative docs at http://localhost:8000/redoc
 )
@@ -53,5 +53,5 @@ async def health_check():
     return {
         "status": "ok",
         "service": "xtractnote-api",
-        "version": "0.1.0",
+        "version": "0.2.0",
     }

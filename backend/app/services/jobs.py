@@ -12,11 +12,11 @@ anon key can write to it directly without going through anything here.
 It does no generation and fetches no transcript. Its only outbound calls are the
 database requests below — every `.execute()` is an HTTP round trip to PostgREST.
 
-**Nothing calls this module yet.** Generation still runs on the request; there is
-no worker, no polling endpoint, and no job id handed back. The intent is that a
-worker and, later, the pipeline's nodes report *through* here rather than
-touching the table themselves, so the rules about what a job may do stay in one
-place — but none of that exists, so no job row originates from this service.
+**Nothing runs this module yet.** Generation still runs on the request. The
+worker uses it, but nothing dispatches the worker, so no job row originates from
+this service. The intent is that the worker and, later, the pipeline's nodes
+report *through* here rather than touching the table themselves, so the rules
+about what a job may do stay in one place.
 
 **Two layers, deliberately.** The rules — which statuses exist, what each one
 writes — are pure functions over strings, testable without a database. The
@@ -24,11 +24,13 @@ writes are a thin shell around them.
 
 **The backend holds the service-role key, which bypasses row-level security
 entirely.** The policies on this table never fire for anything here. Ownership
-therefore goes into every statement's own predicate rather than being checked
-afterwards: by the time a row count comes back, the write has already happened.
+therefore goes into the predicate of every statement made on a user's behalf,
+rather than being checked afterwards: by the time a row count comes back, the
+write has already happened. `fail_interrupted` is the one write made on no
+one's behalf, and its docstring says how it is bounded instead.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.db.supabase import get_supabase_client
@@ -186,6 +188,30 @@ def failure_code_error(code: str) -> str | None:
     return None
 
 
+#: The failure recorded on a job the restart sweep finds unfinished.
+INTERRUPTED_CODE = "interrupted"
+INTERRUPTED_MESSAGE = "This generation was interrupted before it finished."
+
+
+def interrupted_cutoff(now: datetime, older_than: timedelta) -> str:
+    """The ISO timestamp a job must have been created before to be swept."""
+    return (now - older_than).isoformat()
+
+
+def interrupted_patch(now: datetime) -> dict[str, Any]:
+    """
+    The columns the sweep writes: a failed job, with the interrupted reason.
+
+    Built from `patch_for_status("failed")` so a swept job ends in the same shape
+    as one finished by `fail`.
+    """
+    patch = patch_for_status("failed")
+    patch["error_code"] = INTERRUPTED_CODE
+    patch["error_message"] = INTERRUPTED_MESSAGE
+    patch["completed_at"] = now.isoformat()
+    return patch
+
+
 def _utc_now_iso() -> str:
     """
     An explicit UTC timestamp for `completed_at`.
@@ -274,6 +300,37 @@ def fail(job_id: str, user_id: str, code: str, message: str) -> dict[str, Any]:
     patch["error_message"] = message
     patch["completed_at"] = _utc_now_iso()
     return _update_unfinished(job_id, user_id, patch)
+
+
+def fail_interrupted(older_than: timedelta) -> int:
+    """
+    Fail every unfinished job created more than `older_than` ago, and return how
+    many were changed.
+
+    A run happens inside the server process, so if that process dies mid-run
+    nothing writes the job's ending. Run at startup, this ends such jobs as
+    `failed` with the `interrupted` reason.
+
+    **The one write here with no owner in its predicate.** It is the service
+    cleaning up after itself, not acting for a user, so there is no user to name.
+    It is bounded by the predicate instead: a job must be unfinished AND older
+    than the threshold. Do not copy it for anything done on a user's behalf.
+
+    The threshold must exceed the longest a run can take, or a live run is
+    swept. Should that happen, the run's own later writes match nothing, because
+    the job is already finished — so the sweep's verdict stands and nothing is
+    overwritten.
+    """
+    now = datetime.now(timezone.utc)
+    response = (
+        get_supabase_client()
+        .table(TABLE)
+        .update(interrupted_patch(now))
+        .not_.in_("status", sorted(TERMINAL_STATUSES))
+        .lt("created_at", interrupted_cutoff(now, older_than))
+        .execute()
+    )
+    return len(response.data or [])
 
 
 # --- Read ---------------------------------------------------------------------

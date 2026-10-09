@@ -14,7 +14,7 @@
  *   - GeneratableContentType: the subset type derived from that array.
  *   - SocialPlatform / SOCIAL_PLATFORMS: the five social targets + their UI copy.
  *   - ContentBody: the discriminated union of stored/returned body shapes.
- *   - GeneratedContent / GenerateFailReason: the result + failure shapes.
+ *   - GenerateFailReason: every reason a generation can fail.
  *   - JOB_STATUSES / GenerationJob: a generation job, as its status route reports it.
  *
  * Pure types and const arrays — no logic beyond two small guards.
@@ -194,24 +194,7 @@ export function isMarkdownBody(body: ContentBody): body is MarkdownBody {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Generation result + failures                                                */
-/* -------------------------------------------------------------------------- */
-
-/**
- * A generated piece of content, as the create page shows it.
- *
- * `content` is the body union, not a string — prose arrives as
- * { markdown }, structured types as { kind, ... }.
- * `platform` is set only for social generations.
- */
-export interface GeneratedContent {
-  contentType: GeneratableContentType;
-  platform?: SocialPlatform | null;
-  content: ContentBody;
-}
-
-/* -------------------------------------------------------------------------- */
-/* Generation jobs                                                             */
+/* Generation jobs and failures                                                */
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -234,9 +217,6 @@ export const JOB_STATUSES = [
 ] as const;
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
-
-/** The statuses a job does not leave. Polling stops at either. */
-export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = ["completed", "failed"];
 
 /**
  * One generation job, as GET /api/generate/jobs/{jobId} reports it.

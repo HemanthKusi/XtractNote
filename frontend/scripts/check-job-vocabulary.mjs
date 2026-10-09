@@ -7,10 +7,10 @@
  * ── Why this exists ──
  * The statuses are written three times, by hand, in three places: the CHECK
  * constraint in migration 004, `LEGAL_STATUSES` in the backend (pinned to the
- * migration by its own test), and `JOB_STATUSES` here. The frontend reads a
- * job's status off the wire and stops polling at a terminal one. A status added
- * to the database and not here would fail quietly — a job the page never
- * recognises, polled until it gives up.
+ * migration by its own test), and `JOB_STATUSES` here. The frontend checks every
+ * status it receives against this list, so a status added to the database and
+ * not here would make reports of such a job unreadable — shown as a failure
+ * while the run itself carried on.
  *
  * ── Why it imports rather than re-states ──
  * As with check-fold: it imports the real `JOB_STATUSES`. `types.ts` has only
@@ -19,10 +19,7 @@
 
 import { readFileSync } from "node:fs";
 
-import {
-  JOB_STATUSES,
-  TERMINAL_JOB_STATUSES,
-} from "../src/lib/content/types.ts";
+import { JOB_STATUSES } from "../src/lib/content/types.ts";
 
 const MIGRATION = new URL("../../database/004_create_jobs.sql", import.meta.url);
 
@@ -52,14 +49,6 @@ if (constraint) {
   check("JOB_STATUSES names nothing the database refuses", extra.length === 0, `extra: ${extra.join(", ")}`);
   check("JOB_STATUSES has no duplicates", new Set(listed).size === listed.length);
 }
-
-check(
-  "the terminal statuses are completed and failed, and both are statuses",
-  TERMINAL_JOB_STATUSES.length === 2 &&
-    TERMINAL_JOB_STATUSES.every((s) => JOB_STATUSES.includes(s)) &&
-    TERMINAL_JOB_STATUSES.includes("completed") &&
-    TERMINAL_JOB_STATUSES.includes("failed"),
-);
 
 if (failed > 0) {
   console.error(`\ncheck-job-vocabulary: ${failed} of ${run} checks FAILED.`);

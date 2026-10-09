@@ -7,10 +7,10 @@
 --
 -- It used to decide by age since creation, which guesses how long a run takes.
 -- That guess is wrong for a job that waited before it started, and will be
--- wrong for longer runs to come. A heartbeat measures what the sweep actually
--- needs to know — whether anything is still working on the job: the run
--- refreshes `heartbeat_at` while it is alive, and the sweep fails only jobs
--- whose heartbeat has stopped.
+-- wrong for longer runs to come. A heartbeat is a closer signal of whether a
+-- run is still alive: the run refreshes `heartbeat_at` while it works, and the
+-- sweep fails only jobs whose heartbeat has gone quiet. It is a signal, not
+-- proof — a beat can fail while its run carries on.
 --
 -- Safe to re-apply: `add column if not exists`.
 

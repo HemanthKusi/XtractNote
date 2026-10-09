@@ -21,10 +21,13 @@ import pytest
 
 from app.services.jobs import (
     CREATION_STATUS,
+    HEARTBEAT_EVERY,
     INTERRUPTED_CODE,
     INTERRUPTED_MESSAGE,
     LEGAL_STATUSES,
     PROGRESS_BY_STATUS,
+    STALE_AFTER,
+    SWEEP_EVERY,
     TERMINAL_STATUSES,
     JobError,
     _utc_now_iso,
@@ -359,3 +362,19 @@ def test_a_swept_job_ends_in_the_same_shape_as_a_failed_one() -> None:
 
 def test_the_interrupted_reason_is_a_usable_failure_code() -> None:
     assert failure_code_error(INTERRUPTED_CODE) is None
+
+
+# --- the heartbeat's timing ---------------------------------------------------
+
+
+def test_a_live_run_can_miss_several_beats_before_it_is_swept() -> None:
+    """
+    One slow or dropped beat must not end a live run, so the sweep's threshold
+    spans several beats. Shorten it to one or two and this fails.
+    """
+    assert STALE_AFTER >= 3 * HEARTBEAT_EVERY
+
+
+def test_the_sweep_runs_more_often_than_a_job_goes_stale() -> None:
+    """An interval longer than the threshold would dominate how long a dead job waits."""
+    assert timedelta(0) < SWEEP_EVERY <= STALE_AFTER

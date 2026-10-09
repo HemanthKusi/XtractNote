@@ -1,9 +1,9 @@
 """
 XtractNote — The generation worker
 
-`run_job` takes one job from `pending` to a finished state: it moves the job to
-`drafting`, runs the generation, saves the result as a draft row, and links that
-row to the job.
+`run_job` takes one job from `pending` to a finished state: it claims the job,
+moving it to `drafting`, runs the generation, saves the result as a draft row,
+and links that row to the job.
 
 It is synchronous because generation is a blocking call, so whoever starts it
 runs it on a thread.
@@ -32,8 +32,8 @@ from app.services.prompts import ContentType, SocialPlatform
 
 logger = logging.getLogger(__name__)
 
-#: How a run ended. `abandoned` means the job could not be moved to `drafting`,
-#: so nothing was generated and the job was left as it was.
+#: How a run ended. `abandoned` means the job could not be claimed, so nothing
+#: was generated and the job was left as it was.
 Outcome = Literal["completed", "failed", "abandoned"]
 
 UNEXPECTED_CODE = "unexpected"
@@ -54,7 +54,7 @@ class GenerationInput:
 class Steps:
     """The effects `run_job` performs, in the order it performs them."""
 
-    advance: Callable[[str, str, str], Any] = jobs.advance
+    claim: Callable[[str, str], Any] = jobs.claim
     generate: Callable[
         [str, ContentType, SocialPlatform | None], dict[str, Any]
     ] = generate_content
@@ -71,12 +71,11 @@ def run_job(
 ) -> Outcome:
     """Run one generation for `user_id`'s job, and return how it ended."""
 
-    # A job that cannot move to `drafting` is missing, belongs to someone else,
-    # or has already finished. Generating anyway would spend a model call on a
-    # run nothing can record. `fail` would be refused for the same reasons, so
-    # the job is left alone.
+    # Claiming matches only this user's `pending` job. If it fails, this run
+    # does not generate — the job is already someone's run, or nothing could
+    # record the result — and the job is left alone.
     try:
-        steps.advance(job_id, user_id, "drafting")
+        steps.claim(job_id, user_id)
     except Exception:
         logger.warning("job %s: could not start, nothing generated", job_id, exc_info=True)
         return "abandoned"

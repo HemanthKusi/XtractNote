@@ -1,10 +1,13 @@
 """
-The model call's time limits, and the restart sweep they must stay under.
+The model call's time limits, and the sweep threshold they are kept inside.
 
-The sweep fails any job still unfinished after `INTERRUPTED_AFTER`. A run's
-long step is the provider call, so if that call could outlast the threshold, the
-sweep would fail runs that are still alive. These tests hold the two together,
-and check that the limits reach the clients actually built.
+The sweep fails any job still unfinished after `INTERRUPTED_AFTER`, and the
+provider call is what makes a run long. These tests check the limits reach the
+clients actually built, and that the configured numbers sit inside the threshold.
+
+**They do not prove a call ends in time.** The timeout applies to each phase of
+a request, not to an attempt as a whole, and retries add backoff — so a call can
+run longer than timeout × attempts.
 
 Building a client makes no network call. A placeholder API key is set for the
 duration of each test, because the builders refuse to run without one and CI
@@ -25,15 +28,13 @@ from app.services.generate import (
 from app.services.jobs import INTERRUPTED_AFTER
 
 
-def test_the_longest_call_ends_before_the_sweep_threshold() -> None:
+def test_the_configured_limits_sit_inside_the_sweep_threshold() -> None:
     """
-    Every attempt can wait the full timeout, so the worst case is the timeout
-    times the number of attempts. Raise either constant past the threshold and
-    this fails, rather than the sweep failing live runs.
+    A check on the numbers, not a bound on a call. Raising the timeout or the
+    retry count until their product reaches the threshold fails here first.
     """
     attempts = PROVIDER_MAX_RETRIES + 1
-    worst_case = timedelta(seconds=PROVIDER_TIMEOUT_SECONDS * attempts)
-    assert worst_case < INTERRUPTED_AFTER
+    assert timedelta(seconds=PROVIDER_TIMEOUT_SECONDS * attempts) < INTERRUPTED_AFTER
 
 
 def test_the_call_has_a_limit_at_all() -> None:

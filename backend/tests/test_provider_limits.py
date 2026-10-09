@@ -1,8 +1,6 @@
 """
 The model call's time limits reach the clients actually built.
 
-A background run keeps its job's heartbeat going while it waits on the
-provider, so a call with no timeout would hold a hung job open indefinitely.
 These tests check a limit exists and that both clients carry it.
 
 Building a client makes no network call. A placeholder API key is set for the

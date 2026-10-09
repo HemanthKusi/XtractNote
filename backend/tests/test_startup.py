@@ -1,9 +1,10 @@
 """
-The startup hook: the restart sweep runs, and cannot stop the server starting.
+The sweep: it runs before the server serves, keeps running on a timer, and
+cannot stop the server starting or the timer ticking.
 
-`sweep_interrupted_jobs` takes the sweep as an argument, so these tests pass a
-stand-in. None of them starts the app's real lifecycle, so no database call is
-made — CI has no database to make one against.
+The sweep is replaced with a stand-in throughout, so no database call is made —
+CI has no database to make one against. The timer is shortened to milliseconds
+where a test needs it to tick.
 """
 
 import asyncio
@@ -12,8 +13,10 @@ from datetime import timedelta
 
 import pytest
 
-from app.main import app, sweep_interrupted_jobs
+from app.main import app, sweep_every, sweep_interrupted_jobs
 from app.services.jobs import INTERRUPTED_AFTER, fail_interrupted
+
+TICK = timedelta(milliseconds=10)
 
 
 def test_the_default_sweep_is_the_real_one() -> None:
@@ -52,7 +55,46 @@ def test_a_failing_sweep_does_not_raise_and_is_logged(
 
     with caplog.at_level(logging.WARNING, logger="app.main"):
         sweep_interrupted_jobs(sweep)
-    assert "restart sweep failed" in caplog.text
+    assert "sweep failed" in caplog.text
+
+
+# --- The timer ----------------------------------------------------------------
+
+
+def test_the_timer_keeps_sweeping(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr("app.main.sweep_interrupted_jobs", lambda: calls.append("swept"))
+
+    async def tick_a_few_times() -> None:
+        timer = asyncio.create_task(sweep_every(TICK))
+        await asyncio.sleep(TICK.total_seconds() * 10)
+        timer.cancel()
+
+    asyncio.run(tick_a_few_times())
+    assert len(calls) >= 2
+
+
+def test_the_timer_survives_a_failing_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A sweep that fails on one tick still runs on the next."""
+    attempts: list[str] = []
+
+    def failing(_: timedelta) -> int:
+        attempts.append("tried")
+        raise ConnectionError("database unreachable")
+
+    real = sweep_interrupted_jobs
+    monkeypatch.setattr("app.main.sweep_interrupted_jobs", lambda: real(failing))
+
+    async def tick_a_few_times() -> None:
+        timer = asyncio.create_task(sweep_every(TICK))
+        await asyncio.sleep(TICK.total_seconds() * 10)
+        timer.cancel()
+
+    asyncio.run(tick_a_few_times())
+    assert len(attempts) >= 2
+
+
+# --- The app's own lifespan ---------------------------------------------------
 
 
 def test_starting_the_app_runs_the_sweep_before_serving(
@@ -70,4 +112,23 @@ def test_starting_the_app_runs_the_sweep_before_serving(
             calls.append("serving")
 
     asyncio.run(start())
-    assert calls == ["swept", "serving"]
+    assert calls[:2] == ["swept", "serving"]
+
+
+def test_the_app_sweeps_on_its_timer_and_stops_at_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr("app.main.sweep_interrupted_jobs", lambda: calls.append("swept"))
+    monkeypatch.setattr("app.services.jobs.SWEEP_EVERY", TICK)
+
+    async def serve_then_stop() -> int:
+        async with app.router.lifespan_context(app):
+            await asyncio.sleep(TICK.total_seconds() * 10)
+        stopped_at = len(calls)
+        await asyncio.sleep(TICK.total_seconds() * 10)
+        return stopped_at
+
+    stopped_at = asyncio.run(serve_then_stop())
+    assert stopped_at >= 3, "the startup sweep plus at least two timer sweeps"
+    assert len(calls) == stopped_at, "no sweep after shutdown"

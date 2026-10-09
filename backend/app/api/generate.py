@@ -1,128 +1,220 @@
 """
 backend/app/api/generate.py
 
-Content generation endpoint:
-  - POST /api/generate  -> generates content from a transcript
+Content generation endpoints:
+  - POST /api/generate              -> starts a generation, returns its job id
+  - GET  /api/generate/jobs/{jobId} -> reports that job's state
 
-The route prefix "/api/generate" is added in main.py via include_router,
-so here we declare the path relative to that (an empty "" = the prefix root).
+The route prefix "/api/generate" is added in main.py via include_router.
 
-This is the synchronous MVP: the request blocks until the AI returns, and the
-generated content comes back in the response body. There is no job record or
-status polling yet — that arrives later, when long jobs move to async + a
-generation_jobs table.
+**A generation runs in the background.** The POST checks who is asking and what
+they asked for, reserves a place in the generation pool, creates the job and
+starts the work, then returns at once. The result is saved as a draft row and
+linked to the job; the caller polls the GET to learn when, and reads the row.
 
-The response `content` field carries the content BODY built by the service,
-not a plain string:
-  - prose types (summary, blog, notes, research, social) -> {"markdown": ...}
-  - flashcards -> {"kind": "flashcards", "cards": [...]}
-  - quiz       -> {"kind": "quiz", "questions": [...]}
-
-The body shape is validated in the service layer (generate.py), which owns it
-as a storage contract. This layer stays transport-only and passes it through.
+Both routes require a signed-in user. The user is whoever the access token
+belongs to — nothing in a request body names one.
 """
 
-from typing import Any
+import logging
+from functools import partial
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
-from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, model_validator
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.api.dependencies import CurrentUser, get_current_user
+from app.services import jobs
+from app.services.dispatch import GenerationPool, get_generation_pool
+from app.services.drafts import VideoSource
+from app.services.generate import GenerationError, prepare_request
 from app.services.prompts import ContentType, SocialPlatform
-from app.services.generate import GenerationError, generate_content
+from app.services.worker import GenerationInput, run_job
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+VIDEO_ID_PATTERN = r"^[A-Za-z0-9_-]{11}$"
+THUMBNAIL_PREFIX = "https://i.ytimg.com/"
+BUSY_RETRY_AFTER_SECONDS = 30
 
 
 # ── Request / Response shapes ────────────────────────────────
 class GenerateRequest(BaseModel):
-    # camelCase to match what the frontend sends, same contract style as the
-    # YouTube endpoints. `contentType` is typed as the ContentType literal, so
-    # Pydantic validates against the full seven-type union and rejects anything
-    # else with a 422 before our code — or any paid AI call — runs.
-    #
-    # Note this validates against the type union itself, NOT against
-    # SYSTEM_PROMPTS.keys(): social lives in SOCIAL_PROMPTS by design, so
-    # validating off the dict keys would wrongly reject it.
+    # camelCase to match what the frontend sends. `contentType` is the
+    # ContentType literal, so anything outside the seven types is a 422 before
+    # our code runs.
     fullText: str
     contentType: ContentType
-    # Required only when contentType == "social"; selects which platform prompt
-    # to use. Ignored (and cleared) for every other type.
+    # Required only when contentType == "social". Ignored (and cleared) otherwise.
     platform: SocialPlatform | None = None
+
+    # The video the content comes from, for the draft row. The watch URL is not
+    # among them: it is built from videoId, so no link from a request reaches a
+    # page.
+    videoId: str = Field(pattern=VIDEO_ID_PATTERN)
+    title: str = Field(min_length=1, max_length=300)
+    channel: str = Field(default="", max_length=200)
+    thumbnailUrl: str = Field(max_length=500)
+    durationSeconds: float | None = Field(default=None, ge=0, le=86_400, allow_inf_nan=False)
+
+    @field_validator("thumbnailUrl")
+    @classmethod
+    def check_thumbnail_host(cls, value: str) -> str:
+        """Only YouTube's own image host — the one every thumbnail this backend hands out uses."""
+        if not value.startswith(THUMBNAIL_PREFIX):
+            raise ValueError(f"thumbnailUrl must start with {THUMBNAIL_PREFIX}")
+        return value
 
     @model_validator(mode="after")
     def check_platform(self) -> "GenerateRequest":
         """
-        Enforce the platform rule at the request boundary.
-
-        A social request without a platform is a malformed request, so it
-        deserves a 422 rather than travelling into the service and coming back
-        as a generation error. Validating here also means we fail before any
-        thread dispatch or paid provider call.
+        A social request without a platform is malformed, so it is a 422 here
+        rather than a generation error later. A stray platform on any other type
+        is cleared, so it cannot reach the draft row.
         """
         if self.contentType == "social":
             if self.platform is None:
                 raise ValueError("platform is required when contentType is 'social'")
         else:
-            # Clear a stray platform on non-social requests so the response
-            # echo can't imply it influenced the result.
             self.platform = None
         return self
 
 
-class GenerateResponse(BaseModel):
-    # Echo the request back so the response is self-describing, plus the result.
-    contentType: ContentType
-    # None for every type except social.
-    platform: SocialPlatform | None = None
-    # The content body dict. Left loose on purpose: the three shapes are
-    # already validated in the service layer, and re-declaring them here would
-    # duplicate the contract in two places that must then move together.
-    content: dict[str, Any]
+class StartedResponse(BaseModel):
+    jobId: str
+
+
+class JobStatusResponse(BaseModel):
+    # No error message: it is prose, and can carry a provider's own exception
+    # text. The client maps errorCode to its own copy.
+    jobId: str
+    status: str
+    progress: int | None
+    resultId: str | None
+    errorCode: str | None
+    createdAt: str
+    completedAt: str | None
 
 
 # ── Error mapping ────────────────────────────────────────────
-# Each GenerationError.code (from the service layer) maps to an HTTP status.
-# Input problems are the client's fault (422), a missing key is ours (500),
-# and an upstream provider failure is a bad gateway (502). The code flows
-# through to the frontend as structured detail so the UI picks the right copy.
-#
-# "invalid-structured-output" is a 502, not a 4xx: the request was valid and
-# the model returned unusable JSON, which is an upstream failure. It is also
-# the retryable case — regenerating may well succeed.
-_GENERATE_ERROR_STATUS = {
+# What the request itself can be refused for, before any job exists. Failures
+# during the run — provider errors, unusable model output — are not here: they
+# arrive later, as the job's errorCode.
+_REQUEST_ERROR_STATUS = {
     "empty-transcript": 422,
     "transcript-too-long": 422,
     "unknown-content-type": 422,
-    "provider-misconfigured": 500,
-    "generation-failed": 502,
-    "invalid-structured-output": 502,
 }
 
 
-# ── Generate endpoint ────────────────────────────────────────
-@router.post("", response_model=GenerateResponse)
-async def generate(req: GenerateRequest) -> GenerateResponse:
-    # generate_content() is BLOCKING — the LangChain .invoke() call waits on
-    # the network. Running it directly in an async route would freeze the event
-    # loop; run_in_threadpool runs it on a worker thread so the server stays
-    # responsive (same reason the transcript endpoint uses it).
-    try:
-        content = await run_in_threadpool(
-            generate_content, req.fullText, req.contentType, req.platform
-        )
-    except GenerationError as exc:
-        # Known, typed failure: translate the code into an HTTP status and pass
-        # the code through as structured detail, exactly like the transcript
-        # endpoint, so the frontend client reads detail.code the same way.
-        status = _GENERATE_ERROR_STATUS.get(exc.code, 502)
-        raise HTTPException(
-            status_code=status,
-            detail={"code": exc.code, "message": str(exc)},
-        )
+def _refuse(status: int, code: str, message: str, headers: dict[str, str] | None = None) -> HTTPException:
+    return HTTPException(status_code=status, detail={"code": code, "message": message}, headers=headers)
 
-    return GenerateResponse(
-        contentType=req.contentType,
-        platform=req.platform,
-        content=content,
+
+def _busy() -> HTTPException:
+    return _refuse(
+        503,
+        "generation-busy",
+        "Generation is busy right now. Try again in a moment.",
+        headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)},
     )
+
+
+# ── Start a generation ───────────────────────────────────────
+@router.post("", status_code=202, response_model=StartedResponse)
+def start_generation(
+    req: GenerateRequest,
+    user: CurrentUser = Depends(get_current_user),
+    pool: GenerationPool = Depends(get_generation_pool),
+) -> StartedResponse:
+    """
+    Check the request, then start it in the background and return its job id.
+
+    In this order, so that a refusal at any step leaves nothing behind:
+      1. the request's own checks — a failure is a 422, and no job exists
+      2. a place in the pool — none free is a 503, and no job exists
+      3. the job row — if it cannot be created, the place is given back
+      4. the work starts in that place
+
+    A plain `def`: creating the job is a blocking database call, so FastAPI
+    runs this on a request thread. The generation itself runs on the pool.
+    """
+    try:
+        prepare_request(req.fullText, req.contentType, req.platform)
+    except GenerationError as exc:
+        raise _refuse(_REQUEST_ERROR_STATUS.get(exc.code, 422), exc.code, exc.message)
+
+    slot = pool.reserve()
+    if slot is None:
+        raise _busy()
+
+    try:
+        job_id = jobs.create_job(user.id, req.videoId, req.contentType)
+    except Exception:
+        slot.release()
+        logger.exception("could not create a generation job")
+        raise _refuse(500, "job-not-created", "The generation could not be started. Try again.")
+
+    request = GenerationInput(
+        full_text=req.fullText,
+        content_type=req.contentType,
+        platform=req.platform,
+        video=VideoSource(
+            video_id=req.videoId,
+            url=f"https://www.youtube.com/watch?v={req.videoId}",
+            title=req.title,
+            channel=req.channel,
+            thumbnail_url=req.thumbnailUrl,
+            duration_seconds=req.durationSeconds,
+        ),
+    )
+
+    if not slot.start(partial(run_job, job_id, user.id, request)):
+        # The pool closed between reserving and starting — the server is
+        # stopping. End the job now rather than leave it for the sweep.
+        try:
+            jobs.fail(job_id, user.id, "generation-busy", "The server was stopping.")
+        except Exception:
+            logger.exception("job %s: could not record that it never started", job_id)
+        raise _busy()
+
+    return StartedResponse(jobId=job_id)
+
+
+# ── A job's state ────────────────────────────────────────────
+@router.get("/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job_status(
+    job_id: UUID,
+    user: CurrentUser = Depends(get_current_user),
+) -> JobStatusResponse:
+    """
+    Report one of the caller's jobs.
+
+    `job_id` is typed as a UUID, so anything else is a 422 before a database
+    call is made. A job that does not exist and one that belongs to someone
+    else get the same 404, so a job id's existence is never confirmed to
+    anyone but its owner.
+    """
+    try:
+        row = jobs.get_job(str(job_id), user.id)
+    except jobs.JobError:
+        raise _refuse(404, "job-not-found", "That generation does not exist.")
+    except Exception:
+        logger.exception("could not read job %s", job_id)
+        raise _refuse(503, "job-status-unavailable", "Could not check on the generation. Try again.")
+
+    return JobStatusResponse(
+        jobId=str(row["id"]),
+        status=row["status"],
+        progress=row.get("progress"),
+        resultId=_optional_str(row.get("result_id")),
+        errorCode=row.get("error_code"),
+        createdAt=str(row["created_at"]),
+        completedAt=_optional_str(row.get("completed_at")),
+    )
+
+
+def _optional_str(value: object) -> str | None:
+    return None if value is None else str(value)

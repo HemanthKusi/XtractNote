@@ -1,20 +1,14 @@
 """
-The model call's time limits, and the sweep threshold they are kept inside.
+The model call's time limits reach the clients actually built.
 
-The sweep fails any job still unfinished after `INTERRUPTED_AFTER`, and the
-provider call is what makes a run long. These tests check the limits reach the
-clients actually built, and that the configured numbers sit inside the threshold.
-
-**They do not prove a call ends in time.** The timeout applies to each phase of
-a request, not to an attempt as a whole, and retries add backoff — so a call can
-run longer than timeout × attempts.
+A background run keeps its job's heartbeat going while it waits on the
+provider, so a call with no timeout would hold a hung job open indefinitely.
+These tests check a limit exists and that both clients carry it.
 
 Building a client makes no network call. A placeholder API key is set for the
 duration of each test, because the builders refuse to run without one and CI
 has none.
 """
-
-from datetime import timedelta
 
 import pytest
 
@@ -25,16 +19,6 @@ from app.services.generate import (
     _build_anthropic,
     _build_openai,
 )
-from app.services.jobs import INTERRUPTED_AFTER
-
-
-def test_the_configured_limits_sit_inside_the_sweep_threshold() -> None:
-    """
-    A check on the numbers, not a bound on a call. Raising the timeout or the
-    retry count until their product reaches the threshold fails here first.
-    """
-    attempts = PROVIDER_MAX_RETRIES + 1
-    assert timedelta(seconds=PROVIDER_TIMEOUT_SECONDS * attempts) < INTERRUPTED_AFTER
 
 
 def test_the_call_has_a_limit_at_all() -> None:

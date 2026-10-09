@@ -14,20 +14,27 @@ module against the real database.
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from app.services.jobs import (
     CREATION_STATUS,
+    HEARTBEAT_EVERY,
+    INTERRUPTED_CODE,
+    INTERRUPTED_MESSAGE,
     LEGAL_STATUSES,
     PROGRESS_BY_STATUS,
+    STALE_AFTER,
+    SWEEP_EVERY,
     TERMINAL_STATUSES,
     JobError,
     _utc_now_iso,
     advance_target_error,
     failure_code_error,
+    interrupted_cutoff,
+    interrupted_patch,
     is_legal_status,
     patch_for_status,
     progress_for,
@@ -313,3 +320,61 @@ def test_completed_at_is_parseable_utc() -> None:
     parsed = datetime.fromisoformat(_utc_now_iso())
     assert parsed.tzinfo is not None
     assert parsed.utcoffset().total_seconds() == 0
+
+
+# --- the restart sweep --------------------------------------------------------
+
+NOW = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)
+
+
+def test_the_cutoff_is_the_threshold_before_now() -> None:
+    cutoff = datetime.fromisoformat(interrupted_cutoff(NOW, timedelta(minutes=15)))
+    assert cutoff == datetime(2026, 10, 8, 11, 45, tzinfo=timezone.utc)
+
+
+def test_the_cutoff_keeps_its_timezone() -> None:
+    """A naive timestamp would be read as local time by whatever compares it."""
+    cutoff = datetime.fromisoformat(interrupted_cutoff(NOW, timedelta(minutes=15)))
+    assert cutoff.utcoffset() == timedelta(0)
+
+
+def test_a_swept_job_is_failed_with_the_interrupted_reason() -> None:
+    patch = interrupted_patch(NOW)
+    assert patch["status"] == "failed"
+    assert patch["error_code"] == INTERRUPTED_CODE == "interrupted"
+    assert patch["error_message"] == INTERRUPTED_MESSAGE
+    assert datetime.fromisoformat(patch["completed_at"]) == NOW
+
+
+def test_a_swept_job_ends_in_the_same_shape_as_a_failed_one() -> None:
+    """
+    `fail` writes status, error_code, error_message and completed_at. The sweep
+    writes the same columns, so a reader cannot tell the two endings apart by
+    which fields are present.
+    """
+    assert set(interrupted_patch(NOW)) == {
+        *patch_for_status("failed"),
+        "error_code",
+        "error_message",
+        "completed_at",
+    }
+
+
+def test_the_interrupted_reason_is_a_usable_failure_code() -> None:
+    assert failure_code_error(INTERRUPTED_CODE) is None
+
+
+# --- the heartbeat's timing ---------------------------------------------------
+
+
+def test_a_live_run_can_miss_several_beats_before_it_is_swept() -> None:
+    """
+    One slow or dropped beat must not end a live run, so the sweep's threshold
+    spans several beats. Shorten it to one or two and this fails.
+    """
+    assert STALE_AFTER >= 3 * HEARTBEAT_EVERY
+
+
+def test_the_sweep_runs_more_often_than_a_job_goes_stale() -> None:
+    """An interval longer than the threshold would dominate how long a dead job waits."""
+    assert timedelta(0) < SWEEP_EVERY <= STALE_AFTER

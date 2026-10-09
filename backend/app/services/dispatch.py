@@ -115,27 +115,29 @@ class GenerationPool:
                     self._running.discard(threading.current_thread())
                 self._free_slot()
 
+        # Registered and started under one lock, so `close` never sees a thread
+        # it cannot join: joining one that has not started raises.
         with self._lock:
             if self._closed:
-                closed = True
+                closed, started = True, False
             else:
                 closed = False
                 thread = threading.Thread(target=run, name="generation", daemon=True)
-                self._running.add(thread)
+                try:
+                    thread.start()
+                    self._running.add(thread)
+                    started = True
+                except RuntimeError:
+                    # The interpreter could not start another thread.
+                    started = False
 
         if closed:
             # The pool closed between the reserve and the start.
             self._free_slot()
             return False
-
-        try:
-            thread.start()
-        except RuntimeError:
-            # The interpreter could not start another thread.
-            with self._lock:
-                self._running.discard(thread)
+        if not started:
             self._free_slot()
-            logger.exception("could not start a generation thread")
+            logger.error("could not start a generation thread")
             return False
         return True
 

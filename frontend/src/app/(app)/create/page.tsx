@@ -115,24 +115,37 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
     "We've hit today's YouTube search limit. Please try again later, or paste a video link instead.",
   "search-failed":
     "We couldn't run that search just now. Please try again in a moment.",
-  // From generateContent
+  // From generation — refused when the job is started
   "empty-transcript":
     "There's no transcript text to work from. Try fetching the video again.",
   "transcript-too-long":
     "This video's transcript is too long to process in one pass. Try a shorter video for now.",
   "unknown-content-type":
     "That content type isn't available yet. Pick another format.",
+  "auth-unavailable":
+    "We couldn't check your sign-in just now. Please try again in a moment.",
+  "generation-busy":
+    "We're generating a lot right now. Please try again in a moment.",
+  "job-not-created": "We couldn't start the generation. Please try again.",
+  // From generation — recorded on a job that failed
   "provider-misconfigured":
     "The AI service isn't configured correctly on our end. Please try again shortly.",
   "generation-failed":
     "We couldn't generate the content this time. Please try again.",
-  // The model returned unusable structured data. This is the retryable case —
-  // a fresh attempt usually succeeds — so the copy says exactly that.
+  // The model returned unusable structured data. A fresh attempt often
+  // succeeds, so the copy says exactly that.
   "invalid-structured-output":
     "The AI returned an unexpected format this time. Please try generating again.",
+  "draft-not-saved":
+    "The content was generated but couldn't be saved. Please try again.",
+  unexpected: "Something went wrong while generating. Please try again.",
+  interrupted:
+    "The generation was interrupted before it finished. Please try again.",
+  // From generation — while checking on a job
+  "job-not-found": "We couldn't find this generation. Please try again.",
+  // Shared by generation and saving: either can be refused for a lapsed session.
+  "not-authenticated": "Please sign in again — your session may have expired.",
   // From saveGeneratedContent
-  "not-authenticated":
-    "Please sign in again to save this — your session may have expired.",
   "insert-failed":
     "We couldn't save this just now. Please try again.",
   // Note: "network" is already defined above (shared with metadata) — not repeated.

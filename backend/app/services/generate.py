@@ -68,10 +68,6 @@ MAX_OUTPUT_TOKENS = 8_000
 # The timeout applies to each phase of a request — connecting, sending, each
 # wait for data — not to an attempt as a whole, and retries add backoff. So it
 # makes a hung call end; it does not cap how long a call can take.
-#
-# It matters more in a background run: the worker's heartbeat keeps the job
-# alive for as long as the call is waiting, so without a timeout a hung call
-# would hold its job open, and the sweep would never fail it.
 PROVIDER_TIMEOUT_SECONDS = 300
 PROVIDER_MAX_RETRIES = 1
 

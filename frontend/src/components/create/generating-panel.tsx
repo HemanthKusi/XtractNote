@@ -95,7 +95,7 @@ const THUMB = { w: 280, h: 158 } as const;
 interface GeneratingPanelProps {
   meta: VideoMeta;
   type: ContentType;
-  /** Abandon the run. The panel asks first. */
+  /** Stop waiting for the run, which carries on in the background. The panel asks first. */
   onCancel: () => void;
 }
 
@@ -237,24 +237,24 @@ export function GeneratingPanel({ meta, type, onCancel }: GeneratingPanelProps) 
 
       <div className="mt-6 flex items-center justify-center">
         <Button variant="danger" onClick={() => setConfirmCancel(true)}>
-          Cancel generation
+          Stop waiting
         </Button>
       </div>
 
-      {/* Not `persistent`: dismissing this means "keep generating", which is
-          the safe outcome, so backdrop and Escape should both mean no. Only
-          the destructive choice gets weight, and it sits second so the
-          harmless option is what the eye and the keyboard reach first. */}
+      {/* Not `persistent`: dismissing this means "keep waiting", which is the
+          safe outcome, so backdrop and Escape should both mean no. Leaving
+          sits second so staying is what the eye and the keyboard reach
+          first. */}
       <Modal
         open={confirmCancel}
         onClose={() => setConfirmCancel(false)}
-        title="Stop generating?"
-        description="This run will be discarded, and the credits it used are not refunded. The video stays in your drafts, so you can start again whenever you like."
+        title="Stop waiting?"
+        description="It keeps going in the background — it can't be stopped yet, and its credits are spent either way. If it finishes, you'll find it in your drafts."
         size="lg"
         footer={
           <>
             <Button variant="primary" onClick={() => setConfirmCancel(false)}>
-              Keep generating
+              Keep waiting
             </Button>
             <Button
               variant="danger"
@@ -263,7 +263,7 @@ export function GeneratingPanel({ meta, type, onCancel }: GeneratingPanelProps) 
                 onCancel();
               }}
             >
-              Stop and discard
+              Stop waiting
             </Button>
           </>
         }

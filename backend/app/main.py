@@ -15,9 +15,11 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.config import settings
 from app.api import youtube, generate, content, folders
 from app.services import jobs
@@ -85,6 +87,24 @@ app = FastAPI(
     redoc_url="/redoc",    # Alternative docs at http://localhost:8000/redoc
     lifespan=lifespan,
 )
+
+
+# ── Malformed requests ──
+@app.exception_handler(RequestValidationError)
+async def malformed_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """
+    Report where a request was malformed, without echoing what it sent.
+
+    FastAPI's own handler copies each rejected value into the response. That
+    reflects user input back, and a value JSON cannot represent — `Infinity`,
+    `NaN` — made the error response itself fail, turning a 422 into a 500.
+    """
+    errors = [
+        {"loc": list(error["loc"]), "msg": error["msg"], "type": error["type"]}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
 
 # ── Layer 1: CORS Middleware ──
 # Only requests from the frontend URL are allowed.

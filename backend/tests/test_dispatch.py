@@ -22,7 +22,7 @@ WAIT = 2.0  # seconds; a ceiling on how long any test waits, never a sleep
 def pool() -> Iterator[GenerationPool]:
     made = GenerationPool(2)
     yield made
-    made.close()
+    made.close(grace_seconds=WAIT)
 
 
 def hold(release: threading.Event, started: threading.Semaphore | None = None):
@@ -126,10 +126,13 @@ def test_a_closed_pool_admits_nothing() -> None:
 def test_a_slot_reserved_before_close_does_not_run_and_is_freed() -> None:
     racing = GenerationPool(1)
     slot = racing.reserve()
-    racing.close()
+    racing.close(grace_seconds=0)
     ran: list[str] = []
     assert slot.start(lambda: ran.append("ran")) is False
     assert ran == []
+    # A closed pool's reserve() returns None regardless, so it cannot show the
+    # slot came back. The semaphore can: its one permit must be free again.
+    assert racing._slots.acquire(blocking=False), "the slot was not freed"
 
 
 def test_close_does_not_interrupt_running_work() -> None:
@@ -143,9 +146,49 @@ def test_close_does_not_interrupt_running_work() -> None:
 
     running.reserve().start(work)
     assert started.acquire(timeout=WAIT)
-    running.close()
+    running.close(grace_seconds=0)
     release.set()
     assert finished.wait(WAIT), "work in progress at close still completed"
+
+
+def test_close_waits_for_running_work_within_the_grace_period() -> None:
+    draining = GenerationPool(1)
+    finished = threading.Event()
+
+    def work() -> None:
+        time.sleep(0.05)
+        finished.set()
+
+    draining.reserve().start(work)
+    assert draining.close(grace_seconds=WAIT) == 0
+    assert finished.is_set(), "close returned before work it could wait for had finished"
+
+
+def test_close_stops_waiting_once_the_grace_period_is_over() -> None:
+    """Shutdown is bounded: a generation still running does not hold it up."""
+    stuck = GenerationPool(1)
+    release = threading.Event()
+    stuck.reserve().start(hold(release))
+    began = time.monotonic()
+    assert stuck.close(grace_seconds=0.05) == 1
+    assert time.monotonic() - began < 1.0
+    release.set()
+
+
+def test_generation_threads_do_not_hold_up_process_exit() -> None:
+    """Daemon threads: the interpreter does not wait for them when it exits."""
+    daemon: list[bool] = []
+    done = threading.Event()
+    pool = GenerationPool(1)
+
+    def work() -> None:
+        daemon.append(threading.current_thread().daemon)
+        done.set()
+
+    pool.reserve().start(work)
+    assert done.wait(WAIT)
+    assert daemon == [True]
+    pool.close(grace_seconds=WAIT)
 
 
 # --- Configuration ------------------------------------------------------------

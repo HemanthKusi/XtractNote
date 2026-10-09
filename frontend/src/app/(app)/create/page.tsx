@@ -56,7 +56,10 @@ import {
 } from "@/lib/generation/poll";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
-import { GeneratingPanel } from "@/components/create/generating-panel";
+import {
+  GeneratingPanel,
+  type GenerationRunState,
+} from "@/components/create/generating-panel";
 import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
 import { SearchResults } from "@/components/create/search-results";
 import { DraftsBand } from "@/components/create/drafts-band";
@@ -220,10 +223,9 @@ type Status =
       phase: "generating";
       meta: VideoMeta;
       contentType: GeneratableContentType;
-      // Whether the backend has accepted the job. Before it has — while the
-      // transcript is fetched — nothing is running and nothing is spent, so
-      // stopping means something different and the panel says so.
-      jobStarted: boolean;
+      // How far the start has got. Stopping means something different at
+      // each step, and the panel says which.
+      run: GenerationRunState;
     }
   | {
       phase: "generate-error";
@@ -291,6 +293,10 @@ export default function CreatePage() {
    * guard is trying to detect.
    */
   const runRef = useRef(0);
+
+  // The request key for the start in progress, and which request it is for.
+  // See handleGenerate. A ref, like runRef: read across awaits.
+  const startKeyRef = useRef<{ signature: string; key: string } | null>(null);
   const beginRun = () => ++runRef.current;
   const isStale = (token: number) => runRef.current !== token;
 
@@ -538,7 +544,7 @@ export default function CreatePage() {
     // Taken BEFORE the first await. Cancelling, or starting anything else,
     // bumps the counter and every check below then drops this run's results.
     const run = beginRun();
-    setStatus({ phase: "generating", meta, contentType: selectedType, jobStarted: false });
+    setStatus({ phase: "generating", meta, contentType: selectedType, run: "not-sent" });
 
     // ── The transcript is fetched HERE now ──
     //
@@ -572,14 +578,39 @@ export default function CreatePage() {
       toast.info(message);
     };
 
-    const started = await startGeneration(transcript.fullText, selectedType, platform, meta);
+    // ── The request key ──
+    //
+    // The same video, format and platform reuse the key the last start used,
+    // until this page has seen a definite answer for it. So when a start whose
+    // reply was lost, or one the user stopped waiting for, is started again,
+    // the backend answers with the job it already made, if it made one, rather
+    // than creating — and paying for — a second.
+    const signature = `${meta.videoId}|${selectedType}|${platform ?? ""}`;
+    const kept = startKeyRef.current;
+    const requestId = kept && kept.signature === signature ? kept.key : crypto.randomUUID();
+    startKeyRef.current = { signature, key: requestId };
+    const settle = () => {
+      if (startKeyRef.current?.key === requestId) startKeyRef.current = null;
+    };
+
+    // From here the backend may accept the job even if this page never hears.
+    setStatus({ phase: "generating", meta, contentType: selectedType, run: "sent" });
+    const started = await startGeneration(
+      transcript.fullText,
+      selectedType,
+      platform,
+      meta,
+      requestId,
+    );
     if (isStale(run)) return;
     if (!started.ok) {
+      // No reply at all leaves the outcome unknown, so the key is kept for a
+      // retry. Any answer from the server is definite, and frees it.
+      if (started.reason !== "network") settle();
       fail(started.reason);
       return;
     }
-    // From here a run exists on the server, whatever this page does next.
-    setStatus({ phase: "generating", meta, contentType: selectedType, jobStarted: true });
+    setStatus({ phase: "generating", meta, contentType: selectedType, run: "accepted" });
 
     // ── Watch the job until it finishes, fails, or the page stops waiting ──
     //
@@ -600,15 +631,19 @@ export default function CreatePage() {
         continue;
       }
       if (decision.kind === "failed") {
+        settle();
         fail(decision.reason);
         return;
       }
       if (decision.kind === "stopped-waiting") {
+        // The run's outcome is still unknown: the key stays, so starting the
+        // same thing again picks this run back up.
         notice(NOTICES.stoppedWaiting);
         return;
       }
 
       // Completed: show the draft it wrote.
+      settle();
       const draft = await fetchContentById(decision.resultId);
       if (isStale(run)) return;
       if (!draft.ok) {
@@ -842,7 +877,7 @@ export default function CreatePage() {
         <GeneratingPanel
           meta={status.meta}
           type={status.contentType}
-          backgroundRun={status.jobStarted}
+          run={status.run}
           onCancel={handleCancelGeneration}
         />
       )}

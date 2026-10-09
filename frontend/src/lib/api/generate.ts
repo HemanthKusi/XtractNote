@@ -29,6 +29,15 @@ import type { VideoMeta } from "@/lib/youtube/types";
 // available in browser code; falls back to localhost in dev.
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// How long either request may take before it is given up as a network
+// failure. Without it a stalled connection would hold the caller inside the
+// await indefinitely, past any limit the poller sets on waiting.
+const REQUEST_TIMEOUT_MS = 15_000;
+
+// Statuses a proxy or gateway can return without our error body, meaning
+// "not now" rather than "no": ask again.
+const RETRYABLE_STATUSES = new Set([408, 429]);
+
 export type StartGenerationResult =
   | { ok: true; jobId: string }
   | { ok: false; reason: GenerateFailReason };
@@ -110,6 +119,7 @@ export async function startGeneration(
         thumbnailUrl: meta.thumbnailUrl,
         ...(meta.durationSeconds != null ? { durationSeconds: meta.durationSeconds } : {}),
       }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
 
     if (response.ok) {
@@ -129,7 +139,8 @@ export async function startGeneration(
     }
     return { ok: false, reason: response.status === 401 ? "not-authenticated" : "unknown" };
   } catch {
-    // No response at all: backend down, CORS, DNS, no internet.
+    // No response at all, or none within the time limit: backend down, CORS,
+    // DNS, no internet, or a stalled connection.
     return { ok: false, reason: "network" };
   }
 }
@@ -173,7 +184,10 @@ export async function fetchJob(jobId: string): Promise<FetchJobResult> {
 
     const response = await fetch(
       `${API_BASE_URL}/api/generate/jobs/${encodeURIComponent(jobId)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
     );
 
     if (response.ok) {
@@ -196,7 +210,7 @@ export async function fetchJob(jobId: string): Promise<FetchJobResult> {
         return {
           ok: false,
           reason: response.status === 401 ? "not-authenticated" : "unknown",
-          transient: response.status >= 500,
+          transient: response.status >= 500 || RETRYABLE_STATUSES.has(response.status),
         };
     }
   } catch {

@@ -33,7 +33,9 @@ VALID = {
     "channel": "Ocean Notes",
     "thumbnailUrl": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
     "durationSeconds": 754,
+    "requestId": "9f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f",
 }
+KEY = VALID["requestId"]
 
 
 class FakeSlot:
@@ -65,18 +67,28 @@ class FakeJobs:
     """Records calls to the job functions the routes use."""
 
     def __init__(self) -> None:
-        self.created: list[tuple[str, str, str]] = []
+        self.created: list[tuple[str, str, str, str]] = []
         self.failed: list[tuple[str, str, str, str]] = []
         self.read: list[tuple[str, str]] = []
+        self.looked_up: list[tuple[str, str]] = []
         self.create_raises: Exception | None = None
         self.get_result: Any = None
         self.get_raises: Exception | None = None
+        # What find_job_for_request answers, in order: one entry per call.
+        self.existing: list[Any] = []
+        self.find_raises: Exception | None = None
 
-    def create_job(self, user_id: str, video_id: str, content_type: str) -> str:
-        self.created.append((user_id, video_id, content_type))
+    def create_job(self, user_id: str, video_id: str, content_type: str, request_id: str) -> str:
+        self.created.append((user_id, video_id, content_type, request_id))
         if self.create_raises:
             raise self.create_raises
         return JOB
+
+    def find_job_for_request(self, user_id: str, request_id: str) -> Any:
+        self.looked_up.append((user_id, request_id))
+        if self.find_raises:
+            raise self.find_raises
+        return self.existing.pop(0) if self.existing else None
 
     def fail(self, job_id: str, user_id: str, code: str, message: str) -> dict:
         self.failed.append((job_id, user_id, code, message))
@@ -92,7 +104,7 @@ class FakeJobs:
 @pytest.fixture
 def fake_jobs(monkeypatch: pytest.MonkeyPatch) -> FakeJobs:
     fake = FakeJobs()
-    for name in ("create_job", "fail", "get_job"):
+    for name in ("create_job", "find_job_for_request", "fail", "get_job"):
         monkeypatch.setattr(jobs, name, getattr(fake, name))
     return fake
 
@@ -132,7 +144,7 @@ def test_a_valid_request_is_accepted_with_its_job_id(client, pool, fake_jobs) ->
     response = post(client)
     assert response.status_code == 202
     assert response.json() == {"jobId": JOB}
-    assert fake_jobs.created == [(USER, "dQw4w9WgXcQ", "summary")]
+    assert fake_jobs.created == [(USER, "dQw4w9WgXcQ", "summary", KEY)]
 
 
 def test_the_job_runs_for_the_signed_in_user(client, pool) -> None:
@@ -230,6 +242,78 @@ def test_a_malformed_request_does_not_echo_what_it_sent(client) -> None:
     assert response.status_code == 422
     assert "<script>" not in response.text
     assert all(set(error) == {"loc", "msg", "type"} for error in response.json()["detail"])
+
+
+# --- The request key ----------------------------------------------------------
+
+EARLIER = {"id": "77777777-0000-0000-0000-000000000007", "video_id": "dQw4w9WgXcQ",
+           "content_type": "summary", "status": "drafting"}
+
+
+@pytest.mark.parametrize("key", [..., "", "not-a-uuid", "1' OR '1'='1", "x" * 500])
+def test_a_missing_or_malformed_key_is_422_before_any_lookup(client, pool, fake_jobs, key) -> None:
+    assert post(client, requestId=key).status_code == 422
+    assert fake_jobs.looked_up == [] and pool.reserved == 0 and fake_jobs.created == []
+
+
+def test_the_key_is_looked_up_for_this_user_only(client, fake_jobs) -> None:
+    post(client)
+    assert fake_jobs.looked_up == [(USER, KEY)]
+
+
+def test_a_repeated_start_returns_the_job_it_already_made(client, pool, fake_jobs) -> None:
+    """The point of the key: no second job, no second slot, no second spend."""
+    fake_jobs.existing = [EARLIER]
+    response = post(client)
+    assert response.status_code == 202
+    assert response.json() == {"jobId": EARLIER["id"]}
+    assert pool.reserved == 0 and fake_jobs.created == [] and pool.slot.work is None
+
+
+def test_a_repeat_is_answered_even_when_the_pool_is_full(client, pool, fake_jobs) -> None:
+    """The job already exists, so a busy pool is no reason to refuse the answer."""
+    pool.free = False
+    fake_jobs.existing = [EARLIER]
+    assert post(client).json() == {"jobId": EARLIER["id"]}
+
+
+@pytest.mark.parametrize("changes", [{"videoId": "aircAruvnKk"}, {"contentType": "blog"}])
+def test_a_key_reused_for_a_different_request_is_409(client, pool, fake_jobs, changes) -> None:
+    """Never answered with the earlier job: that would hand back an unrelated result."""
+    fake_jobs.existing = [EARLIER]
+    response = post(client, **changes)
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "request-key-reused"
+    assert EARLIER["id"] not in response.text
+    assert pool.reserved == 0 and fake_jobs.created == []
+
+
+def test_a_lost_race_gives_its_slot_back_and_returns_the_winner(client, pool, fake_jobs) -> None:
+    """Two copies of one request: the database refuses the second insert."""
+    fake_jobs.existing = [None, EARLIER]
+    fake_jobs.create_raises = jobs.JobError("duplicate-request", "exists")
+    response = post(client)
+    assert response.status_code == 202
+    assert response.json() == {"jobId": EARLIER["id"]}
+    assert pool.slot.released is True and pool.slot.work is None
+
+
+def test_a_lost_race_whose_winner_cannot_be_found_is_500(client, pool, fake_jobs) -> None:
+    fake_jobs.existing = [None, None]
+    fake_jobs.create_raises = jobs.JobError("duplicate-request", "exists")
+    response = post(client)
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "job-not-created"
+    assert pool.slot.released is True
+
+
+def test_a_failed_lookup_starts_nothing(client, pool, fake_jobs) -> None:
+    """Refused as not started, so the client may retry — with the same key, safely."""
+    fake_jobs.find_raises = RuntimeError("database down")
+    response = post(client)
+    assert response.status_code == 500
+    assert response.json()["detail"]["code"] == "job-not-created"
+    assert pool.reserved == 0 and fake_jobs.created == []
 
 
 # --- Busy, and failures after admission ---------------------------------------

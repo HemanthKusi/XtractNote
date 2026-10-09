@@ -60,8 +60,8 @@ class Recorder:
             raise self.raises[name]
 
     def steps(self) -> Steps:
-        def advance(job_id: str, user_id: str, status: str) -> None:
-            self._call("advance", job_id, user_id, status)
+        def claim(job_id: str, user_id: str) -> None:
+            self._call("claim", job_id, user_id)
 
         def generate(full_text: str, content_type: Any, platform: Any) -> dict[str, Any]:
             self._call("generate", full_text, content_type, platform)
@@ -78,7 +78,7 @@ class Recorder:
             self._call("fail", job_id, user_id, code, message)
 
         return Steps(
-            advance=advance,
+            claim=claim,
             generate=generate,
             insert_draft=insert_draft,
             complete=complete,
@@ -112,7 +112,7 @@ def test_default_steps_are_the_real_functions() -> None:
     from app.services.generate import generate_content
 
     steps = Steps()
-    assert steps.advance is jobs.advance
+    assert steps.claim is jobs.claim
     assert steps.generate is generate_content
     assert steps.insert_draft is drafts.insert_draft
     assert steps.complete is jobs.complete
@@ -122,15 +122,15 @@ def test_default_steps_are_the_real_functions() -> None:
 # --- The path that works ------------------------------------------------------
 
 
-def test_a_run_goes_drafting_then_generates_then_saves_then_completes() -> None:
+def test_a_run_claims_then_generates_then_saves_then_completes() -> None:
     outcome, recorder = run()
     assert outcome == "completed"
-    assert recorder.names == ["advance", "generate", "insert_draft", "complete"]
+    assert recorder.names == ["claim", "generate", "insert_draft", "complete"]
 
 
-def test_the_job_moves_to_drafting_before_anything_is_spent() -> None:
+def test_the_job_is_claimed_before_anything_is_spent() -> None:
     _, recorder = run()
-    assert recorder.args("advance") == (JOB, USER, "drafting")
+    assert recorder.args("claim") == (JOB, USER)
 
 
 def test_generation_receives_the_request_unchanged() -> None:
@@ -154,17 +154,17 @@ def test_the_job_is_completed_with_the_draft_it_produced() -> None:
 
 def test_every_job_write_uses_the_same_owner() -> None:
     _, recorder = run()
-    for name in ("advance", "complete"):
+    for name in ("claim", "complete"):
         assert recorder.args(name)[1] == USER
 
 
-# --- A job that cannot start --------------------------------------------------
+# --- A job that cannot be claimed ---------------------------------------------
 
 
-def test_a_job_that_cannot_start_spends_nothing_and_is_left_alone() -> None:
-    outcome, recorder = run({"advance": RuntimeError("job-not-updated")})
+def test_a_job_that_cannot_be_claimed_spends_nothing_and_is_left_alone() -> None:
+    outcome, recorder = run({"claim": RuntimeError("job-not-claimed")})
     assert outcome == "abandoned"
-    assert recorder.names == ["advance"]
+    assert recorder.names == ["claim"]
 
 
 # --- Failures after the job has started ---------------------------------------
@@ -174,7 +174,7 @@ def test_a_generation_error_is_recorded_with_its_own_code() -> None:
     error = GenerationError("transcript-too-long", "Too long.")
     outcome, recorder = run({"generate": error})
     assert outcome == "failed"
-    assert recorder.names == ["advance", "generate", "fail"]
+    assert recorder.names == ["claim", "generate", "fail"]
     assert recorder.args("fail") == (JOB, USER, "transcript-too-long", "Too long.")
 
 
@@ -193,14 +193,14 @@ def test_an_unexpected_failure_does_not_store_the_exception_text() -> None:
 def test_a_draft_that_cannot_be_saved_is_recorded_and_nothing_is_completed() -> None:
     outcome, recorder = run({"insert_draft": RuntimeError("insert returned nothing")})
     assert outcome == "failed"
-    assert recorder.names == ["advance", "generate", "insert_draft", "fail"]
+    assert recorder.names == ["claim", "generate", "insert_draft", "fail"]
     assert recorder.args("fail")[2] == "draft-not-saved"
 
 
 def test_a_draft_that_cannot_be_linked_is_kept_and_the_job_fails() -> None:
     outcome, recorder = run({"complete": RuntimeError("network")})
     assert outcome == "failed"
-    assert recorder.names == ["advance", "generate", "insert_draft", "complete", "fail"]
+    assert recorder.names == ["claim", "generate", "insert_draft", "complete", "fail"]
     assert recorder.args("fail")[2] == UNEXPECTED_CODE
 
 

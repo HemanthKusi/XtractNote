@@ -64,7 +64,8 @@ async def sweep_every(interval: timedelta) -> None:
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """
     Sweep before the first request is served, then keep sweeping until shutdown.
-    At shutdown, the generation pool stops admitting work.
+    At shutdown, the generation pool stops admitting work and is given a
+    bounded grace period for the generations still running.
     """
     await run_in_threadpool(sweep_interrupted_jobs)
     # Held in a local so the task is not garbage-collected while it runs.
@@ -75,7 +76,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         timer.cancel()
         with suppress(asyncio.CancelledError):
             await timer
-        get_generation_pool().close()
+        # Waits up to the grace period, so it runs off the event loop.
+        await run_in_threadpool(get_generation_pool().close)
 
 
 # ── Create the FastAPI app ──

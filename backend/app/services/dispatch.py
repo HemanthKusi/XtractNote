@@ -1,10 +1,10 @@
 """
 XtractNote — Where background generations run
 
-A dedicated pool of worker threads, separate from the ones that handle
-requests, so a generation that takes minutes never holds a thread a request
-needs. Its size caps how many generations this process runs — and pays for —
-at once.
+A fixed number of slots, each running one generation on a thread of its own,
+separate from the threads that handle requests — so a generation that takes
+minutes never holds a thread a request needs. The slot count caps how many
+generations this process runs, and pays for, at once.
 
 **It refuses rather than queues.** `reserve` takes a free slot or returns None
 at once. A queue here would live in memory, be lost on a restart, and could
@@ -14,16 +14,25 @@ When a job's input becomes durable, waiting belongs in the job table instead.
 **A slot is used exactly once.** The endpoint reserves one, creates the job,
 then either starts the work in it or releases it unused. A started slot is
 freed when the work returns or raises.
+
+**Shutdown is bounded.** `close` stops admitting work and waits a grace period
+for running generations, then returns. The threads are daemon threads, so the
+process does not wait on a generation past that point; one cut off there stops
+beating, and the sweep fails its job. A standard thread pool cannot do this:
+the interpreter waits for its threads at exit, for as long as they take.
 """
 
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor
+import time
 from typing import Callable
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+#: How long shutdown waits for running generations before letting the process go.
+SHUTDOWN_GRACE_SECONDS = 30.0
 
 
 class Slot:
@@ -35,8 +44,8 @@ class Slot:
 
     def start(self, work: Callable[[], object]) -> bool:
         """
-        Run `work` on the pool. Returns False if the pool has closed since the
-        slot was reserved; the slot is then released and nothing runs.
+        Run `work` on a thread of its own. Returns False if the pool has closed
+        since the slot was reserved; the slot is then released and nothing runs.
         """
         self._claim_use()
         return self._pool._submit(work)
@@ -53,20 +62,18 @@ class Slot:
 
 
 class GenerationPool:
-    """A fixed number of worker threads, and the slots that admit work to them."""
+    """A fixed number of slots, and the threads that run the work started in them."""
 
     def __init__(self, workers: int) -> None:
         if workers < 1:
             raise ValueError("a generation pool needs at least one worker")
         self._slots = threading.BoundedSemaphore(workers)
-        self._executor = ThreadPoolExecutor(
-            max_workers=workers, thread_name_prefix="generation"
-        )
         self._closed = False
         self._lock = threading.Lock()
+        self._running: set[threading.Thread] = set()
 
     def reserve(self) -> Slot | None:
-        """A free slot, or None at once if every worker is busy or the pool is closed."""
+        """A free slot, or None at once if every slot is busy or the pool is closed."""
         with self._lock:
             if self._closed:
                 return None
@@ -74,11 +81,28 @@ class GenerationPool:
             return None
         return Slot(self)
 
-    def close(self) -> None:
-        """Stop admitting work. Work already running is not interrupted, and this does not wait for it."""
+    def close(self, grace_seconds: float = SHUTDOWN_GRACE_SECONDS) -> int:
+        """
+        Stop admitting work, wait up to `grace_seconds` for running work, and
+        return how many generations were still running when it stopped waiting.
+        Work still running is not interrupted.
+        """
         with self._lock:
             self._closed = True
-        self._executor.shutdown(wait=False)
+            running = list(self._running)
+
+        deadline = time.monotonic() + grace_seconds
+        for thread in running:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+
+        with self._lock:
+            still_running = sum(1 for thread in self._running if thread.is_alive())
+        if still_running:
+            logger.warning(
+                "shutting down with %d generation(s) still running; the sweep will fail them",
+                still_running,
+            )
+        return still_running
 
     def _submit(self, work: Callable[[], object]) -> bool:
         def run() -> None:
@@ -87,13 +111,31 @@ class GenerationPool:
             except Exception:
                 logger.exception("generation work raised")
             finally:
+                with self._lock:
+                    self._running.discard(threading.current_thread())
                 self._free_slot()
 
-        try:
-            self._executor.submit(run)
-        except RuntimeError:
-            # The executor shut down between the reserve and the start.
+        with self._lock:
+            if self._closed:
+                closed = True
+            else:
+                closed = False
+                thread = threading.Thread(target=run, name="generation", daemon=True)
+                self._running.add(thread)
+
+        if closed:
+            # The pool closed between the reserve and the start.
             self._free_slot()
+            return False
+
+        try:
+            thread.start()
+        except RuntimeError:
+            # The interpreter could not start another thread.
+            with self._lock:
+                self._running.discard(thread)
+            self._free_slot()
+            logger.exception("could not start a generation thread")
             return False
         return True
 

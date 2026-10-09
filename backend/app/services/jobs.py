@@ -182,21 +182,24 @@ def failure_code_error(code: str) -> str | None:
     return None
 
 
-#: How old an unfinished job must be before the sweep fails it. It should exceed
-#: the longest a run takes, or a live run is swept.
-INTERRUPTED_AFTER = timedelta(minutes=15)
+#: How often a live run refreshes its job's heartbeat.
+HEARTBEAT_EVERY = timedelta(seconds=30)
+
+#: How long an unfinished job's heartbeat may be silent before the sweep fails
+#: it. Several beats long, so one slow or dropped beat does not end a live run.
+STALE_AFTER = timedelta(minutes=3)
 
 #: How often the sweep runs while the server is up, after the one at startup.
-SWEEP_EVERY = timedelta(minutes=5)
+SWEEP_EVERY = timedelta(minutes=1)
 
 #: The failure recorded on a job the sweep finds unfinished.
 INTERRUPTED_CODE = "interrupted"
 INTERRUPTED_MESSAGE = "This generation was interrupted before it finished."
 
 
-def interrupted_cutoff(now: datetime, older_than: timedelta) -> str:
-    """The ISO timestamp a job must have been created before to be swept."""
-    return (now - older_than).isoformat()
+def interrupted_cutoff(now: datetime, silent_for: timedelta) -> str:
+    """The ISO timestamp a job's last heartbeat must be older than to be swept."""
+    return (now - silent_for).isoformat()
 
 
 def interrupted_patch(now: datetime) -> dict[str, Any]:
@@ -215,7 +218,7 @@ def interrupted_patch(now: datetime) -> dict[str, Any]:
 
 def _utc_now_iso() -> str:
     """
-    An explicit UTC timestamp for `completed_at`.
+    An explicit UTC timestamp, for `completed_at` and `heartbeat_at`.
 
     Sent as a value rather than as SQL: PostgREST forwards a patch field as a
     literal, so a string like "now()" would reach Postgres as text to parse
@@ -260,13 +263,18 @@ def claim(job_id: str, user_id: str) -> dict[str, Any]:
     for one job could both pass it and both pay for a generation. Here the
     second finds nothing to update.
 
+    The claim also refreshes the job's heartbeat, which the run then keeps
+    refreshing through `heartbeat`.
+
     Raises JobError("job-not-claimed") when no row matched: no such job, not
     this user's, or already started or finished.
     """
+    patch = patch_for_status("drafting")
+    patch["heartbeat_at"] = _utc_now_iso()
     response = (
         get_supabase_client()
         .table(TABLE)
-        .update(patch_for_status("drafting"))
+        .update(patch)
         .eq("id", job_id)
         .eq("user_id", user_id)
         .eq("status", CREATION_STATUS)
@@ -278,6 +286,25 @@ def claim(job_id: str, user_id: str) -> dict[str, Any]:
             "That job does not exist, or has already started.",
         )
     return dict(response.data[0])
+
+
+def heartbeat(job_id: str, user_id: str) -> bool:
+    """
+    Record that a run is still working on this job.
+
+    Returns False when no unfinished job of this user's matched — the job is
+    gone, or has already finished — so the caller can stop beating for it.
+    """
+    response = (
+        get_supabase_client()
+        .table(TABLE)
+        .update({"heartbeat_at": _utc_now_iso()})
+        .eq("id", job_id)
+        .eq("user_id", user_id)
+        .not_.in_("status", sorted(TERMINAL_STATUSES))
+        .execute()
+    )
+    return bool(response.data)
 
 
 def advance(job_id: str, user_id: str, status: str) -> dict[str, Any]:
@@ -332,24 +359,26 @@ def fail(job_id: str, user_id: str, code: str, message: str) -> dict[str, Any]:
     return _update_unfinished(job_id, user_id, patch)
 
 
-def fail_interrupted(older_than: timedelta) -> int:
+def fail_interrupted(silent_for: timedelta) -> int:
     """
-    Fail every unfinished job created more than `older_than` ago, and return how
-    many were changed.
+    Fail every unfinished job whose heartbeat is older than `silent_for`, and
+    return how many were changed.
 
-    A run happens inside the server process, so if that process dies mid-run
-    nothing writes the job's ending. This ends such jobs as `failed` with the
-    `interrupted` reason.
+    A live run refreshes its job's heartbeat, so one that has gone silent has
+    nothing working on it — usually because the server process died mid-run,
+    which leaves nothing to write the job's ending. This ends such jobs as
+    `failed` with the `interrupted` reason. A job never claimed still carries
+    the heartbeat it was created with, so one left waiting is swept the same
+    way, and its claim is then refused.
 
     **The one write here with no owner in its predicate.** It is the service
     cleaning up after itself, not acting for a user, so there is no user to name.
-    It is bounded by the predicate instead: a job must be unfinished AND older
-    than the threshold. Do not copy it for anything done on a user's behalf.
+    It is bounded by the predicate instead: a job must be unfinished AND silent
+    past the threshold. Do not copy it for anything done on a user's behalf.
 
-    The threshold must exceed the longest a run can take, or a live run is
-    swept. Should that happen, the run's own later writes match nothing, because
-    the job is already finished — so the sweep's verdict stands and nothing is
-    overwritten.
+    If a run is swept while still going, its later updates to the job match
+    nothing, because the job is already finished — so the sweep's verdict
+    stands. A draft the run saves is still written, and kept.
     """
     now = datetime.now(timezone.utc)
     response = (
@@ -357,7 +386,7 @@ def fail_interrupted(older_than: timedelta) -> int:
         .table(TABLE)
         .update(interrupted_patch(now))
         .not_.in_("status", sorted(TERMINAL_STATUSES))
-        .lt("created_at", interrupted_cutoff(now, older_than))
+        .lt("heartbeat_at", interrupted_cutoff(now, silent_for))
         .execute()
     )
     return len(response.data or [])

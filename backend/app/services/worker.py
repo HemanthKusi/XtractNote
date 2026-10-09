@@ -8,6 +8,10 @@ and links that row to the job.
 It is synchronous because generation is a blocking call, so whoever starts it
 runs it on a thread.
 
+**While it runs, it keeps the job's heartbeat going** on a second thread. The
+sweep fails jobs whose heartbeat has gone silent, so the heartbeat is what tells
+it this run is alive — however long the run takes.
+
 **It does not raise.** Nobody is waiting on it, so an escaped exception would
 leave the job unfinished with only a log line to show for it. Once the job is
 `drafting`, a failure at any later step is recorded on it. When the job cannot
@@ -22,7 +26,10 @@ failure branch be exercised without a database or a model call.
 """
 
 import logging
+import threading
 from dataclasses import dataclass
+from datetime import timedelta
+from types import TracebackType
 from typing import Any, Callable, Literal
 
 from app.services import drafts, jobs
@@ -52,9 +59,10 @@ class GenerationInput:
 
 @dataclass(frozen=True)
 class Steps:
-    """The effects `run_job` performs, in the order it performs them."""
+    """The effects `run_job` performs."""
 
     claim: Callable[[str, str], Any] = jobs.claim
+    heartbeat: Callable[[str, str], bool] = jobs.heartbeat
     generate: Callable[
         [str, ContentType, SocialPlatform | None], dict[str, Any]
     ] = generate_content
@@ -68,6 +76,7 @@ def run_job(
     user_id: str,
     request: GenerationInput,
     steps: Steps = Steps(),
+    heartbeat_every: timedelta = jobs.HEARTBEAT_EVERY,
 ) -> Outcome:
     """Run one generation for `user_id`'s job, and return how it ended."""
 
@@ -80,6 +89,14 @@ def run_job(
         logger.warning("job %s: could not start, nothing generated", job_id, exc_info=True)
         return "abandoned"
 
+    with Heartbeat(lambda: steps.heartbeat(job_id, user_id), heartbeat_every, job_id):
+        return _run_claimed(job_id, user_id, request, steps)
+
+
+def _run_claimed(
+    job_id: str, user_id: str, request: GenerationInput, steps: Steps
+) -> Outcome:
+    """Everything after the claim: generate, save the draft, complete."""
     try:
         body = steps.generate(request.full_text, request.content_type, request.platform)
     except GenerationError as exc:
@@ -119,3 +136,47 @@ def _fail(steps: Steps, job_id: str, user_id: str, code: str, message: str) -> O
     except Exception:
         logger.exception("job %s: could not record failure %r", job_id, code)
     return "failed"
+
+
+class Heartbeat:
+    """
+    Calls `beat` every `every` on a background thread, for the life of a `with`.
+
+    A beat that raises is logged and the next one still runs: one dropped
+    request must not end a live run. A beat that returns False — no unfinished
+    job matched — stops the beating, since there is nothing left to keep alive.
+    """
+
+    def __init__(self, beat: Callable[[], bool], every: timedelta, job_id: str) -> None:
+        self._beat = beat
+        self._every = every.total_seconds()
+        self._job_id = job_id
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def __enter__(self) -> "Heartbeat":
+        self._thread.start()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self._stop.set()
+        # Bounded, so a beat stuck on the network cannot hold the run open. A
+        # beat that lands after the run has finished the job matches nothing.
+        self._thread.join(timeout=self._every)
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self._every):
+            try:
+                if not self._beat():
+                    logger.warning(
+                        "job %s: heartbeat found no unfinished job; stopped beating",
+                        self._job_id,
+                    )
+                    return
+            except Exception:
+                logger.warning("job %s: heartbeat failed", self._job_id, exc_info=True)

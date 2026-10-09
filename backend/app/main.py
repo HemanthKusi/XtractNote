@@ -33,15 +33,15 @@ def sweep_interrupted_jobs(
     Fail jobs whose run was lost.
 
     A run happens inside a server process, so one that dies mid-run leaves its
-    job with nothing to end it. A job interrupted just before a restart is still
-    younger than the threshold when the server comes back, so a sweep at startup
-    alone would miss it — hence the timer as well.
+    job with nothing to end it. Such a job's heartbeat stays recent for up to
+    `STALE_AFTER` after the run stopped, so a sweep at startup alone can miss it
+    — hence the timer as well.
 
     A failure here is logged and swallowed: refusing to start, or stopping the
     timer, over a cleanup step would turn a database blip into an outage.
     """
     try:
-        swept = sweep(jobs.INTERRUPTED_AFTER)
+        swept = sweep(jobs.STALE_AFTER)
     except Exception:
         logger.warning("sweep failed; unfinished jobs were left as they were", exc_info=True)
         return

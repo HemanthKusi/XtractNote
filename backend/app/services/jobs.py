@@ -12,12 +12,6 @@ anon key can write to it directly without going through anything here.
 It does no generation and fetches no transcript. Its only outbound calls are the
 database requests below — every `.execute()` is an HTTP round trip to PostgREST.
 
-**Nothing runs this module yet.** Generation still runs on the request. The
-worker uses it, but nothing dispatches the worker, so no job row originates from
-this service. The intent is that the worker and, later, the pipeline's nodes
-report *through* here rather than touching the table themselves, so the rules
-about what a job may do stay in one place.
-
 **Two layers, deliberately.** The rules — which statuses exist, what each one
 writes — are pure functions over strings, testable without a database. The
 writes are a thin shell around them.
@@ -188,12 +182,14 @@ def failure_code_error(code: str) -> str | None:
     return None
 
 
-#: How old an unfinished job must be before the restart sweep fails it. It must
-#: exceed the longest a run can take; a test holds the provider call's limits
-#: below it.
+#: How old an unfinished job must be before the sweep fails it. It should exceed
+#: the longest a run takes, or a live run is swept.
 INTERRUPTED_AFTER = timedelta(minutes=15)
 
-#: The failure recorded on a job the restart sweep finds unfinished.
+#: How often the sweep runs while the server is up, after the one at startup.
+SWEEP_EVERY = timedelta(minutes=5)
+
+#: The failure recorded on a job the sweep finds unfinished.
 INTERRUPTED_CODE = "interrupted"
 INTERRUPTED_MESSAGE = "This generation was interrupted before it finished."
 
@@ -255,6 +251,35 @@ def create_job(user_id: str, video_id: str, content_type: str) -> str:
     return str(response.data[0]["id"])
 
 
+def claim(job_id: str, user_id: str) -> dict[str, Any]:
+    """
+    Start a run: move a `pending` job to `drafting`, and return the updated row.
+
+    **Only a `pending` job matches**, and that is in the statement's predicate.
+    `advance` would also accept a job already `drafting`, so two runs started
+    for one job could both pass it and both pay for a generation. Here the
+    second finds nothing to update.
+
+    Raises JobError("job-not-claimed") when no row matched: no such job, not
+    this user's, or already started or finished.
+    """
+    response = (
+        get_supabase_client()
+        .table(TABLE)
+        .update(patch_for_status("drafting"))
+        .eq("id", job_id)
+        .eq("user_id", user_id)
+        .eq("status", CREATION_STATUS)
+        .execute()
+    )
+    if not response.data:
+        raise JobError(
+            "job-not-claimed",
+            "That job does not exist, or has already started.",
+        )
+    return dict(response.data[0])
+
+
 def advance(job_id: str, user_id: str, status: str) -> dict[str, Any]:
     """
     Move a job to `status` and return the updated row.
@@ -313,8 +338,8 @@ def fail_interrupted(older_than: timedelta) -> int:
     many were changed.
 
     A run happens inside the server process, so if that process dies mid-run
-    nothing writes the job's ending. Run at startup, this ends such jobs as
-    `failed` with the `interrupted` reason.
+    nothing writes the job's ending. This ends such jobs as `failed` with the
+    `interrupted` reason.
 
     **The one write here with no owner in its predicate.** It is the service
     cleaning up after itself, not acting for a user, so there is no user to name.

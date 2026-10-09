@@ -220,6 +220,10 @@ type Status =
       phase: "generating";
       meta: VideoMeta;
       contentType: GeneratableContentType;
+      // Whether the backend has accepted the job. Before it has — while the
+      // transcript is fetched — nothing is running and nothing is spent, so
+      // stopping means something different and the panel says so.
+      jobStarted: boolean;
     }
   | {
       phase: "generate-error";
@@ -354,16 +358,13 @@ export default function CreatePage() {
   }
 
 
-  // Load unfinished work. Not awaited by anything and not gated on a phase —
-  // the band it feeds only renders on idle, and a list that arrives late
-  // simply appears.
-  function refreshDrafts() {
-    void fetchDrafts().then((result) => {
-      if (result.ok) setDrafts(result.data);
-    });
-  }
-
+  // Load unfinished work each time the page lands on a screen that shows the
+  // band — on first load, and on every return to it — so a run that finished
+  // after the user stopped waiting appears without a reload. Not awaited by
+  // anything; a list that arrives late simply appears.
+  const showsDrafts = status.phase === "idle" || status.phase === "error";
   useEffect(() => {
+    if (!showsDrafts) return;
     let live = true;
     void (async () => {
       const result = await fetchDrafts();
@@ -372,7 +373,7 @@ export default function CreatePage() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [showsDrafts]);
 
   // Leaving the page invalidates whatever is in flight, so a generation's
   // polling stops at its next check instead of running on behind a page
@@ -395,15 +396,17 @@ export default function CreatePage() {
 
   // ── Prefill from URL params (extension deep-link) ─────────────
   // The extension opens /create?v=<canonical watch url>&action=<type>.
-  // Read once on mount: seed the input and auto-load the video (v), and
-  // preselect the format (action) if it's a valid generatable type. We stop at
-  // the loaded preview — never auto-generate, since that would spend an AI call
-  // on page load, possibly on a video with no captions.
-  const prefilledRef = useRef(false);
+  // On mount: auto-load the video (v), and preselect the format (action) if
+  // it's a valid generatable type. We stop at the loaded preview — never
+  // auto-generate, since that would spend an AI call on page load, possibly on
+  // a video with no captions.
+  //
+  // No run-once guard. In development React runs this twice, with a cleanup
+  // between that invalidates the first load (the unmount effect above bumps
+  // the run token); a guard would then skip the second load and leave the page
+  // stuck on "loading". Unguarded, the second run starts a fresh load. In
+  // production it runs once.
   useEffect(() => {
-    if (prefilledRef.current) return; // guard StrictMode's double-invoke
-    prefilledRef.current = true;
-
     const params = new URLSearchParams(window.location.search);
     const v = params.get("v");
     // Treat the raw param as a possible ContentType, then let isGeneratable do
@@ -535,7 +538,7 @@ export default function CreatePage() {
     // Taken BEFORE the first await. Cancelling, or starting anything else,
     // bumps the counter and every check below then drops this run's results.
     const run = beginRun();
-    setStatus({ phase: "generating", meta, contentType: selectedType });
+    setStatus({ phase: "generating", meta, contentType: selectedType, jobStarted: false });
 
     // ── The transcript is fetched HERE now ──
     //
@@ -567,7 +570,6 @@ export default function CreatePage() {
     const notice = (message: string) => {
       setStatus({ phase: "picking", meta });
       toast.info(message);
-      refreshDrafts();
     };
 
     const started = await startGeneration(transcript.fullText, selectedType, platform, meta);
@@ -576,6 +578,8 @@ export default function CreatePage() {
       fail(started.reason);
       return;
     }
+    // From here a run exists on the server, whatever this page does next.
+    setStatus({ phase: "generating", meta, contentType: selectedType, jobStarted: true });
 
     // ── Watch the job until it finishes, fails, or the page stops waiting ──
     //
@@ -838,6 +842,7 @@ export default function CreatePage() {
         <GeneratingPanel
           meta={status.meta}
           type={status.contentType}
+          backgroundRun={status.jobStarted}
           onCancel={handleCancelGeneration}
         />
       )}

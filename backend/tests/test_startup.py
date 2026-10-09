@@ -14,7 +14,7 @@ from datetime import timedelta
 import pytest
 
 from app.main import app, sweep_every, sweep_interrupted_jobs
-from app.services.jobs import INTERRUPTED_AFTER, fail_interrupted
+from app.services.jobs import STALE_AFTER, fail_interrupted
 
 TICK = timedelta(milliseconds=10)
 
@@ -32,7 +32,7 @@ def test_the_sweep_is_given_the_shared_threshold() -> None:
         return 0
 
     sweep_interrupted_jobs(sweep)
-    assert received == [INTERRUPTED_AFTER]
+    assert received == [STALE_AFTER]
 
 
 def test_a_sweep_that_changed_jobs_is_logged(caplog: pytest.LogCaptureFixture) -> None:

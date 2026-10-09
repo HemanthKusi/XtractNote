@@ -61,13 +61,16 @@ MAX_TRANSCRIPT_CHARS = 500_000
 # Cap on generated output length in tokens. A long blog post fits comfortably.
 MAX_OUTPUT_TOKENS = 8_000
 
-# How long the HTTP client waits on the provider, per attempt, and how many
-# times it retries. The clients' own defaults are no limit and two retries, so a
-# provider that never answers would hold the call open indefinitely.
+# How long the HTTP client waits on the provider, and how many times it retries.
+# The clients' own defaults are no limit and two retries, so a provider that
+# never answered would hold the call open indefinitely.
 #
-# The two are set together because the restart sweep (jobs.INTERRUPTED_AFTER)
-# fails any job still unfinished after a fixed time, and this call is what makes
-# a run long. A test holds timeout × attempts below that threshold.
+# The timeout applies to each phase of a request — connecting, sending, each
+# wait for data — not to an attempt as a whole, and retries add backoff. So it
+# makes a hung call end; it does not cap how long a call can take.
+#
+# They are kept well inside the sweep's threshold (jobs.INTERRUPTED_AFTER),
+# because this call is what makes a run long.
 PROVIDER_TIMEOUT_SECONDS = 300
 PROVIDER_MAX_RETRIES = 1
 

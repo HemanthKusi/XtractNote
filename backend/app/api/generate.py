@@ -14,6 +14,10 @@ linked to the job; the caller polls the GET to learn when, and reads the row.
 
 Both routes require a signed-in user. The user is whoever the access token
 belongs to — nothing in a request body names one.
+
+**Starting is safe to repeat.** Each start carries a request key; repeating it
+returns the job already made rather than creating another, so a start whose
+reply was lost can be tried again without paying twice.
 """
 
 import logging
@@ -58,6 +62,12 @@ class GenerateRequest(BaseModel):
     channel: str = Field(default="", max_length=200)
     thumbnailUrl: str = Field(max_length=500)
     durationSeconds: float | None = Field(default=None, ge=0, le=86_400, allow_inf_nan=False)
+
+    # A key the client generates for this start. Repeating a start with the
+    # same key returns the job it created instead of making — and paying for —
+    # another, so a start whose reply was lost is safe to try again. Required,
+    # and must be a UUID, so no client skips it and no junk is stored.
+    requestId: UUID
 
     @field_validator("thumbnailUrl")
     @classmethod
@@ -113,6 +123,34 @@ def _refuse(status: int, code: str, message: str, headers: dict[str, str] | None
     return HTTPException(status_code=status, detail={"code": code, "message": message}, headers=headers)
 
 
+def _not_started() -> HTTPException:
+    return _refuse(500, "job-not-created", "The generation could not be started. Try again.")
+
+
+def _job_already_made(user: CurrentUser, req: GenerateRequest, request_id: str) -> str | None:
+    """
+    The id of the job this user already made for `request_id`, or None.
+
+    A key reused for a different video or format is refused with a 409 rather
+    than answered with the earlier job. A failed lookup is reported as the job
+    not starting; retrying with the same key is safe.
+    """
+    try:
+        job = jobs.find_job_for_request(user.id, request_id)
+    except Exception:
+        logger.exception("could not look up request %s", request_id)
+        raise _not_started()
+    if job is None:
+        return None
+    if not jobs.request_matches(job, req.videoId, req.contentType):
+        raise _refuse(
+            409,
+            "request-key-reused",
+            "That request key was already used for a different generation.",
+        )
+    return str(job["id"])
+
+
 def _busy() -> HTTPException:
     return _refuse(
         503,
@@ -134,9 +172,10 @@ def start_generation(
 
     In this order, so that a refusal at any step leaves nothing behind:
       1. the request's own checks — a failure is a 422, and no job exists
-      2. a place in the pool — none free is a 503, and no job exists
-      3. the job row — if it cannot be created, the place is given back
-      4. the work starts in that place
+      2. the request key — a job already made for it is returned, not repeated
+      3. a place in the pool — none free is a 503, and no job exists
+      4. the job row — if it cannot be created, the place is given back
+      5. the work starts in that place
 
     A plain `def`: creating the job is a blocking database call, so FastAPI
     runs this on a request thread. The generation itself runs on the pool.
@@ -146,16 +185,32 @@ def start_generation(
     except GenerationError as exc:
         raise _refuse(_REQUEST_ERROR_STATUS.get(exc.code, 422), exc.code, exc.message)
 
+    request_id = str(req.requestId)
+    existing = _job_already_made(user, req, request_id)
+    if existing is not None:
+        return StartedResponse(jobId=existing)
+
     slot = pool.reserve()
     if slot is None:
         raise _busy()
 
     try:
-        job_id = jobs.create_job(user.id, req.videoId, req.contentType)
+        job_id = jobs.create_job(user.id, req.videoId, req.contentType, request_id)
+    except jobs.JobError as exc:
+        slot.release()
+        if exc.code != "duplicate-request":
+            logger.warning("could not create a generation job: %s", exc.code)
+            raise _not_started()
+        # Another copy of this request created the job between the lookup above
+        # and this insert. Answer with that job.
+        existing = _job_already_made(user, req, request_id)
+        if existing is None:
+            raise _not_started()
+        return StartedResponse(jobId=existing)
     except Exception:
         slot.release()
         logger.exception("could not create a generation job")
-        raise _refuse(500, "job-not-created", "The generation could not be started. Try again.")
+        raise _not_started()
 
     request = GenerationInput(
         full_text=req.fullText,

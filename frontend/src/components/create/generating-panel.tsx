@@ -95,11 +95,25 @@ const THUMB = { w: 280, h: 158 } as const;
 interface GeneratingPanelProps {
   meta: VideoMeta;
   type: ContentType;
-  /** Stop waiting for the run, which carries on in the background. The panel asks first. */
+  /**
+   * Whether a run exists on the server yet. Until it does, stopping ends
+   * everything and nothing has been spent; after, the run carries on without
+   * the page. The confirmation says whichever is true.
+   */
+  backgroundRun: boolean;
+  /** Stop waiting. The panel asks first. */
   onCancel: () => void;
 }
 
-export function GeneratingPanel({ meta, type, onCancel }: GeneratingPanelProps) {
+/** What the stop-waiting confirmation says, for each state of the run. */
+const STOP_COPY = {
+  running:
+    "It keeps going in the background — it can't be stopped yet, and its credits are spent either way. If it finishes, you'll find it in your drafts.",
+  notStarted:
+    "Nothing has started yet, so nothing has been spent. You can pick a format and start again.",
+} as const;
+
+export function GeneratingPanel({ meta, type, backgroundRun, onCancel }: GeneratingPanelProps) {
   const format = contentTypeColors[type];
   const [elapsed, setElapsed] = useState(0);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -249,7 +263,7 @@ export function GeneratingPanel({ meta, type, onCancel }: GeneratingPanelProps) 
         open={confirmCancel}
         onClose={() => setConfirmCancel(false)}
         title="Stop waiting?"
-        description="It keeps going in the background — it can't be stopped yet, and its credits are spent either way. If it finishes, you'll find it in your drafts."
+        description={backgroundRun ? STOP_COPY.running : STOP_COPY.notStarted}
         size="lg"
         footer={
           <>

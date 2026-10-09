@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api import youtube, generate, content, folders
 from app.services import jobs
+from app.services.dispatch import get_generation_pool
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,10 @@ async def sweep_every(interval: timedelta) -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Sweep before the first request is served, then keep sweeping until shutdown."""
+    """
+    Sweep before the first request is served, then keep sweeping until shutdown.
+    At shutdown, the generation pool stops admitting work.
+    """
     await run_in_threadpool(sweep_interrupted_jobs)
     # Held in a local so the task is not garbage-collected while it runs.
     timer = asyncio.create_task(sweep_every(jobs.SWEEP_EVERY))
@@ -69,6 +73,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         timer.cancel()
         with suppress(asyncio.CancelledError):
             await timer
+        get_generation_pool().close()
 
 
 # ── Create the FastAPI app ──

@@ -8,9 +8,7 @@ and links that row to the job.
 It is synchronous because generation is a blocking call, so whoever starts it
 runs it on a thread.
 
-**While it runs, it keeps the job's heartbeat going** on a second thread. The
-sweep fails jobs whose heartbeat has gone silent, so beating is how a run stays
-off the sweep's list, however long it takes.
+**While it runs, it keeps the job's heartbeat going** on a second thread.
 
 **It does not raise.** Nobody is waiting on it, so an escaped exception would
 leave the job unfinished with only a log line to show for it. Once the job is

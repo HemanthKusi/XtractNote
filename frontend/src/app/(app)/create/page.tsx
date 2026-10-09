@@ -8,9 +8,9 @@
 //         -> (looks like a URL)  -> fetchVideoMetadata -> SourcePanel
 //         -> (not a URL, a topic)-> searchVideos -> SearchResults
 //                                -> (Use this video) -> fetchVideoMetadata -> …
-//         -> fetchTranscript (no confirmation step)
-//         -> (pick a type) -> [if social: pick a platform] -> generateContent
-//                          -> OutputView
+//         -> (pick a type) -> [if social: pick a platform]
+//         -> fetchTranscript -> startGeneration -> poll the job (fetchJob)
+//         -> load the draft it wrote -> OutputView -> Save promotes it
 //
 // It's a Client Component because it holds state and handles events.
 // This is also the ONE place that turns machine-readable failure
@@ -19,8 +19,8 @@
 //
 // Social is a two-step choice: picking "Social" reveals a platform
 // sub-picker, and Generate stays disabled until a platform is chosen. The
-// platform travels with the generate call (and is stored in the saved row's
-// metadata by saveGeneratedContent).
+// platform travels with the generate call, and the backend records it in the
+// draft row's metadata.
 // ─────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from "react";
@@ -32,26 +32,28 @@ import {
 } from "@/lib/youtube/extract-video-id";
 import { fetchVideoMetadata, type MetaFailReason } from "@/lib/api/youtube";
 import { fetchTranscript } from "@/lib/api/transcript";
-import { generateContent } from "@/lib/api/generate";
-import { saveGeneratedContent, type SaveFailReason } from "@/lib/api/content";
+import { fetchJob, startGeneration } from "@/lib/api/generate";
+import { saveDraft, type SaveFailReason } from "@/lib/api/content";
 import { searchVideos } from "@/lib/api/search";
 import type { VideoMeta } from "@/lib/youtube/types";
-import type {
-  Transcript,
-  TranscriptFailReason,
-} from "@/lib/youtube/transcript-types";
+import type { TranscriptFailReason } from "@/lib/youtube/transcript-types";
 import type {
   SearchResultVideo,
   SearchFailReason,
 } from "@/lib/youtube/search-types";
 import {
   isGeneratable,
+  type ContentBody,
   type ContentType,
   type GeneratableContentType,
-  type GeneratedContent,
   type GenerateFailReason,
   type SocialPlatform,
 } from "@/lib/content/types";
+import {
+  INITIAL_POLL_STATE,
+  POLL_EVERY_MS,
+  nextPollDecision,
+} from "@/lib/generation/poll";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
 import { GeneratingPanel } from "@/components/create/generating-panel";
@@ -61,7 +63,7 @@ import { DraftsBand } from "@/components/create/drafts-band";
 import { SourcePanel } from "@/components/create/source-panel";
 import { VideoGridItem } from "@/components/create/video-grid-item";
 import { OutputView } from "@/components/output/output-view";
-import { fetchDrafts, type HistoryItem } from "@/lib/api/history";
+import { fetchContentById, fetchDrafts, type HistoryItem } from "@/lib/api/history";
 import { contentTypeColors } from "@/lib/constants/theme";
 import { ROUTES } from "@/lib/constants/routes";
 import { RECOMMENDED_VIDEOS } from "@/lib/constants/recommended-videos";
@@ -145,11 +147,27 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   "job-not-found": "We couldn't find this generation. Please try again.",
   // Shared by generation and saving: either can be refused for a lapsed session.
   "not-authenticated": "Please sign in again — your session may have expired.",
-  // From saveGeneratedContent
-  "insert-failed":
-    "We couldn't save this just now. Please try again.",
+  // From saveDraft
+  "not-a-draft": "This is already saved, or no longer exists.",
+  "save-failed": "We couldn't save this just now. Please try again.",
   // Note: "network" is already defined above (shared with metadata) — not repeated.
 };
+
+// ── Outcomes that are not failures ──────────────────────────
+// Shown as an info toast, back at the picker, with no "Try again": the run may
+// still be going, and retrying would start — and pay for — a second one.
+const NOTICES = {
+  // The page stopped waiting before the job reported finishing.
+  stoppedWaiting: "It's still running — it will appear in your drafts if it finishes.",
+  // The job finished, but its draft could not be loaded onto this page.
+  draftNotLoaded:
+    "Your content is ready, but couldn't be opened here. You'll find it in your drafts.",
+} as const;
+
+/** Wait `ms` before the next check on a job. */
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // ── A small, explicit state machine ─────────────────────────
 // Metadata stage (idle/loading/error) + topic-search stage
@@ -211,8 +229,9 @@ type Status =
   | {
       phase: "output";
       meta: VideoMeta;
-      transcript: Transcript;
-      result: GeneratedContent;
+      // The draft row the backend wrote. Saving promotes this row.
+      draftId: string;
+      result: { contentType: ContentType; content: ContentBody };
     };
 
 export default function CreatePage() {
@@ -227,14 +246,11 @@ export default function CreatePage() {
   const [selectedPlatform, setSelectedPlatform] =
     useState<SocialPlatform | null>(null);
 
-  // Save state for the output stage. Transient UI, so it lives apart from the
-  // flow machine (like selectedType). Reset whenever a new result appears.
-  // Unfinished work for the "pick up where you left off" band. Empty until
-  // generation starts writing status 'draft' — see fetchDrafts. The band
-  // renders nothing on an empty list, so a failed fetch degrades to the same
-  // thing as no drafts, which is why the error is swallowed rather than
-  // surfaced: a suggestion band cannot be worth an error message on the page
-  // the user came here to use.
+  // Unfinished work for the "pick up where you left off" band: finished
+  // generations the user has not saved. The band renders nothing on an empty
+  // list, so a failed fetch degrades to the same thing as no drafts, which is
+  // why the error is swallowed rather than surfaced: a suggestion band cannot
+  // be worth an error message on the page the user came here to use.
   const [drafts, setDrafts] = useState<HistoryItem[]>([]);
 
   // Refresh rotates the curated list. It is deterministic (no Math.random at
@@ -274,6 +290,8 @@ export default function CreatePage() {
   const beginRun = () => ++runRef.current;
   const isStale = (token: number) => runRef.current !== token;
 
+  // Save state for the output stage. Transient UI, so it lives apart from the
+  // flow machine (like selectedType). Reset whenever a new result appears.
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState("");
 
@@ -336,9 +354,15 @@ export default function CreatePage() {
   }
 
 
-  // Load unfinished work once, on mount. Not awaited by anything and not
-  // gated on a phase — the band it feeds only renders on idle, and a list
-  // that arrives late simply appears.
+  // Load unfinished work. Not awaited by anything and not gated on a phase —
+  // the band it feeds only renders on idle, and a list that arrives late
+  // simply appears.
+  function refreshDrafts() {
+    void fetchDrafts().then((result) => {
+      if (result.ok) setDrafts(result.data);
+    });
+  }
+
   useEffect(() => {
     let live = true;
     void (async () => {
@@ -347,6 +371,17 @@ export default function CreatePage() {
     })();
     return () => {
       live = false;
+    };
+  }, []);
+
+  // Leaving the page invalidates whatever is in flight, so a generation's
+  // polling stops at its next check instead of running on behind a page
+  // nobody is looking at. The run itself is not stopped; if it finishes, its
+  // result is in drafts.
+  useEffect(() => {
+    const runs = runRef;
+    return () => {
+      runs.current += 1;
     };
   }, []);
 
@@ -467,21 +502,14 @@ export default function CreatePage() {
   // the generation, and `generate-error` already has that button.
 
   /**
-   * Abandon a run in progress — back to the picker, video intact.
+   * Stop waiting for a run — back to the picker, video intact.
    *
-   * ── This does not stop the work, but it does drop the result ──
+   * ── This does not stop the work ──
    *
-   * An earlier version of this comment claimed the result "is simply dropped
-   * when it lands in a phase that no longer wants it". That was false when it
-   * was written: nothing checked. The in-flight call resolved and set the
-   * output phase regardless, throwing the user into a result they had just
-   * abandoned. beginRun() below is what makes the claim true.
-   *
-   * What is still true: generateContent has no abort signal, so the request
-   * keeps running and the tokens are spent either way, which is why the
-   * confirmation says the credits are not refunded. A real cancel needs an
-   * AbortController through the API layer at minimum, and server-side
-   * cancellation once generation is async.
+   * The run is on the server and carries on; the tokens are spent either way.
+   * If it finishes, its result is in drafts. What beginRun() below stops is
+   * this page's polling, so the result is not shown here once the user has
+   * moved on. Stopping the run itself is separate work.
    */
   function handleCancelGeneration() {
     const current = status;
@@ -532,26 +560,68 @@ export default function CreatePage() {
     const platform =
       selectedType === "social" ? selectedPlatform ?? undefined : undefined;
 
-    const result = await generateContent(
-      transcript.fullText,
-      selectedType,
-      platform,
-    );
-    // The important one. Without it a cancelled run still resolved and threw
-    // the user into the output screen for content they had abandoned.
+    const fail = (reason: GenerateFailReason) =>
+      setStatus({ phase: "generate-error", meta, message: ERROR_MESSAGES[reason] });
+
+    // Not a failure: back to the picker with a notice and no "Try again".
+    const notice = (message: string) => {
+      setStatus({ phase: "picking", meta });
+      toast.info(message);
+      refreshDrafts();
+    };
+
+    const started = await startGeneration(transcript.fullText, selectedType, platform, meta);
     if (isStale(run)) return;
-    if (!result.ok) {
-      setStatus({
-        phase: "generate-error",
-        meta,
-        message: ERROR_MESSAGES[result.reason],
-      });
+    if (!started.ok) {
+      fail(started.reason);
       return;
     }
 
-    setSaveState("idle");
-    setSaveError("");
-    setStatus({ phase: "output", meta, transcript, result: result.data });
+    // ── Watch the job until it finishes, fails, or the page stops waiting ──
+    //
+    // The rules for what each report means live in lib/generation/poll.ts.
+    // The run token is checked after every await, so cancelling, starting
+    // over or leaving the page ends this loop at its next step.
+    const startedAt = Date.now();
+    let pollState = INITIAL_POLL_STATE;
+    for (;;) {
+      await pause(POLL_EVERY_MS);
+      if (isStale(run)) return;
+      const report = await fetchJob(started.jobId);
+      if (isStale(run)) return;
+
+      const decision = nextPollDecision(report, pollState, Date.now() - startedAt);
+      if (decision.kind === "keep-polling") {
+        pollState = decision.state;
+        continue;
+      }
+      if (decision.kind === "failed") {
+        fail(decision.reason);
+        return;
+      }
+      if (decision.kind === "stopped-waiting") {
+        notice(NOTICES.stoppedWaiting);
+        return;
+      }
+
+      // Completed: show the draft it wrote.
+      const draft = await fetchContentById(decision.resultId);
+      if (isStale(run)) return;
+      if (!draft.ok) {
+        notice(NOTICES.draftNotLoaded);
+        return;
+      }
+
+      setSaveState("idle");
+      setSaveError("");
+      setStatus({
+        phase: "output",
+        meta,
+        draftId: draft.data.id,
+        result: { contentType: draft.data.contentType, content: draft.data.body },
+      });
+      return;
+    }
   }
 
   async function handleSave() {
@@ -564,11 +634,11 @@ export default function CreatePage() {
     setSaveState("saving");
     setSaveError("");
 
-    const result = await saveGeneratedContent(current.meta, current.result);
+    const result = await saveDraft(current.draftId);
     // Leaving the output — "Generate another", or changing the video — while a
     // save is in flight would otherwise land "Saved ✓" and a toast on whatever
-    // is on screen by then. The row is still written either way; what is
-    // dropped is only the confirmation, which now has nowhere to belong.
+    // is on screen by then. The save still happens either way; what is dropped
+    // is only the confirmation, which now has nowhere to belong.
     if (isStale(run)) return;
     if (!result.ok) {
       setSaveState("idle");
@@ -582,7 +652,6 @@ export default function CreatePage() {
   }
 
   function handleGenerateAnother() {
-    // Reuse the transcript — back to the picker, no re-fetch.
     const current = status;
     if (current.phase !== "output") return;
     // A save may still be in flight for the result being left behind.

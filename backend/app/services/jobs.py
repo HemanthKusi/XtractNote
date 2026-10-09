@@ -364,10 +364,13 @@ def fail_interrupted(silent_for: timedelta) -> int:
     Fail every unfinished job whose heartbeat is older than `silent_for`, and
     return how many were changed.
 
-    A live run refreshes its job's heartbeat, so one that has gone silent has
-    nothing working on it — usually because the server process died mid-run,
-    which leaves nothing to write the job's ending. This ends such jobs as
-    `failed` with the `interrupted` reason. A job never claimed still carries
+    A live run refreshes its job's heartbeat, so a job whose heartbeat has gone
+    silent is treated as lost — most often because the server process died
+    mid-run, which leaves nothing to write the job's ending. This ends such jobs
+    as `failed` with the `interrupted` reason.
+
+    Silence is a signal, not proof: a beat can fail while its run carries on,
+    which is why the threshold spans several beats. A job never claimed still carries
     the heartbeat it was created with, so one left waiting is swept the same
     way, and its claim is then refused.
 

@@ -13,19 +13,22 @@
 // nobody asked, in the most valuable space on the screen. The band earns
 // its place only when it has something.
 //
-// Nothing writes a draft yet — every insert hardcodes 'saved' — so today
-// this is always null in practice. That is why it is wired to the real
-// query rather than to a mock: it is correct and quiet now, and correct and
-// visible the moment generation starts writing 'draft'.
+// A draft is a finished generation the user has not saved: the backend
+// writes every result as one.
 //
 // ── One list, not a grid of cards ──
 //
 // Recommendations and search results are browsable videos and share a grid.
-// These are your own half-finished work: the list is short by construction
-// (a 7-day window caps it), and the verb is "resume", not "choose". A third
-// grid of cards would put a fourth data type into the same rectangle, which
-// is the thing the design brief objects to. One container with divided rows
-// reads as a short inventory instead.
+// These are your own half-finished work, and the verb is "resume", not
+// "choose". A third grid of cards would put a fourth data type into the same
+// rectangle, which is the thing the design brief objects to. One container
+// with divided rows reads as a short inventory instead.
+//
+// ── No expiry notice, yet ──
+//
+// The design says drafts expire after 7 days and that the band says so. The
+// expiry is not built, so neither is the notice: a surface may not promise
+// what the code does not do. It returns with the expiry.
 // ─────────────────────────────────────────────────────────────
 
 import { useState } from "react";
@@ -121,12 +124,8 @@ export function DraftsBand({ drafts, onOpen }: DraftsBandProps) {
         ))}
       </ul>
 
-      {/* The expiry notice sits BESIDE the control, not pushed to the far
-          edge. At the margin it reads as a corner stamp — the kind of small
-          text the eye files as chrome and skips. It is not chrome: it is the
-          only warning anyone gets before a row disappears on its own. */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        {drafts.length > COLLAPSED && (
+      {drafts.length > COLLAPSED && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
           <Button
             variant="default"
             size="sm"
@@ -143,9 +142,8 @@ export function DraftsBand({ drafts, onOpen }: DraftsBandProps) {
           >
             {open ? "Show fewer" : `Show all drafts (${drafts.length})`}
           </Button>
-        )}
-        <p className="text-sm text-xn-ink-muted">Drafts are kept for 7 days.</p>
-      </div>
+        </div>
+      )}
     </section>
   );
 }

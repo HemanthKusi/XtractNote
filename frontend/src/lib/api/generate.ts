@@ -94,12 +94,18 @@ async function codeFrom(response: Response): Promise<string | null> {
  * `platform` is required when contentType is "social" and ignored otherwise.
  * `meta` supplies the video's details for the draft row; the watch URL is not
  * sent, because the backend builds it from the video id.
+ *
+ * `requestId` identifies this start. Sending the same one again returns the
+ * job it already made, so a start whose reply was lost — "network" — can be
+ * repeated without paying twice. The caller keeps it until it has a definite
+ * answer, and uses a new one for a new request.
  */
 export async function startGeneration(
   fullText: string,
   contentType: GeneratableContentType,
   platform: SocialPlatform | undefined,
   meta: VideoMeta,
+  requestId: string,
 ): Promise<StartGenerationResult> {
   try {
     const token = await accessToken();
@@ -118,6 +124,7 @@ export async function startGeneration(
         channel: meta.channel,
         thumbnailUrl: meta.thumbnailUrl,
         ...(meta.durationSeconds != null ? { durationSeconds: meta.durationSeconds } : {}),
+        requestId,
       }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });

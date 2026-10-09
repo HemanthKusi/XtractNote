@@ -116,7 +116,7 @@ export default function DevCreateRoutePage() {
         )}
 
         {state === "generating" && (
-          <GeneratingPanel meta={META} type={type} onCancel={() => {}} />
+          <GeneratingPanel meta={META} type={type} backgroundRun onCancel={() => {}} />
         )}
       </div>
     </AppShell>

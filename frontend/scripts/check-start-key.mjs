@@ -16,6 +16,7 @@
  */
 
 import {
+  MAX_KEPT,
   START_KEY_ITEM,
   layeredStore,
   memoryStore,
@@ -47,6 +48,24 @@ const B = requestSignature("dQw4w9WgXcQ", "blog", undefined);
   check("the same request reuses its key", startKeyFor(A, store, newKey) === first);
   check("a different request gets a new key", startKeyFor(B, store, newKey) !== first);
 }
+{
+  // Stop waiting for A, start B, come back to A: A's run may still be going.
+  const store = memoryStore();
+  const first = startKeyFor(A, store, newKey);
+  startKeyFor(B, store, newKey);
+  check("starting another request does not lose an unsettled key", startKeyFor(A, store, newKey) === first);
+}
+{
+  const store = memoryStore();
+  const oldest = startKeyFor(requestSignature("v0", "summary", undefined), store, newKey);
+  const second = startKeyFor(requestSignature("v1", "summary", undefined), store, newKey);
+  for (let i = 2; i <= MAX_KEPT; i++) startKeyFor(requestSignature(`v${i}`, "summary", undefined), store, newKey);
+  // v1 first: asking for v0 makes it a new key, which pushes the next oldest out.
+  check("past the limit the newer keys are kept",
+    startKeyFor(requestSignature("v1", "summary", undefined), store, newKey) === second);
+  check("past the limit the oldest key is dropped",
+    startKeyFor(requestSignature("v0", "summary", undefined), store, newKey) !== oldest);
+}
 
 // ── Kept across a reload: the store is what persists ──
 {
@@ -69,6 +88,7 @@ const B = requestSignature("dQw4w9WgXcQ", "blog", undefined);
   const current = startKeyFor(B, store, newKey);
   settleStartKey(old, store);
   check("settling an old key leaves a newer request's key alone", startKeyFor(B, store, newKey) === current);
+  check("settling an old key forgets it", startKeyFor(A, store, newKey) !== old);
 }
 
 // ── Signatures ──
@@ -85,14 +105,19 @@ check("a separator in an id cannot make two requests collide",
 }
 {
   const wrongShape = memoryStore();
-  wrongShape.setItem(START_KEY_ITEM, JSON.stringify({ signature: A, key: 42 }));
+  wrongShape.setItem(START_KEY_ITEM, JSON.stringify([{ signature: A, key: 42 }]));
   check("a stored key of the wrong shape is replaced", typeof startKeyFor(A, wrongShape, newKey) === "string");
+}
+{
+  // The single-key shape this item held before keys were kept per request.
+  const oldShape = memoryStore();
+  oldShape.setItem(START_KEY_ITEM, JSON.stringify({ signature: A, key: "old-shape" }));
+  check("a key stored in the old single-key shape is not reused", startKeyFor(A, oldShape, newKey) !== "old-shape");
 }
 {
   const broken = {
     getItem() { throw new Error("blocked"); },
     setItem() { throw new Error("blocked"); },
-    removeItem() { throw new Error("blocked"); },
   };
   let threw = false;
   let key = "";
@@ -112,7 +137,6 @@ const fullStorage = (initial = {}) => {
   return {
     getItem: (k) => items.get(k) ?? null,
     setItem() { throw new Error("QuotaExceededError"); },
-    removeItem() { throw new Error("QuotaExceededError"); },
   };
 };
 {
@@ -121,11 +145,22 @@ const fullStorage = (initial = {}) => {
   check("storage refusing the write still keeps the key for a retry", startKeyFor(A, store, newKey) === first);
 }
 {
-  // Storage holds an older key for this request that a refused write never replaced.
-  const stale = fullStorage({ [START_KEY_ITEM]: JSON.stringify({ signature: A, key: "stale" }) });
+  // Storage holds a key for another request, A, and refuses every write, so
+  // the key made here for B exists only in memory.
+  const stale = fullStorage({ [START_KEY_ITEM]: JSON.stringify([{ signature: A, key: "stale" }]) });
   const store = layeredStore(stale, memoryStore());
   const fresh = startKeyFor(B, store, newKey);
   check("a newer key in memory wins over an older one in storage", startKeyFor(B, store, newKey) === fresh);
+}
+{
+  // Storage holds A's key from before a reload, and refuses every write, so
+  // settling it cannot clear storage's copy.
+  const kept = fullStorage({ [START_KEY_ITEM]: JSON.stringify([{ signature: A, key: "before-reload" }]) });
+  const store = layeredStore(kept, memoryStore());
+  const reused = startKeyFor(A, store, newKey);
+  settleStartKey(reused, store);
+  check("a settled key does not come back from storage that refused the write",
+    reused === "before-reload" && startKeyFor(A, store, newKey) !== "before-reload");
 }
 {
   const storage = memoryStore();

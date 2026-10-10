@@ -3,12 +3,11 @@
 //
 // The request key a generation start carries, and when it is reused.
 //
-// The backend answers a repeated key with the job it already made. So each
-// request — "this video, this format, this platform" — keeps its key until the
-// page has a definite answer for it, and every start of that request reuses
-// it until then. A start whose reply was lost, or one the user stopped waiting
-// for, is then answered with the job it already made, if it made one, rather
-// than creating and paying for a second.
+// The backend answers a repeated key with the job it already made. A request —
+// "this video, this format, this platform" — reuses its key across starts, so
+// a start whose reply was lost, or one the user stopped waiting for, can be
+// answered with the job it already made rather than creating and paying for a
+// second. A key is settled once the page has a definite answer for it.
 //
 // One key per request, not one in total: stopping a summary, starting a blog
 // and coming back to the summary must find the summary's key again. At most

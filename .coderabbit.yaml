@@ -49,6 +49,16 @@ reviews:
     base_branches:
       - ".*"
 
+    # Never pause on a long pull request. The default pauses after five
+    # reviewed commits, and a paused review still reports its status as
+    # success — so the push that fixes a finding can land unreviewed while the
+    # check stays green.
+    #
+    # The cost: every push draws on the hourly review allowance. If that
+    # becomes the constraint, raise this number rather than going back to the
+    # default.
+    auto_pause_after_reviewed_commits: 0
+
   # Project-specific review rules, by area. Generic review already finds generic
   # problems; these are the conventions this codebase has been bitten by, so they
   # are the ones worth stating. Entries are minimatch globs.

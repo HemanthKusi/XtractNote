@@ -603,9 +603,10 @@ export default function CreatePage() {
 
     // ── The request key ── (lib/generation/start-key.ts)
     //
-    // Reused by every start of the same video, format and platform until the
-    // page has a definite answer, so a start whose reply was lost is answered
-    // with the job it already made, if it made one, rather than a second.
+    // Reused by later starts of the same video, format and platform, so a
+    // start whose reply was lost is answered with the job it already made, if
+    // it made one, rather than a second. When a key is kept and when it is
+    // dropped is decided there.
     const requestId = startKeyFor(
       requestSignature(meta.videoId, selectedType, platform),
       keyStore(),
@@ -656,8 +657,7 @@ export default function CreatePage() {
         return;
       }
       if (decision.kind === "stopped-waiting") {
-        // The run's outcome is still unknown: the key stays, so starting the
-        // same thing again picks this run back up.
+        // The run's outcome is still unknown, so its key is not settled.
         notice(NOTICES.stoppedWaiting);
         return;
       }

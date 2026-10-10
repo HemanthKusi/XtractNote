@@ -17,6 +17,7 @@
 
 import {
   START_KEY_ITEM,
+  layeredStore,
   memoryStore,
   requestSignature,
   settleStartKey,
@@ -102,6 +103,47 @@ check("a separator in an id cannot make two requests collide",
     threw = true;
   }
   check("a store that refuses every call still yields a key and never throws", !threw && key.startsWith("key-"));
+}
+
+// ── The layered store: memory first, storage behind it ──
+const fullStorage = (initial = {}) => {
+  // Reads work, every write is refused — as when session storage is full.
+  const items = new Map(Object.entries(initial));
+  return {
+    getItem: (k) => items.get(k) ?? null,
+    setItem() { throw new Error("QuotaExceededError"); },
+    removeItem() { throw new Error("QuotaExceededError"); },
+  };
+};
+{
+  const store = layeredStore(fullStorage(), memoryStore());
+  const first = startKeyFor(A, store, newKey);
+  check("storage refusing the write still keeps the key for a retry", startKeyFor(A, store, newKey) === first);
+}
+{
+  // Storage holds an older key for this request that a refused write never replaced.
+  const stale = fullStorage({ [START_KEY_ITEM]: JSON.stringify({ signature: A, key: "stale" }) });
+  const store = layeredStore(stale, memoryStore());
+  const fresh = startKeyFor(B, store, newKey);
+  check("a newer key in memory wins over an older one in storage", startKeyFor(B, store, newKey) === fresh);
+}
+{
+  const storage = memoryStore();
+  const first = startKeyFor(A, layeredStore(storage, memoryStore()), newKey);
+  // A reload: memory is new and empty, the tab's storage is the same.
+  check("the layered store keeps a key across a reload", startKeyFor(A, layeredStore(storage, memoryStore()), newKey) === first);
+}
+{
+  const storage = memoryStore();
+  const store = layeredStore(storage, memoryStore());
+  const first = startKeyFor(A, store, newKey);
+  settleStartKey(first, store);
+  check("settling clears both copies", startKeyFor(A, layeredStore(storage, memoryStore()), newKey) !== first);
+}
+{
+  const store = layeredStore(null, memoryStore());
+  const first = startKeyFor(A, store, newKey);
+  check("with no storage at all the key is still reused within the page", startKeyFor(A, store, newKey) === first);
 }
 
 if (failed > 0) {

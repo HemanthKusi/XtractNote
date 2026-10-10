@@ -171,7 +171,7 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
 // still be going.
 const NOTICES = {
   // The page stopped waiting before the job reported finishing.
-  stoppedWaiting: "It's still running — it will appear in your drafts if it finishes.",
+  stoppedWaiting: "We've stopped checking on this one. If it finishes, it will appear in your drafts.",
   // The job finished, but its draft could not be loaded onto this page.
   draftNotLoaded:
     "Your content is ready, but couldn't be opened here. You'll find it in your drafts.",

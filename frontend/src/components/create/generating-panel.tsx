@@ -95,11 +95,32 @@ const THUMB = { w: 280, h: 158 } as const;
 interface GeneratingPanelProps {
   meta: VideoMeta;
   type: ContentType;
-  /** Abandon the run. The panel asks first. */
+  /**
+   * How far the start has got. The confirmation says what stopping means at
+   * that point — nothing sent, sent but unanswered, or accepted.
+   */
+  run: GenerationRunState;
+  /** Stop waiting. The panel asks first. */
   onCancel: () => void;
 }
 
-export function GeneratingPanel({ meta, type, onCancel }: GeneratingPanelProps) {
+/**
+ * How far a start has got: `not-sent` while the transcript is fetched,
+ * `sent` while the start request is unanswered — the backend may already have
+ * accepted it — and `accepted` once it has.
+ */
+export type GenerationRunState = "not-sent" | "sent" | "accepted";
+
+/** What the stop-waiting confirmation says, for each state of the run. */
+const STOP_COPY: Record<GenerationRunState, string> = {
+  "not-sent":
+    "Nothing has started yet, so nothing has been spent. You can pick a format and start again.",
+  sent: "It may already have started in the background — it can't be stopped yet. If it did, it will appear in your drafts.",
+  accepted:
+    "It keeps going in the background — it can't be stopped yet, and its credits are spent either way. If it finishes, you'll find it in your drafts.",
+};
+
+export function GeneratingPanel({ meta, type, run, onCancel }: GeneratingPanelProps) {
   const format = contentTypeColors[type];
   const [elapsed, setElapsed] = useState(0);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -237,24 +258,24 @@ export function GeneratingPanel({ meta, type, onCancel }: GeneratingPanelProps) 
 
       <div className="mt-6 flex items-center justify-center">
         <Button variant="danger" onClick={() => setConfirmCancel(true)}>
-          Cancel generation
+          Stop waiting
         </Button>
       </div>
 
-      {/* Not `persistent`: dismissing this means "keep generating", which is
-          the safe outcome, so backdrop and Escape should both mean no. Only
-          the destructive choice gets weight, and it sits second so the
-          harmless option is what the eye and the keyboard reach first. */}
+      {/* Not `persistent`: dismissing this means "keep waiting", which is the
+          safe outcome, so backdrop and Escape should both mean no. Leaving
+          sits second so staying is what the eye and the keyboard reach
+          first. */}
       <Modal
         open={confirmCancel}
         onClose={() => setConfirmCancel(false)}
-        title="Stop generating?"
-        description="This run will be discarded, and the credits it used are not refunded. The video stays in your drafts, so you can start again whenever you like."
+        title="Stop waiting?"
+        description={STOP_COPY[run]}
         size="lg"
         footer={
           <>
             <Button variant="primary" onClick={() => setConfirmCancel(false)}>
-              Keep generating
+              Keep waiting
             </Button>
             <Button
               variant="danger"
@@ -263,7 +284,7 @@ export function GeneratingPanel({ meta, type, onCancel }: GeneratingPanelProps) 
                 onCancel();
               }}
             >
-              Stop and discard
+              Stop waiting
             </Button>
           </>
         }

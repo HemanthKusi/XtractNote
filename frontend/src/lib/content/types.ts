@@ -14,7 +14,8 @@
  *   - GeneratableContentType: the subset type derived from that array.
  *   - SocialPlatform / SOCIAL_PLATFORMS: the five social targets + their UI copy.
  *   - ContentBody: the discriminated union of stored/returned body shapes.
- *   - GeneratedContent / GenerateFailReason: the result + failure shapes.
+ *   - GenerateFailReason: every reason a generation can fail.
+ *   - JOB_STATUSES / GenerationJob: a generation job, as its status route reports it.
  *
  * Pure types and const arrays — no logic beyond two small guards.
  */
@@ -193,41 +194,82 @@ export function isMarkdownBody(body: ContentBody): body is MarkdownBody {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Generation result + failures                                                */
+/* Generation jobs and failures                                                */
 /* -------------------------------------------------------------------------- */
 
 /**
- * A successfully generated piece of content. Mirrors the backend
- * GenerateResponse shape exactly (camelCase matches, no translation).
+ * Every status a generation job can have — the values migration 004's CHECK
+ * constraint allows. A list rather than only a type, so a status read from the
+ * server can be checked against it instead of cast.
  *
- * `content` is the body union, not a string — prose arrives as
- * { markdown }, structured types as { kind, ... }.
- * `platform` is set only for social generations.
+ * `npm run lint` fails if this and the migration disagree
+ * (scripts/check-job-vocabulary.mjs).
  */
-export interface GeneratedContent {
-  contentType: GeneratableContentType;
-  platform?: SocialPlatform | null;
-  content: ContentBody;
+export const JOB_STATUSES = [
+  "pending",
+  "fetching",
+  "reading",
+  "understanding",
+  "drafting",
+  "polishing",
+  "completed",
+  "failed",
+] as const;
+
+export type JobStatus = (typeof JOB_STATUSES)[number];
+
+/**
+ * One generation job, as GET /api/generate/jobs/{jobId} reports it.
+ *
+ * `errorCode` is the backend's reason when the job failed. The backend's set
+ * of codes is open, so it is kept as a string here and mapped to a
+ * GenerateFailReason by whoever shows it — an unrecognised code is `unknown`.
+ */
+export interface GenerationJob {
+  jobId: string;
+  status: JobStatus;
+  progress: number | null;
+  resultId: string | null;
+  errorCode: string | null;
+  createdAt: string;
+  completedAt: string | null;
 }
 
 /**
- * Every reason a generation attempt can fail, as a closed union.
+ * Every reason a generation can fail, as a closed union.
  *
- * The first six mirror the backend GenerationError codes that arrive in the
- * response body as detail.code (the client reads them against an allow-list).
- * The last two are client-side: `network` when fetch itself throws (offline,
- * server down), and `unknown` as the catch-all.
+ * Refused when the job is started (the response's detail.code):
+ *   empty-transcript, transcript-too-long, unknown-content-type,
+ *   not-authenticated, auth-unavailable, generation-busy, job-not-created
+ *
+ * Recorded on a job that failed (its errorCode):
+ *   provider-misconfigured, generation-failed, invalid-structured-output,
+ *   draft-not-saved, unexpected, interrupted
+ *
+ * Reported while polling: job-not-found
+ *
+ * Client-side: `network` when fetch itself throws (offline, server down), and
+ * `unknown` for anything else — including a code from the server this union
+ * does not name.
  *
  * `invalid-structured-output` means the model returned unusable JSON for a
- * flashcards/quiz generation. It is the one RETRYABLE failure — the request
- * was fine and a fresh attempt often succeeds — so its copy should say so.
+ * flashcards/quiz generation. A fresh attempt often succeeds, so its copy
+ * should say so. Stopping waiting for a run is not a failure and is not here.
  */
 export type GenerateFailReason =
   | "empty-transcript"
   | "transcript-too-long"
   | "unknown-content-type"
+  | "not-authenticated"
+  | "auth-unavailable"
+  | "generation-busy"
+  | "job-not-created"
   | "provider-misconfigured"
   | "generation-failed"
   | "invalid-structured-output"
+  | "draft-not-saved"
+  | "unexpected"
+  | "interrupted"
+  | "job-not-found"
   | "network"
   | "unknown";

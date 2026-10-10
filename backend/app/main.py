@@ -15,12 +15,15 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.config import settings
 from app.api import youtube, generate, content, folders
 from app.services import jobs
+from app.services.dispatch import get_generation_pool
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +62,11 @@ async def sweep_every(interval: timedelta) -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Sweep before the first request is served, then keep sweeping until shutdown."""
+    """
+    Sweep before the first request is served, then keep sweeping until shutdown.
+    At shutdown, the generation pool stops admitting work and is given a
+    bounded grace period for the generations still running.
+    """
     await run_in_threadpool(sweep_interrupted_jobs)
     # Held in a local so the task is not garbage-collected while it runs.
     timer = asyncio.create_task(sweep_every(jobs.SWEEP_EVERY))
@@ -69,6 +76,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         timer.cancel()
         with suppress(asyncio.CancelledError):
             await timer
+        # Waits up to the grace period, so it runs off the event loop.
+        await run_in_threadpool(get_generation_pool().close)
 
 
 # ── Create the FastAPI app ──
@@ -80,6 +89,24 @@ app = FastAPI(
     redoc_url="/redoc",    # Alternative docs at http://localhost:8000/redoc
     lifespan=lifespan,
 )
+
+
+# ── Malformed requests ──
+@app.exception_handler(RequestValidationError)
+async def malformed_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """
+    Report where a request was malformed, without echoing what it sent.
+
+    FastAPI's own handler copies each rejected value into the response. That
+    reflects user input back, and a value JSON cannot represent — `Infinity`,
+    `NaN` — made the error response itself fail, turning a 422 into a 500.
+    """
+    errors = [
+        {"loc": list(error["loc"]), "msg": error["msg"], "type": error["type"]}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
 
 # ── Layer 1: CORS Middleware ──
 # Only requests from the frontend URL are allowed.

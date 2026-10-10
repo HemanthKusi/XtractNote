@@ -36,6 +36,7 @@ character cap.
 import json
 import math
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -91,6 +92,54 @@ class GenerationError(Exception):
         super().__init__(message)
 
 
+# --- Checks before any paid call ----------------------------------------------
+
+@dataclass(frozen=True)
+class PreparedRequest:
+    """A request that passed its checks: the text to send, and the prompt for it."""
+
+    text: str
+    system_prompt: str
+
+
+def prepare_request(
+    full_text: str,
+    content_type: ContentType,
+    platform: SocialPlatform | None = None,
+) -> PreparedRequest:
+    """
+    Check a generation request before anything is spent on it.
+
+    `generate_content` calls this first, and the endpoint calls it before
+    creating a job — so input that would fail here is refused on the request,
+    rather than becoming a job that fails moments later.
+
+    Raises GenerationError with a typed `.code`:
+      - "empty-transcript"     : nothing to generate from
+      - "transcript-too-long"  : exceeds MAX_TRANSCRIPT_CHARS
+      - "unknown-content-type" : content_type not recognized, or social
+                                 requested without a valid platform
+    """
+    text = (full_text or "").strip()
+    if not text:
+        raise GenerationError("empty-transcript", "The transcript is empty.")
+
+    if len(text) > MAX_TRANSCRIPT_CHARS:
+        raise GenerationError(
+            "transcript-too-long",
+            "This video's transcript is too long to process in one pass.",
+        )
+
+    # get_system_prompt raises ValueError for an unknown type, a missing
+    # platform on social, or an unknown platform.
+    try:
+        system_prompt = get_system_prompt(content_type, platform)
+    except ValueError as exc:
+        raise GenerationError("unknown-content-type", str(exc))
+
+    return PreparedRequest(text=text, system_prompt=system_prompt)
+
+
 # --- Public entry point -------------------------------------------------------
 
 def generate_content(
@@ -104,33 +153,15 @@ def generate_content(
     `platform` is required when content_type == "social" and ignored otherwise.
 
     Returns the content body dict (see module docstring for the three shapes).
-    Raises GenerationError with a typed `.code`:
-      - "empty-transcript"        : nothing to generate from
-      - "transcript-too-long"     : exceeds MAX_TRANSCRIPT_CHARS
-      - "unknown-content-type"    : content_type not recognized, or social
-                                    requested without a valid platform
+    Raises GenerationError with a typed `.code` — the three from
+    `prepare_request`, plus:
       - "provider-misconfigured"  : missing key / bad provider setting
       - "generation-failed"       : the provider call errored or returned nothing
       - "invalid-structured-output": the model's JSON was unparseable or the
                                     wrong shape (flashcards / quiz only)
     """
-    text = (full_text or "").strip()
-    if not text:
-        raise GenerationError("empty-transcript", "The transcript is empty.")
-
-    if len(text) > MAX_TRANSCRIPT_CHARS:
-        raise GenerationError(
-            "transcript-too-long",
-            "This video's transcript is too long to process in one pass.",
-        )
-
-    # Validate the content type + platform (and fetch the prompt) before
-    # spending a call. get_system_prompt raises ValueError for an unknown type,
-    # a missing platform on social, or an unknown platform.
-    try:
-        system_prompt = get_system_prompt(content_type, platform)
-    except ValueError as exc:
-        raise GenerationError("unknown-content-type", str(exc))
+    prepared = prepare_request(full_text, content_type, platform)
+    text, system_prompt = prepared.text, prepared.system_prompt
 
     # Structured types get JSON mode where the provider supports it, and take a
     # different post-processing path below.

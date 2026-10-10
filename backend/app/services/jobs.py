@@ -27,10 +27,15 @@ one's behalf, and its docstring says how it is bounded instead.
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from postgrest.exceptions import APIError
+
 from app.db.supabase import get_supabase_client
 
 TABLE = "generation_jobs"
 CONTENT_TABLE = "generated_content"
+
+#: Postgres's code for a unique-constraint violation.
+UNIQUE_VIOLATION = "23505"
 
 
 # --- Typed error --------------------------------------------------------------
@@ -167,6 +172,16 @@ def advance_target_error(status: str) -> str | None:
     return None
 
 
+def request_matches(job: dict[str, Any], video_id: str, content_type: str) -> bool:
+    """
+    Whether an existing job is the request a repeated key now describes.
+
+    A key reused for a different video or format is not a repeat of the same
+    request, and must not be answered with the earlier job.
+    """
+    return job.get("video_id") == video_id and job.get("content_type") == content_type
+
+
 def failure_code_error(code: str) -> str | None:
     """
     Why `code` is not usable as a failure reason, or None if it is.
@@ -229,29 +244,61 @@ def _utc_now_iso() -> str:
 
 # --- Writes -------------------------------------------------------------------
 
-def create_job(user_id: str, video_id: str, content_type: str) -> str:
+def create_job(user_id: str, video_id: str, content_type: str, request_id: str) -> str:
     """
     Insert a `pending` job and return its id.
 
-    Raises JobError("job-not-created") when the insert returns nothing, rather
-    than handing back an id of None to fail somewhere less obvious later.
+    `request_id` is the key the client sent with the start. Migration 008 makes
+    it unique per user, so a second job for the same request is refused by the
+    database itself — including when two copies of the request race.
+
+    Raises JobError("duplicate-request") when this user already has a job for
+    `request_id`; the caller looks that job up instead. Raises
+    JobError("job-not-created") when the insert returns nothing, rather than
+    handing back an id of None to fail somewhere less obvious later.
+    """
+    try:
+        response = (
+            get_supabase_client()
+            .table(TABLE)
+            .insert(
+                {
+                    "user_id": user_id,
+                    "video_id": video_id,
+                    "content_type": content_type,
+                    "request_id": request_id,
+                    **patch_for_status("pending"),
+                }
+            )
+            .execute()
+        )
+    except APIError as exc:
+        if exc.code == UNIQUE_VIOLATION:
+            raise JobError(
+                "duplicate-request", "A job already exists for this request."
+            ) from exc
+        raise
+    if not response.data:
+        raise JobError("job-not-created", "The job record could not be created.")
+    return str(response.data[0]["id"])
+
+
+def find_job_for_request(user_id: str, request_id: str) -> dict[str, Any] | None:
+    """
+    This user's job for `request_id`, or None.
+
+    Scoped by owner in the query, so another user's key matches nothing.
     """
     response = (
         get_supabase_client()
         .table(TABLE)
-        .insert(
-            {
-                "user_id": user_id,
-                "video_id": video_id,
-                "content_type": content_type,
-                **patch_for_status("pending"),
-            }
-        )
+        .select("id, video_id, content_type, status")
+        .eq("user_id", user_id)
+        .eq("request_id", request_id)
+        .limit(1)
         .execute()
     )
-    if not response.data:
-        raise JobError("job-not-created", "The job record could not be created.")
-    return str(response.data[0]["id"])
+    return dict(response.data[0]) if response.data else None
 
 
 def claim(job_id: str, user_id: str) -> dict[str, Any]:

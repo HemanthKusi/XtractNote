@@ -1,6 +1,7 @@
 """
-The sweep: it runs before the server serves, keeps running on a timer, and
-cannot stop the server starting or the timer ticking.
+The app's lifespan: the sweep runs before the server serves, keeps running on a
+timer, and cannot stop the server starting or the timer ticking; at shutdown,
+the generation pool is closed.
 
 The sweep is replaced with a stand-in throughout, so no database call is made —
 CI has no database to make one against. The timer is shortened to milliseconds
@@ -9,6 +10,7 @@ where a test needs it to tick.
 
 import asyncio
 import logging
+from collections.abc import Iterator
 from datetime import timedelta
 
 import pytest
@@ -17,6 +19,25 @@ from app.main import app, sweep_every, sweep_interrupted_jobs
 from app.services.jobs import STALE_AFTER, fail_interrupted
 
 TICK = timedelta(milliseconds=10)
+
+
+class FakePool:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.fixture(autouse=True)
+def fake_pool(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakePool]:
+    """
+    Every test that enters the real lifespan would otherwise close the process's
+    real pool at its end, breaking any later test that reserves from it.
+    """
+    pool = FakePool()
+    monkeypatch.setattr("app.main.get_generation_pool", lambda: pool)
+    yield pool
 
 
 def test_the_default_sweep_is_the_real_one() -> None:
@@ -132,3 +153,17 @@ def test_the_app_sweeps_on_its_timer_and_stops_at_shutdown(
     stopped_at = asyncio.run(serve_then_stop())
     assert stopped_at >= 3, "the startup sweep plus at least two timer sweeps"
     assert len(calls) == stopped_at, "no sweep after shutdown"
+
+
+def test_shutdown_closes_the_generation_pool(
+    monkeypatch: pytest.MonkeyPatch, fake_pool: FakePool
+) -> None:
+    monkeypatch.setattr("app.main.sweep_interrupted_jobs", lambda: None)
+
+    async def serve_then_stop() -> bool:
+        async with app.router.lifespan_context(app):
+            open_while_serving = not fake_pool.closed
+        return open_while_serving
+
+    assert asyncio.run(serve_then_stop()) is True
+    assert fake_pool.closed is True

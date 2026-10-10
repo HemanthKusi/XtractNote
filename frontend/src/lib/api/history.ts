@@ -88,14 +88,9 @@ function toContentType(value: unknown): ContentType {
 /**
  * Parse raw content_body jsonb into a validated ContentBody.
  *
- * The read-side twin of parseBody in lib/api/generate.ts — same three-shape
- * check, so a corrupted or hand-edited row can't reach a renderer as the wrong
- * shape. Anything unrecognized falls back to an empty prose body, which every
- * renderer handles gracefully.
- *
- * NOTE: this and generate.ts#parseBody are the pair to unify into a shared
- * lib/content parser. Kept separate for now (two consumers, slightly different
- * concerns); extract when a third appears.
+ * A three-shape check, so a corrupted or hand-edited row can't reach a
+ * renderer as the wrong shape. Anything unrecognized falls back to an empty
+ * prose body, which every renderer handles gracefully.
  */
 function toContentBody(raw: unknown): ContentBody {
   if (typeof raw === "object" && raw !== null) {
@@ -260,25 +255,16 @@ async function runHistoryQuery(
 /**
  * Unfinished work — the create page's "pick up where you left off" band.
  *
- * ── This returns an empty list today, and that is correct ──
- *
- * `generated_content.status` carries 'draft' and DEFAULTS to it, but
- * `saveGeneratedContent` writes "saved" explicitly on every insert, so no row
- * has ever been a draft. This query is therefore right and empty rather than
- * wrong and full, and the band that renders it hides itself when the list is
- * empty — so the page shows nothing rather than a fabricated one.
- *
- * It starts returning rows the moment generation writes 'draft', with no
- * change here. That write is the actual unblock, and it is deliberately NOT
- * done as part of a visual pass: it changes when content is persisted, which
- * is data behaviour.
+ * A draft is a finished generation the user has not saved: the backend writes
+ * every result as one, and saving it changes its status. The band hides
+ * itself when this returns nothing.
  *
  * ── Why the status filter is on the shared reader ──
  *
  * The decision recorded for History is that drafts appear in its main list
- * WITH A TAG, and that History gains a filter to see them alone. That filter
- * is this parameter. Adding it here rather than in a second bespoke query is
- * what stops the two lists drifting apart.
+ * WITH A TAG, and that History gains a filter to see them alone. That filter,
+ * when it is built, uses this parameter. Keeping it on the shared reader rather
+ * than in a second bespoke query is what stops the two lists drifting apart.
  */
 export async function fetchDrafts(): Promise<HistoryResult> {
   return runHistoryQuery(undefined, "draft");

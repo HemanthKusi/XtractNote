@@ -38,6 +38,7 @@ from app.services.jobs import (
     is_legal_status,
     patch_for_status,
     progress_for,
+    request_matches,
 )
 
 MIGRATION = (
@@ -378,3 +379,17 @@ def test_a_live_run_can_miss_several_beats_before_it_is_swept() -> None:
 def test_the_sweep_runs_more_often_than_a_job_goes_stale() -> None:
     """An interval longer than the threshold would dominate how long a dead job waits."""
     assert timedelta(0) < SWEEP_EVERY <= STALE_AFTER
+
+
+# --- the request key ----------------------------------------------------------
+
+
+def test_a_repeat_of_the_same_request_matches() -> None:
+    job = {"video_id": "dQw4w9WgXcQ", "content_type": "summary"}
+    assert request_matches(job, "dQw4w9WgXcQ", "summary") is True
+
+
+@pytest.mark.parametrize(("video_id", "content_type"), [("aircAruvnKk", "summary"), ("dQw4w9WgXcQ", "blog")])
+def test_a_key_reused_for_another_request_does_not_match(video_id: str, content_type: str) -> None:
+    job = {"video_id": "dQw4w9WgXcQ", "content_type": "summary"}
+    assert request_matches(job, video_id, content_type) is False

@@ -61,6 +61,7 @@ const START_REASONS: readonly GenerateFailReason[] = [
   "auth-unavailable",
   "generation-busy",
   "job-not-created",
+  "request-key-reused",
 ];
 
 /** The signed-in user's access token, or null when there is no session. */

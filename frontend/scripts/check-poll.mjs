@@ -101,12 +101,18 @@ check("the limit of passing failures stops the wait — not a failure",
   { kind: "stopped-waiting" });
 check("a passing failure past the time limit stops the wait",
   nextPollDecision(passing("auth-unavailable"), fresh, LATE).kind, "stopped-waiting");
-check("a final failure ends the run with its reason at once",
+// A check that cannot succeed says nothing about the run, which may still be
+// going: reporting it as failed would let the page settle the request key and
+// pay for a second run on retry.
+check("a check that cannot succeed loses sight of the run, with its reason",
   nextPollDecision(final("not-authenticated"), fresh, 0),
-  { kind: "failed", reason: "not-authenticated" });
-check("a missing job ends the run",
+  { kind: "lost-sight", reason: "not-authenticated" });
+check("a missing job loses sight of the run",
   nextPollDecision(final("job-not-found"), { failuresInARow: 4 }, 0),
-  { kind: "failed", reason: "job-not-found" });
+  { kind: "lost-sight", reason: "job-not-found" });
+check("an unreadable reply loses sight of the run, even past the time limit",
+  nextPollDecision(final("unknown"), fresh, LATE),
+  { kind: "lost-sight", reason: "unknown" });
 
 // ── Reasons ──
 check("no code is unknown", reasonFromJobCode(null), "unknown");

@@ -140,6 +140,8 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   "generation-busy":
     "We're generating a lot right now. Please try again in a moment.",
   "job-not-created": "We couldn't start the generation. Please try again.",
+  // The key is settled when this arrives, so trying again sends a new one.
+  "request-key-reused": "We couldn't start the generation. Please try again.",
   // From generation — recorded on a job that failed
   "provider-misconfigured":
     "The AI service isn't configured correctly on our end. Please try again shortly.",
@@ -166,7 +168,7 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
 
 // ── Outcomes that are not failures ──────────────────────────
 // Shown as an info toast, back at the picker, with no "Try again": the run may
-// still be going, and retrying would start — and pay for — a second one.
+// still be going.
 const NOTICES = {
   // The page stopped waiting before the job reported finishing.
   stoppedWaiting: "It's still running — it will appear in your drafts if it finishes.",
@@ -625,9 +627,11 @@ export default function CreatePage() {
     );
     if (isStale(run)) return;
     if (!started.ok) {
-      // No reply at all leaves the outcome unknown, so the key is kept for a
-      // retry. Any answer from the server is definite, and frees it.
-      if (started.reason !== "network") settle();
+      // Kept for a retry unless the key itself was refused. A retry with the
+      // same key is answered with the job it made, if it made one, and starts
+      // one otherwise — which covers a reply that only looks like a refusal,
+      // such as a proxy's 502 after the backend accepted.
+      if (started.reason === "request-key-reused") settle();
       fail(started.reason);
       return;
     }
@@ -653,6 +657,11 @@ export default function CreatePage() {
       }
       if (decision.kind === "failed") {
         settle();
+        fail(decision.reason);
+        return;
+      }
+      if (decision.kind === "lost-sight") {
+        // The run may still be going, so its key is not settled.
         fail(decision.reason);
         return;
       }

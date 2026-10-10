@@ -172,14 +172,22 @@ def advance_target_error(status: str) -> str | None:
     return None
 
 
-def request_matches(job: dict[str, Any], video_id: str, content_type: str) -> bool:
+def request_matches(
+    job: dict[str, Any], video_id: str, content_type: str, platform: str | None
+) -> bool:
     """
     Whether an existing job is the request a repeated key now describes.
 
-    A key reused for a different video or format is not a repeat of the same
-    request, and must not be answered with the earlier job.
+    A key reused for a different video, format or platform is not a repeat of
+    the same request, and must not be answered with the earlier job. `platform`
+    is None for every non-social request, which matches a job whose platform
+    is NULL.
     """
-    return job.get("video_id") == video_id and job.get("content_type") == content_type
+    return (
+        job.get("video_id") == video_id
+        and job.get("content_type") == content_type
+        and job.get("platform") == platform
+    )
 
 
 def failure_code_error(code: str) -> str | None:
@@ -244,9 +252,18 @@ def _utc_now_iso() -> str:
 
 # --- Writes -------------------------------------------------------------------
 
-def create_job(user_id: str, video_id: str, content_type: str, request_id: str) -> str:
+def create_job(
+    user_id: str,
+    video_id: str,
+    content_type: str,
+    request_id: str,
+    platform: str | None,
+) -> str:
     """
     Insert a `pending` job and return its id.
+
+    `platform` is the social platform, or None for any other type; migration
+    009 constrains it to the platforms that can be run.
 
     `request_id` is the key the client sent with the start. Migration 008 makes
     it unique per user, so a second job for the same request is refused by the
@@ -266,6 +283,7 @@ def create_job(user_id: str, video_id: str, content_type: str, request_id: str) 
                     "user_id": user_id,
                     "video_id": video_id,
                     "content_type": content_type,
+                    "platform": platform,
                     "request_id": request_id,
                     **patch_for_status("pending"),
                 }
@@ -292,7 +310,7 @@ def find_job_for_request(user_id: str, request_id: str) -> dict[str, Any] | None
     response = (
         get_supabase_client()
         .table(TABLE)
-        .select("id, video_id, content_type, status")
+        .select("id, video_id, content_type, platform, status")
         .eq("user_id", user_id)
         .eq("request_id", request_id)
         .limit(1)

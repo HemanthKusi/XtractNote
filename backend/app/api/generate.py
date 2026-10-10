@@ -131,9 +131,9 @@ def _job_already_made(user: CurrentUser, req: GenerateRequest, request_id: str) 
     """
     The id of the job this user already made for `request_id`, or None.
 
-    A key reused for a different video or format is refused with a 409 rather
-    than answered with the earlier job. A failed lookup is reported as the job
-    not starting; retrying with the same key is safe.
+    A key reused for a different video, format or platform is refused with a
+    409 rather than answered with the earlier job. A failed lookup is reported
+    as the job not starting; retrying with the same key is safe.
     """
     try:
         job = jobs.find_job_for_request(user.id, request_id)
@@ -142,7 +142,7 @@ def _job_already_made(user: CurrentUser, req: GenerateRequest, request_id: str) 
         raise _not_started()
     if job is None:
         return None
-    if not jobs.request_matches(job, req.videoId, req.contentType):
+    if not jobs.request_matches(job, req.videoId, req.contentType, req.platform):
         raise _refuse(
             409,
             "request-key-reused",
@@ -195,7 +195,9 @@ def start_generation(
         raise _busy()
 
     try:
-        job_id = jobs.create_job(user.id, req.videoId, req.contentType, request_id)
+        job_id = jobs.create_job(
+            user.id, req.videoId, req.contentType, request_id, req.platform
+        )
     except jobs.JobError as exc:
         slot.release()
         if exc.code != "duplicate-request":

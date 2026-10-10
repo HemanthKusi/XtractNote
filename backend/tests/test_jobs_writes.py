@@ -47,7 +47,7 @@ def api_error(code: str) -> APIError:
 def test_a_unique_violation_is_reported_as_a_duplicate_request(monkeypatch) -> None:
     use(monkeypatch, raises=api_error("23505"))
     with pytest.raises(JobError) as caught:
-        create_job("user-1", "dQw4w9WgXcQ", "summary", "key-1")
+        create_job("user-1", "dQw4w9WgXcQ", "summary", "key-1", None)
     assert caught.value.code == "duplicate-request"
 
 
@@ -56,20 +56,29 @@ def test_any_other_database_error_is_not_mistaken_for_a_duplicate(monkeypatch, c
     """A foreign-key or permission failure must not be answered as 'already made'."""
     use(monkeypatch, raises=api_error(code))
     with pytest.raises(APIError):
-        create_job("user-1", "dQw4w9WgXcQ", "summary", "key-1")
+        create_job("user-1", "dQw4w9WgXcQ", "summary", "key-1", None)
 
 
 def test_the_row_carries_the_request_key_and_starts_pending(monkeypatch) -> None:
     insert = use(monkeypatch)
-    assert create_job("user-1", "dQw4w9WgXcQ", "summary", "key-1") == "job-1"
+    assert create_job("user-1", "dQw4w9WgXcQ", "summary", "key-1", None) == "job-1"
     assert insert.row is not None
     assert insert.row["request_id"] == "key-1"
     assert insert.row["user_id"] == "user-1"
     assert insert.row["status"] == "pending"
+    assert insert.row["platform"] is None
+
+
+def test_a_social_row_carries_its_platform(monkeypatch) -> None:
+    """A repeated key is matched against it, so it must be written."""
+    insert = use(monkeypatch)
+    create_job("user-1", "dQw4w9WgXcQ", "social", "key-1", "linkedin")
+    assert insert.row is not None
+    assert insert.row["platform"] == "linkedin"
 
 
 def test_an_insert_that_returns_nothing_is_not_created(monkeypatch) -> None:
     use(monkeypatch, data=[])
     with pytest.raises(JobError) as caught:
-        create_job("user-1", "dQw4w9WgXcQ", "summary", "key-1")
+        create_job("user-1", "dQw4w9WgXcQ", "summary", "key-1", None)
     assert caught.value.code == "job-not-created"

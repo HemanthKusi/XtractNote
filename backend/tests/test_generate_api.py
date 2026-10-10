@@ -67,7 +67,7 @@ class FakeJobs:
     """Records calls to the job functions the routes use."""
 
     def __init__(self) -> None:
-        self.created: list[tuple[str, str, str, str]] = []
+        self.created: list[tuple[str, str, str, str, str | None]] = []
         self.failed: list[tuple[str, str, str, str]] = []
         self.read: list[tuple[str, str]] = []
         self.looked_up: list[tuple[str, str]] = []
@@ -78,8 +78,10 @@ class FakeJobs:
         self.existing: list[Any] = []
         self.find_raises: Exception | None = None
 
-    def create_job(self, user_id: str, video_id: str, content_type: str, request_id: str) -> str:
-        self.created.append((user_id, video_id, content_type, request_id))
+    def create_job(
+        self, user_id: str, video_id: str, content_type: str, request_id: str, platform: str | None
+    ) -> str:
+        self.created.append((user_id, video_id, content_type, request_id, platform))
         if self.create_raises:
             raise self.create_raises
         return JOB
@@ -144,7 +146,7 @@ def test_a_valid_request_is_accepted_with_its_job_id(client, pool, fake_jobs) ->
     response = post(client)
     assert response.status_code == 202
     assert response.json() == {"jobId": JOB}
-    assert fake_jobs.created == [(USER, "dQw4w9WgXcQ", "summary", KEY)]
+    assert fake_jobs.created == [(USER, "dQw4w9WgXcQ", "summary", KEY, None)]
 
 
 def test_the_job_runs_for_the_signed_in_user(client, pool) -> None:
@@ -172,9 +174,15 @@ def test_a_stray_platform_on_a_non_social_type_is_cleared(client, pool) -> None:
     assert started(pool).platform is None
 
 
-def test_social_carries_its_platform(client, pool) -> None:
+def test_social_carries_its_platform(client, pool, fake_jobs) -> None:
     post(client, contentType="social", platform="x-thread")
     assert started(pool).platform == "x-thread"
+    assert fake_jobs.created[0][4] == "x-thread"
+
+
+def test_a_stray_platform_is_not_recorded_on_the_job(client, fake_jobs) -> None:
+    post(client, platform="linkedin")
+    assert fake_jobs.created[0][4] is None
 
 
 def test_duration_is_optional(client, pool) -> None:
@@ -247,7 +255,7 @@ def test_a_malformed_request_does_not_echo_what_it_sent(client) -> None:
 # --- The request key ----------------------------------------------------------
 
 EARLIER = {"id": "77777777-0000-0000-0000-000000000007", "video_id": "dQw4w9WgXcQ",
-           "content_type": "summary", "status": "drafting"}
+           "content_type": "summary", "platform": None, "status": "drafting"}
 
 
 @pytest.mark.parametrize("key", [..., "", "not-a-uuid", "1' OR '1'='1", "x" * 500])
@@ -282,6 +290,27 @@ def test_a_key_reused_for_a_different_request_is_409(client, pool, fake_jobs, ch
     """Never answered with the earlier job: that would hand back an unrelated result."""
     fake_jobs.existing = [EARLIER]
     response = post(client, **changes)
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "request-key-reused"
+    assert EARLIER["id"] not in response.text
+    assert pool.reserved == 0 and fake_jobs.created == []
+
+
+EARLIER_SOCIAL = {**EARLIER, "content_type": "social", "platform": "x-thread"}
+
+
+def test_a_repeated_social_start_returns_the_job_it_already_made(client, pool, fake_jobs) -> None:
+    fake_jobs.existing = [EARLIER_SOCIAL]
+    response = post(client, contentType="social", platform="x-thread")
+    assert response.status_code == 202
+    assert response.json() == {"jobId": EARLIER["id"]}
+    assert pool.reserved == 0 and fake_jobs.created == []
+
+
+def test_a_key_reused_for_a_different_platform_is_409(client, pool, fake_jobs) -> None:
+    """The earlier job's draft was written for another platform."""
+    fake_jobs.existing = [EARLIER_SOCIAL]
+    response = post(client, contentType="social", platform="linkedin")
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "request-key-reused"
     assert EARLIER["id"] not in response.text

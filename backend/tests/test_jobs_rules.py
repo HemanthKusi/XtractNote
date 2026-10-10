@@ -16,6 +16,7 @@ module against the real database.
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
@@ -40,6 +41,7 @@ from app.services.jobs import (
     progress_for,
     request_matches,
 )
+from app.services.prompts import SocialPlatform
 
 MIGRATION = (
     Path(__file__).resolve().parents[2] / "database" / "004_create_jobs.sql"
@@ -385,11 +387,49 @@ def test_the_sweep_runs_more_often_than_a_job_goes_stale() -> None:
 
 
 def test_a_repeat_of_the_same_request_matches() -> None:
-    job = {"video_id": "dQw4w9WgXcQ", "content_type": "summary"}
-    assert request_matches(job, "dQw4w9WgXcQ", "summary") is True
+    job = {"video_id": "dQw4w9WgXcQ", "content_type": "summary", "platform": None}
+    assert request_matches(job, "dQw4w9WgXcQ", "summary", None) is True
+
+
+def test_a_repeat_of_the_same_social_request_matches() -> None:
+    job = {"video_id": "dQw4w9WgXcQ", "content_type": "social", "platform": "x-thread"}
+    assert request_matches(job, "dQw4w9WgXcQ", "social", "x-thread") is True
 
 
 @pytest.mark.parametrize(("video_id", "content_type"), [("aircAruvnKk", "summary"), ("dQw4w9WgXcQ", "blog")])
 def test_a_key_reused_for_another_request_does_not_match(video_id: str, content_type: str) -> None:
-    job = {"video_id": "dQw4w9WgXcQ", "content_type": "summary"}
-    assert request_matches(job, video_id, content_type) is False
+    job = {"video_id": "dQw4w9WgXcQ", "content_type": "summary", "platform": None}
+    assert request_matches(job, video_id, content_type, None) is False
+
+
+def test_a_key_reused_for_another_platform_does_not_match() -> None:
+    """Answering it would hand back a draft written for the wrong platform."""
+    job = {"video_id": "dQw4w9WgXcQ", "content_type": "social", "platform": "x-thread"}
+    assert request_matches(job, "dQw4w9WgXcQ", "social", "linkedin") is False
+
+
+def test_a_social_job_from_before_platforms_were_recorded_does_not_match() -> None:
+    """Its platform is unknown, so a request naming one is refused, not guessed at."""
+    job = {"video_id": "dQw4w9WgXcQ", "content_type": "social", "platform": None}
+    assert request_matches(job, "dQw4w9WgXcQ", "social", "linkedin") is False
+
+
+PLATFORM_MIGRATION = (
+    Path(__file__).resolve().parents[2] / "database" / "009_job_platform.sql"
+)
+
+
+def platforms_in_migration() -> set[str]:
+    """The values migration 009's CHECK constraint allows besides NULL."""
+    sql = PLATFORM_MIGRATION.read_text()
+    match = re.search(r"platform\s+in\s*\((.*?)\)", sql, re.S | re.I)
+    assert match, "could not find the platform CHECK constraint in migration 009"
+    return set(re.findall(r"'([a-z-]+)'", match.group(1)))
+
+
+def test_the_platforms_the_database_allows_are_the_ones_that_can_run() -> None:
+    """
+    Written in two files, in two languages, by hand. A platform the backend
+    accepts and the database refuses fails only when a job is created for it.
+    """
+    assert platforms_in_migration() == set(get_args(SocialPlatform))

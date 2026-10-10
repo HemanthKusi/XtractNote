@@ -8,9 +8,6 @@
 -- reused for the same video with a different platform was therefore answered
 -- with the earlier job: a draft written for the wrong platform.
 --
--- Recording it also puts every input a run needs on the row, which a worker
--- that picks jobs up from the table, rather than from the request, depends on.
---
 -- The CHECK names the platforms the backend accepts (`SocialPlatform` in
 -- backend/app/services/prompts.py; a backend test pins the two together).
 -- Users hold insert and update policies on this table (migration 005), so the

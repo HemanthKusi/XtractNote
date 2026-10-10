@@ -54,6 +54,14 @@ import {
   POLL_EVERY_MS,
   nextPollDecision,
 } from "@/lib/generation/poll";
+import {
+  START_KEY_ITEM,
+  memoryStore,
+  requestSignature,
+  settleStartKey,
+  startKeyFor,
+  type KeyStore,
+} from "@/lib/generation/start-key";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
 import {
@@ -294,9 +302,24 @@ export default function CreatePage() {
    */
   const runRef = useRef(0);
 
-  // The request key for the start in progress, and which request it is for.
-  // See handleGenerate. A ref, like runRef: read across awaits.
-  const startKeyRef = useRef<{ signature: string; key: string } | null>(null);
+  // Where the request key for a start is kept: the tab's session storage when
+  // the browser allows it, so a reload keeps it; memory for this page
+  // otherwise. Chosen on first use, since storage is not there to probe while
+  // the page renders on the server.
+  const keyStoreRef = useRef<KeyStore | null>(null);
+  const keyStore = (): KeyStore => {
+    if (!keyStoreRef.current) {
+      try {
+        const probe = `${START_KEY_ITEM}:probe`;
+        window.sessionStorage.setItem(probe, "1");
+        window.sessionStorage.removeItem(probe);
+        keyStoreRef.current = window.sessionStorage;
+      } catch {
+        keyStoreRef.current = memoryStore();
+      }
+    }
+    return keyStoreRef.current;
+  };
   const beginRun = () => ++runRef.current;
   const isStale = (token: number) => runRef.current !== token;
 
@@ -578,20 +601,17 @@ export default function CreatePage() {
       toast.info(message);
     };
 
-    // ── The request key ──
+    // ── The request key ── (lib/generation/start-key.ts)
     //
-    // The same video, format and platform reuse the key the last start used,
-    // until this page has seen a definite answer for it. So when a start whose
-    // reply was lost, or one the user stopped waiting for, is started again,
-    // the backend answers with the job it already made, if it made one, rather
-    // than creating — and paying for — a second.
-    const signature = `${meta.videoId}|${selectedType}|${platform ?? ""}`;
-    const kept = startKeyRef.current;
-    const requestId = kept && kept.signature === signature ? kept.key : crypto.randomUUID();
-    startKeyRef.current = { signature, key: requestId };
-    const settle = () => {
-      if (startKeyRef.current?.key === requestId) startKeyRef.current = null;
-    };
+    // Reused by every start of the same video, format and platform until the
+    // page has a definite answer, so a start whose reply was lost is answered
+    // with the job it already made, if it made one, rather than a second.
+    const requestId = startKeyFor(
+      requestSignature(meta.videoId, selectedType, platform),
+      keyStore(),
+      () => crypto.randomUUID(),
+    );
+    const settle = () => settleStartKey(requestId, keyStore());
 
     // From here the backend may accept the job even if this page never hears.
     setStatus({ phase: "generating", meta, contentType: selectedType, run: "sent" });

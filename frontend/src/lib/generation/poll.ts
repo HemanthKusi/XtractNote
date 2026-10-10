@@ -40,11 +40,11 @@ export const INITIAL_POLL_STATE: PollState = { failuresInARow: 0 };
 /**
  * How a check ended.
  *
- * `failed` is the job's own verdict: it reported failing, or reported
- * finishing without a result. `lost-sight` is the page's: the job could not be
- * checked and will not be checked again — signed out, not found, a reply that
- * could not be read — so the run may still be going. The page settles the
- * request key on the first and keeps it on the second.
+ * `failed`: the job reported failing, or reported completing without the
+ * result a completed job carries. `lost-sight`: the job could not be checked
+ * and will not be checked again — signed out, not found, a reply that could
+ * not be read. The page settles the request key on the first and keeps it on
+ * the second.
  *
  * `stopped-waiting` is not a failure either: the run may still finish, and its
  * result then lands in drafts.

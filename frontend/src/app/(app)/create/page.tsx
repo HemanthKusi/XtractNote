@@ -55,7 +55,7 @@ import {
   nextPollDecision,
 } from "@/lib/generation/poll";
 import {
-  START_KEY_ITEM,
+  layeredStore,
   memoryStore,
   requestSignature,
   settleStartKey,
@@ -302,21 +302,21 @@ export default function CreatePage() {
    */
   const runRef = useRef(0);
 
-  // Where the request key for a start is kept: the tab's session storage when
-  // the browser allows it, so a reload keeps it; memory for this page
-  // otherwise. Chosen on first use, since storage is not there to probe while
-  // the page renders on the server.
+  // Where the request key for a start is kept: memory for this page, and the
+  // tab's session storage behind it so a reload keeps it (see layeredStore).
+  // Built on first use, since storage does not exist while the page renders
+  // on the server.
   const keyStoreRef = useRef<KeyStore | null>(null);
   const keyStore = (): KeyStore => {
     if (!keyStoreRef.current) {
+      let persistent: KeyStore | null = null;
       try {
-        const probe = `${START_KEY_ITEM}:probe`;
-        window.sessionStorage.setItem(probe, "1");
-        window.sessionStorage.removeItem(probe);
-        keyStoreRef.current = window.sessionStorage;
+        // Reading the property itself can throw where storage is blocked.
+        persistent = window.sessionStorage;
       } catch {
-        keyStoreRef.current = memoryStore();
+        persistent = null;
       }
+      keyStoreRef.current = layeredStore(persistent, memoryStore());
     }
     return keyStoreRef.current;
   };

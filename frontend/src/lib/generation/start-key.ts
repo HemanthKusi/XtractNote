@@ -10,9 +10,10 @@
 // is then answered with the job it already made, if it made one, rather than
 // creating and paying for a second.
 //
-// Kept in the tab's session storage, not only in memory, so a reload or an
-// in-app navigation away and back keeps it. Where storage is unavailable, a
-// memory store stands in for the life of the page.
+// Kept in two places (see `layeredStore`): in memory, which cannot fail, and
+// in the tab's session storage, so a reload or an in-app navigation away and
+// back keeps it. Storage can refuse a write — when it is full, or blocked — so
+// it is never the only copy.
 //
 // Pure apart from the store it is handed, and its imports are none, so the
 // rules can be checked without a browser (scripts/check-start-key.mjs).
@@ -84,12 +85,51 @@ export function settleStartKey(key: string, store: KeyStore): void {
   }
 }
 
-/** A store held in memory, for where session storage is unavailable. */
+/** A store held in memory. Its calls do not fail. */
 export function memoryStore(): KeyStore {
   const items = new Map<string, string>();
   return {
     getItem: (key) => items.get(key) ?? null,
     setItem: (key, value) => void items.set(key, value),
     removeItem: (key) => void items.delete(key),
+  };
+}
+
+/**
+ * Memory first, `persistent` (the tab's session storage) behind it.
+ *
+ * Writes and removals go to both; a refusal from `persistent` is ignored, so
+ * the memory copy is always kept. Reads prefer memory — the newest copy while
+ * the page is open — so a write storage refused can never bring back an older
+ * key; after a reload memory is empty and `persistent` answers. `persistent`
+ * is null where storage cannot be reached at all.
+ */
+export function layeredStore(persistent: KeyStore | null, memory: KeyStore): KeyStore {
+  const attempt = (call: (store: KeyStore) => void) => {
+    if (!persistent) return;
+    try {
+      call(persistent);
+    } catch {
+      // Refused or unreachable: the memory copy stands.
+    }
+  };
+  return {
+    getItem(key) {
+      const held = memory.getItem(key);
+      if (held !== null) return held;
+      try {
+        return persistent ? persistent.getItem(key) : null;
+      } catch {
+        return null;
+      }
+    },
+    setItem(key, value) {
+      memory.setItem(key, value);
+      attempt((store) => store.setItem(key, value));
+    },
+    removeItem(key) {
+      memory.removeItem(key);
+      attempt((store) => store.removeItem(key));
+    },
   };
 }

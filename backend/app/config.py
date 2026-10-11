@@ -5,6 +5,7 @@ Loads environment variables and validates that required values are present.
 If a required variable is missing, the app won't start (fail fast).
 """
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import Literal
 
@@ -38,6 +39,11 @@ class Settings(BaseSettings):
     # ── Server ──
     backend_port: int = 8000
     frontend_url: str = "http://localhost:3000"
+
+    # ── Generation ──
+    # How many generations this server process runs at once. Requests beyond
+    # it are refused as busy rather than queued.
+    generation_workers: int = Field(default=4, ge=1)
 
     class Config:
         env_file = ".env"

@@ -1,21 +1,22 @@
 // src/lib/api/content.ts
-// Browser-side persistence for generated content. Inserts/updates/deletes rows
-// in public.generated_content under RLS (the user owns the row).
+// Browser-side changes to generated content: saving a draft, editing, and
+// deleting rows in public.generated_content under RLS (the user owns the row).
 //
-// As of Phase 11, content_body stores the full ContentBody union:
+// The rows themselves are written by the backend when a generation finishes,
+// as drafts. Saving one changes its status; it does not create anything.
+//
+// content_body stores the full ContentBody union:
 //   - prose types      -> { markdown }
 //   - flashcards       -> { kind: "flashcards", cards: [...] }
 //   - quiz             -> { kind: "quiz", questions: [...] }
-// Prose rows are byte-identical to what was stored before, so every existing
-// row stays valid and no migration is needed.
 
 import { createClient } from "@/lib/supabase/client";
-import type { VideoMeta } from "@/lib/youtube/types";
-import type { ContentBody, ContentType, GeneratedContent } from "@/lib/content/types";
-import { getSocialPlatformLabel } from "@/lib/content/types";
+import type { ContentType } from "@/lib/content/types";
 
 // Discriminated-union result, same pattern as the other lib/api helpers.
-export type SaveFailReason = "not-authenticated" | "insert-failed" | "network";
+// "not-a-draft" — the row is already saved, or is gone — is the answer to a
+// second click or a second tab, and must not be reported as a success.
+export type SaveFailReason = "not-authenticated" | "not-a-draft" | "save-failed" | "network";
 
 export type SaveResult =
   | { ok: true; data: { id: string } }
@@ -45,15 +46,6 @@ export type DeleteResult =
   | { ok: true }
   | { ok: false; reason: DeleteFailReason };
 
-// Seconds (number) → "M:SS" text for the video_duration text column.
-// Returns null when duration is unknown (keyless oEmbed source omits it).
-function formatDuration(seconds?: number): string | null {
-  if (seconds == null || !Number.isFinite(seconds)) return null;
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
 // Rough word count from a text blob (used by History cards).
 function countWords(text: string): number {
   const trimmed = text.trim();
@@ -61,45 +53,19 @@ function countWords(text: string): number {
 }
 
 /**
- * Word count across any content body shape.
+ * Save one of the signed-in user's drafts to their library.
  *
- * History cards show this, so a structured item reading "0 words" would look
- * broken. For flashcards and quiz we count the visible text of every item.
- * It is a size indicator, not a precise metric — that is all the card needs.
+ * **Only a draft matches** — the status is in the update's own filter — so a
+ * second click, or a second tab, finds nothing to change and gets
+ * "not-a-draft" rather than a second success. RLS limits it to the user's own
+ * rows, and `.single()` turns a zero-row result into that answer instead of a
+ * silent one.
  *
- * Switching on `kind` means adding a body shape later without handling it here
- * becomes a compile error rather than a silently wrong number.
+ * @param id The draft's row id — the job's `resultId`.
  */
-function countBodyWords(body: ContentBody): number {
-  switch (body.kind) {
-    case "flashcards":
-      return body.cards.reduce(
-        (total, card) => total + countWords(card.front) + countWords(card.back),
-        0,
-      );
-    case "quiz":
-      return body.questions.reduce((total, q) => {
-        const options = q.options.reduce((sum, opt) => sum + countWords(opt), 0);
-        return total + countWords(q.question) + options + countWords(q.explanation ?? "");
-      }, 0);
-    default:
-      return countWords(body.markdown);
-  }
-}
-
-/**
- * Save one generated result for the signed-in user.
- *
- * @param meta    The video the content came from.
- * @param content The generated content (contentType + body + optional platform).
- */
-export async function saveGeneratedContent(
-  meta: VideoMeta,
-  content: GeneratedContent,
-): Promise<SaveResult> {
+export async function saveDraft(id: string): Promise<SaveResult> {
   const supabase = createClient();
 
-  // Who's saving — verified against Supabase, not trusted from the client.
   const {
     data: { user },
     error: userError,
@@ -109,48 +75,21 @@ export async function saveGeneratedContent(
     return { ok: false, reason: "not-authenticated" };
   }
 
-  const body = content.content;
-  const platform = content.contentType === "social" ? content.platform ?? null : null;
-
-  // Social items default their title to "LinkedIn post — Video Title" so five
-  // platform variants of one video are distinguishable in History. Every other
-  // type keeps the video title as before.
-  const contentTitle = platform
-    ? `${getSocialPlatformLabel(platform)} — ${meta.title}`
-    : meta.title;
-
   try {
     const { data, error } = await supabase
       .from("generated_content")
-      .insert({
-        user_id: user.id,
-        // Video source
-        video_url: meta.url,
-        video_id: meta.videoId,
-        video_title: meta.title,
-        video_channel: meta.channel,
-        video_thumbnail: meta.thumbnailUrl,
-        video_duration: formatDuration(meta.durationSeconds),
-        // Generated content
-        content_type: content.contentType,
-        content_title: contentTitle,
-        // The full body union. Prose bodies are { markdown }, exactly as
-        // before — structured bodies keep their kind + items.
-        content_body: body,
-        // Platform lives in metadata rather than its own column: no migration,
-        // and content_type stays "social". null (not {}) for other types so
-        // "social posts with a platform" is a clean `is not null` query.
-        metadata: platform ? { platform } : null,
-        status: "saved",
-        word_count: countBodyWords(body),
-        // folder_id stays null (8.5); content_html stays null (rendered live)
-      })
+      .update({ status: "saved" })
+      .eq("id", id)
+      .eq("status", "draft")
       .select("id")
       .single();
 
-    if (error || !data) {
-      return { ok: false, reason: "insert-failed" };
+    if (error) {
+      // PGRST116 = .single() got zero rows: not a draft any more, or not there.
+      if (error.code === "PGRST116") return { ok: false, reason: "not-a-draft" };
+      return { ok: false, reason: "save-failed" };
     }
+    if (!data) return { ok: false, reason: "not-a-draft" };
 
     return { ok: true, data: { id: data.id } };
   } catch {

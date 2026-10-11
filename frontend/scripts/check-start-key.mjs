@@ -7,8 +7,8 @@
  * ── Why this exists ──
  * Each wrong answer here costs money and renders cleanly: a key not reused
  * means a retry pays for a second run; a key reused for a different request
- * means the backend refuses it; a key that survives its definite answer means
- * the next real start is answered with an old job.
+ * means the backend refuses it; a key that is not forgotten when settled
+ * means the next real start can be answered with an old job.
  *
  * ── Why it imports rather than re-states ──
  * As with check-fold: it imports the real `start-key.ts`, which imports
@@ -80,7 +80,7 @@ const B = requestSignature("dQw4w9WgXcQ", "blog", undefined);
   const store = memoryStore();
   const first = startKeyFor(A, store, newKey);
   settleStartKey(first, store);
-  check("after a definite answer the same request gets a new key", startKeyFor(A, store, newKey) !== first);
+  check("after settling, the same request gets a new key", startKeyFor(A, store, newKey) !== first);
 }
 {
   const store = memoryStore();

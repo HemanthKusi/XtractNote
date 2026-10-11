@@ -72,6 +72,24 @@ async function accessToken(): Promise<string | null> {
   return session?.access_token ?? null;
 }
 
+/**
+ * The signed-in user's id, or null when there is no session.
+ *
+ * Read from the session this tab already holds, without asking the server.
+ * Good enough to tell this tab's accounts apart; not an identity check, which
+ * the backend makes on every request.
+ */
+export async function signedInUserId(): Promise<string | null> {
+  try {
+    const {
+      data: { session },
+    } = await createClient().auth.getSession();
+    return session?.user.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** detail.code from an error body, or null if the body is not one of ours. */
 async function codeFrom(response: Response): Promise<string | null> {
   try {
@@ -98,8 +116,7 @@ async function codeFrom(response: Response): Promise<string | null> {
  *
  * `requestId` identifies this start. Sending the same one again returns the
  * job it already made, so a start whose reply was lost — "network" — can be
- * repeated without paying twice. The caller keeps it until it has a definite
- * answer, and uses a new one for a new request.
+ * repeated without paying twice.
  */
 export async function startGeneration(
   fullText: string,

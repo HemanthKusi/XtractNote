@@ -7,7 +7,7 @@
 // "this video, this format, this platform" — reuses its key across starts, so
 // a start whose reply was lost, or one the user stopped waiting for, can be
 // answered with the job it already made rather than creating and paying for a
-// second. A key is settled once the page has a definite answer for it.
+// second.
 //
 // One key per request, not one in total: stopping a summary, starting a blog
 // and coming back to the summary must find the summary's key again. At most
@@ -87,7 +87,7 @@ export function startKeyFor(signature: string, store: KeyStore, newKey: () => st
   return key;
 }
 
-/** Forget `key` once its start has a definite answer. Every other request's key is left alone. */
+/** Forget `key`. Every other request's key is left alone. */
 export function settleStartKey(key: string, store: KeyStore): void {
   const kept = read(store);
   const remaining = kept.filter((entry) => entry.key !== key);

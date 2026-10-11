@@ -75,9 +75,8 @@ async function accessToken(): Promise<string | null> {
 /**
  * The signed-in user's id, or null when there is no session.
  *
- * Read from the session this tab already holds, without asking the server.
  * Good enough to tell this tab's accounts apart; not an identity check, which
- * the backend makes on every request.
+ * the backend makes for itself.
  */
 export async function signedInUserId(): Promise<string | null> {
   try {

@@ -2,6 +2,14 @@
 # Automated review configuration.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# How feedback is written, for review comments and chat alike. Top level, not
+# under `reviews`, and limited to 250 characters. Asking for the failing
+# sequence makes a finding checkable rather than a matter of opinion.
+tone_instructions: >-
+  Be concise, direct and constructive. For each finding, state the input or
+  sequence of steps that produces the wrong result. When a finding is
+  uncertain, say so rather than presenting it as fact.
+
 reviews:
   # `assertive` rather than the `chill` default: more feedback, and documented as
   # potentially nitpicky. Accepted deliberately — a finding that is not worth
@@ -106,6 +114,19 @@ reviews:
         - On-screen copy must not claim something the code does not do. A wrong
           readout misleads every user, not just the next developer.
 
+        Architecture and design — weigh these as well as line-level defects:
+        - Where a change puts logic, and what it couples together. Flag a
+          component or route that starts owning a rule another surface will
+          also need.
+        - Whether it holds as the product grows: more content types, more
+          platforms, more generation steps. Flag a list, union or switch that a
+          new case would have to be added to by hand in several places.
+        - State that outlives the moment: browser storage survives a sign-out
+          and is shared by every account in the tab. Ask what happens when two
+          accounts, two tabs or two runs meet it.
+        - Edge cases one happy-path run never reaches: a reply that is lost,
+          late, malformed or from a proxy; a retry; a double click.
+
     - path: "backend/app/**/*.py"
       instructions: |
         - This service authenticates to the database with a service-role key,
@@ -131,6 +152,17 @@ reviews:
           a response or a log line.
         - Python 3.13 is required. Flag syntax or dependencies that assume
           otherwise.
+
+        Architecture and design — weigh these as well as line-level defects:
+        - Whether a guarantee survives more than one server process. Pools,
+          caches and locks held in memory are per process; flag anything that
+          relies on them for correctness across processes.
+        - Whether it holds as generation grows into a multi-step pipeline: a
+          new step should be an addition, not a rewrite of the steps around it.
+        - Cost and abuse: anything one user can repeat to spend model calls,
+          hold capacity, or grow a table without bound.
+        - Races between the request, the background run and the periodic
+          sweep, and what each sees when another has already moved the row.
 
     - path: "backend/tests/**/*.py"
       instructions: |

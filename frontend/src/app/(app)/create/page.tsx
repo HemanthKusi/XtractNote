@@ -607,8 +607,7 @@ export default function CreatePage() {
     //
     // Reused by later starts of the same video, format and platform, so a
     // start whose reply was lost is answered with the job it already made, if
-    // it made one, rather than a second. When a key is kept and when it is
-    // dropped is decided there.
+    // it made one, rather than a second.
     const requestId = startKeyFor(
       requestSignature(meta.videoId, selectedType, platform),
       keyStore(),

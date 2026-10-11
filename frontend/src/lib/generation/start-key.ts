@@ -4,10 +4,15 @@
 // The request key a generation start carries, and when it is reused.
 //
 // The backend answers a repeated key with the job it already made. A request —
-// "this video, this format, this platform" — reuses its key across starts, so
-// a start whose reply was lost, or one the user stopped waiting for, can be
-// answered with the job it already made rather than creating and paying for a
-// second.
+// "this account, this video, this format, this platform" — reuses its key
+// across starts, so a start whose reply was lost, or one the user stopped
+// waiting for, can be answered with the job it already made rather than
+// creating and paying for a second.
+//
+// The account is part of the request because a tab's storage outlives a
+// sign-out, and the backend matches keys per user: without it, a second
+// account in the same tab would send the first one's key and, on finishing,
+// forget it.
 //
 // One key per request, not one in total: stopping a summary, starting a blog
 // and coming back to the summary must find the summary's key again. At most
@@ -41,8 +46,13 @@ interface KeptKey {
 }
 
 /** Which request a key is for. Two starts with the same signature are the same request. */
-export function requestSignature(videoId: string, contentType: string, platform: string | undefined): string {
-  return JSON.stringify([videoId, contentType, platform ?? null]);
+export function requestSignature(
+  userId: string,
+  videoId: string,
+  contentType: string,
+  platform: string | undefined,
+): string {
+  return JSON.stringify([userId, videoId, contentType, platform ?? null]);
 }
 
 function isKeptKey(entry: unknown): entry is KeptKey {

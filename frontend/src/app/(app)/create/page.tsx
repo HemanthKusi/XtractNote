@@ -32,7 +32,7 @@ import {
 } from "@/lib/youtube/extract-video-id";
 import { fetchVideoMetadata, type MetaFailReason } from "@/lib/api/youtube";
 import { fetchTranscript } from "@/lib/api/transcript";
-import { fetchJob, startGeneration } from "@/lib/api/generate";
+import { fetchJob, signedInUserId, startGeneration } from "@/lib/api/generate";
 import { saveDraft, type SaveFailReason } from "@/lib/api/content";
 import { searchVideos } from "@/lib/api/search";
 import type { VideoMeta } from "@/lib/youtube/types";
@@ -165,6 +165,10 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   "save-failed": "We couldn't save this just now. Please try again.",
   // Note: "network" is already defined above (shared with metadata) — not repeated.
 };
+
+// The page could not read the job's state, so the run may still finish.
+const LOST_SIGHT_MESSAGE =
+  "We lost track of this generation. Try again to check on it — if it finishes, it will appear in your drafts.";
 
 // ── Outcomes that are not failures ──────────────────────────
 // Shown as an info toast, back at the picker, with no "Try again": the run may
@@ -604,8 +608,14 @@ export default function CreatePage() {
     };
 
     // ── The request key ── (lib/generation/start-key.ts)
+    const userId = await signedInUserId();
+    if (isStale(run)) return;
+    if (!userId) {
+      fail("not-authenticated");
+      return;
+    }
     const requestId = startKeyFor(
-      requestSignature(meta.videoId, selectedType, platform),
+      requestSignature(userId, meta.videoId, selectedType, platform),
       keyStore(),
       () => crypto.randomUUID(),
     );
@@ -656,8 +666,17 @@ export default function CreatePage() {
         return;
       }
       if (decision.kind === "lost-sight") {
-        // The run may still be going, so its key is not settled.
-        fail(decision.reason);
+        // The run may still be going, so its key is not settled. A sign-in or
+        // a missing job keeps its own copy; a reply that could not be read
+        // says the run may still finish.
+        setStatus({
+          phase: "generate-error",
+          meta,
+          message:
+            decision.reason === "unknown"
+              ? LOST_SIGHT_MESSAGE
+              : ERROR_MESSAGES[decision.reason],
+        });
         return;
       }
       if (decision.kind === "stopped-waiting") {

@@ -38,8 +38,10 @@ function check(name, ok) {
 
 let counter = 0;
 const newKey = () => `key-${++counter}`;
-const A = requestSignature("dQw4w9WgXcQ", "summary", undefined);
-const B = requestSignature("dQw4w9WgXcQ", "blog", undefined);
+const USER = "user-a";
+const OTHER_USER = "user-b";
+const A = requestSignature(USER, "dQw4w9WgXcQ", "summary", undefined);
+const B = requestSignature(USER, "dQw4w9WgXcQ", "blog", undefined);
 
 // ── Reuse ──
 {
@@ -57,14 +59,14 @@ const B = requestSignature("dQw4w9WgXcQ", "blog", undefined);
 }
 {
   const store = memoryStore();
-  const oldest = startKeyFor(requestSignature("v0", "summary", undefined), store, newKey);
-  const second = startKeyFor(requestSignature("v1", "summary", undefined), store, newKey);
-  for (let i = 2; i <= MAX_KEPT; i++) startKeyFor(requestSignature(`v${i}`, "summary", undefined), store, newKey);
+  const oldest = startKeyFor(requestSignature(USER, "v0", "summary", undefined), store, newKey);
+  const second = startKeyFor(requestSignature(USER, "v1", "summary", undefined), store, newKey);
+  for (let i = 2; i <= MAX_KEPT; i++) startKeyFor(requestSignature(USER, `v${i}`, "summary", undefined), store, newKey);
   // v1 first: asking for v0 makes it a new key, which pushes the next oldest out.
   check("past the limit the newer keys are kept",
-    startKeyFor(requestSignature("v1", "summary", undefined), store, newKey) === second);
+    startKeyFor(requestSignature(USER, "v1", "summary", undefined), store, newKey) === second);
   check("past the limit the oldest key is dropped",
-    startKeyFor(requestSignature("v0", "summary", undefined), store, newKey) !== oldest);
+    startKeyFor(requestSignature(USER, "v0", "summary", undefined), store, newKey) !== oldest);
 }
 
 // ── Kept across a reload: the store is what persists ──
@@ -91,11 +93,25 @@ const B = requestSignature("dQw4w9WgXcQ", "blog", undefined);
   check("settling an old key forgets it", startKeyFor(A, store, newKey) !== old);
 }
 
+// ── Two accounts in one tab ──
+{
+  // A stops waiting; B signs in on the same tab and makes the same request.
+  const store = memoryStore();
+  const first = startKeyFor(A, store, newKey);
+  const sameRequestOtherUser = requestSignature(OTHER_USER, "dQw4w9WgXcQ", "summary", undefined);
+  const theirs = startKeyFor(sameRequestOtherUser, store, newKey);
+  check("another account never sends this account's key", theirs !== first);
+  settleStartKey(theirs, store);
+  check("another account settling its key leaves this account's alone", startKeyFor(A, store, newKey) === first);
+}
+
 // ── Signatures ──
+check("the account is part of the request",
+  requestSignature(USER, "v", "summary", undefined) !== requestSignature(OTHER_USER, "v", "summary", undefined));
 check("platform is part of the request",
-  requestSignature("v", "social", "linkedin") !== requestSignature("v", "social", "x-thread"));
+  requestSignature(USER, "v", "social", "linkedin") !== requestSignature(USER, "v", "social", "x-thread"));
 check("a separator in an id cannot make two requests collide",
-  requestSignature("a|b", "c", undefined) !== requestSignature("a", "b|c", undefined));
+  requestSignature(USER, "a|b", "c", undefined) !== requestSignature(USER, "a", "b|c", undefined));
 
 // ── A store that misbehaves ──
 {

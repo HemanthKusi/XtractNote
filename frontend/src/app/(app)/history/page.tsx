@@ -1,6 +1,7 @@
 // src/app/(app)/history/page.tsx  →  route: /history
-// Lists the signed-in user's saved content. Client-side fetch (browser + RLS),
-// with loading / error / empty / list states.
+// Lists the signed-in user's content — saved items and drafts, newest first.
+// Client-side fetch (browser + RLS), with loading / error / empty / list
+// states. A draft can be saved from its row.
 
 "use client";
 
@@ -15,6 +16,7 @@ import { fetchHistory, type HistoryItem, type HistoryFailReason } from "@/lib/ap
 import { fetchFolders, type Folder } from "@/lib/api/folders";
 import { MoveToFolderModal } from "@/components/history/move-to-folder-modal";
 import { ROUTES } from "@/lib/constants/routes";
+import { useSaveDraft } from "@/lib/hooks/use-save-draft";
 
 // Friendly copy for each fetch failure.
 const ERROR_MESSAGES: Record<HistoryFailReason, string> = {
@@ -78,6 +80,21 @@ type State =
       );
     };
 
+    // A saved draft becomes a saved row in place, as a move does: no refetch.
+    const handleSaved = useCallback((itemId: string) => {
+      setState((prev) =>
+        prev.phase === "loaded"
+          ? {
+              ...prev,
+              items: prev.items.map((it) =>
+                it.id === itemId ? { ...it, status: "saved" } : it,
+              ),
+            }
+          : prev,
+      );
+    }, []);
+    const drafts = useSaveDraft({ onSaved: handleSaved, onStale: load });
+
   return (
     <>
       {/* Wider than the old reading column: these rows carry a 192px still
@@ -87,7 +104,7 @@ type State =
         <header className="mb-6">
           <h1 className="font-serif text-h2 text-xn-ink">History</h1>
           <p className="mt-1 text-body text-xn-ink-muted">
-            Everything you&apos;ve saved, newest first.
+            Everything you&apos;ve made, newest first.
           </p>
         </header>
 
@@ -145,6 +162,8 @@ type State =
             folders={state.folders}
             onOpen={handleOpen}
             onMove={setMovingItem}
+            onSaveDraft={drafts.save}
+            isSaving={drafts.isSaving}
           />
         )}
       </div>
@@ -167,11 +186,15 @@ function HistoryList({
   folders,
   onOpen,
   onMove,
+  onSaveDraft,
+  isSaving,
 }: {
   items: HistoryItem[];
   folders: Folder[];
   onOpen: (id: string) => void;
   onMove: (item: HistoryItem) => void;
+  onSaveDraft: (id: string) => void;
+  isSaving: (id: string) => boolean;
 }) {
   const folderById = new Map(folders.map((f) => [f.id, f]));
 
@@ -191,6 +214,8 @@ function HistoryList({
             onOpen={onOpen}
             folderLabel={folderLabel}
             onMove={onMove}
+            onSaveDraft={onSaveDraft}
+            savingDraft={isSaving(item.id)}
           />
         );
       })}

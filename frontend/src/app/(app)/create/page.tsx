@@ -47,6 +47,7 @@ import {
   type ContentType,
   type GeneratableContentType,
   type GenerateFailReason,
+  type JobStatus,
   type SocialPlatform,
 } from "@/lib/content/types";
 import {
@@ -54,6 +55,14 @@ import {
   POLL_EVERY_MS,
   nextPollDecision,
 } from "@/lib/generation/poll";
+import {
+  countWords,
+  currentStep,
+  markStep,
+  type GenerationRunState,
+  type GenerationStep,
+  type StepStarts,
+} from "@/lib/generation/stage";
 import {
   layeredStore,
   memoryStore,
@@ -64,10 +73,7 @@ import {
 } from "@/lib/generation/start-key";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
-import {
-  GeneratingPanel,
-  type GenerationRunState,
-} from "@/components/create/generating-panel";
+import { GeneratingPanel } from "@/components/create/generating-panel";
 import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
 import { SearchResults } from "@/components/create/search-results";
 import { DraftsBand } from "@/components/create/drafts-band";
@@ -240,6 +246,12 @@ type Status =
       // How far the start has got. Stopping means something different at
       // each step, and the panel says which.
       run: GenerationRunState;
+      // The step running now, and when each step started by this page's
+      // clock — the panel's durations are measured from these.
+      step: GenerationStep;
+      starts: StepStarts;
+      // Words in the fetched transcript, null until it has arrived.
+      wordCount: number | null;
     }
   | {
       phase: "generate-error";
@@ -573,7 +585,22 @@ export default function CreatePage() {
     // Taken BEFORE the first await. Cancelling, or starting anything else,
     // bumps the counter and every check below then drops this run's results.
     const run = beginRun();
-    setStatus({ phase: "generating", meta, contentType: selectedType, run: "not-sent" });
+
+    // ── What the generating screen shows ── (lib/generation/stage.ts)
+    //
+    // Each step's start is recorded the moment this page learns of it, so
+    // the durations the screen shows are measured, not budgeted.
+    const contentType = selectedType;
+    let progress: GenerationRunState = "not-sent";
+    let jobStatus: JobStatus | null = null;
+    let starts: StepStarts = {};
+    let wordCount: number | null = null;
+    const show = () => {
+      const step = currentStep(progress, jobStatus);
+      starts = markStep(starts, step, Date.now());
+      setStatus({ phase: "generating", meta, contentType, run: progress, step, starts, wordCount });
+    };
+    show();
 
     // ── The transcript is fetched HERE now ──
     //
@@ -592,6 +619,7 @@ export default function CreatePage() {
       return;
     }
     const transcript = transcriptResult.data;
+    wordCount = countWords(transcript.fullText);
 
     // Only send a platform for social — computed explicitly so a leftover
     // value can't ride along with another type.
@@ -622,7 +650,8 @@ export default function CreatePage() {
     const settle = () => settleStartKey(requestId, keyStore());
 
     // From here the backend may accept the job even if this page never hears.
-    setStatus({ phase: "generating", meta, contentType: selectedType, run: "sent" });
+    progress = "sent";
+    show();
     const started = await startGeneration(
       transcript.fullText,
       selectedType,
@@ -640,20 +669,31 @@ export default function CreatePage() {
       fail(started.reason);
       return;
     }
-    setStatus({ phase: "generating", meta, contentType: selectedType, run: "accepted" });
+    progress = "accepted";
+    show();
 
     // ── Watch the job until it finishes, fails, or the page stops waiting ──
     //
     // The rules for what each report means live in lib/generation/poll.ts.
     // The run token is checked after every await, so cancelling, starting
     // over or leaving the page ends this loop at its next step.
+    //
+    // The first check goes out at once rather than after the interval: the
+    // screen counts the job as starting until a check says it has left
+    // pending, so waiting first would add the interval to that step's time.
     const startedAt = Date.now();
     let pollState = INITIAL_POLL_STATE;
-    for (;;) {
-      await pause(POLL_EVERY_MS);
-      if (isStale(run)) return;
+    for (let first = true; ; first = false) {
+      if (!first) {
+        await pause(POLL_EVERY_MS);
+        if (isStale(run)) return;
+      }
       const report = await fetchJob(started.jobId);
       if (isStale(run)) return;
+      if (report.ok && report.job.status !== jobStatus) {
+        jobStatus = report.job.status;
+        show();
+      }
 
       const decision = nextPollDecision(report, pollState, Date.now() - startedAt);
       if (decision.kind === "keep-polling") {
@@ -921,6 +961,9 @@ export default function CreatePage() {
           meta={status.meta}
           type={status.contentType}
           run={status.run}
+          step={status.step}
+          starts={status.starts}
+          wordCount={status.wordCount}
           onCancel={handleCancelGeneration}
         />
       )}

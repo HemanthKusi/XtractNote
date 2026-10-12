@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/lib/constants/routes";
 import { fetchFolderContents, type HistoryItem } from "@/lib/api/history";
 import { fetchFolder, type Folder } from "@/lib/api/folders";
+import { useSaveDraft } from "@/lib/hooks/use-save-draft";
 
 type State =
   | { phase: "loading" }
@@ -87,6 +88,20 @@ export default function FolderDetailPage({
       };
     });
   };
+
+  // A draft can sit here only if it was moved in before drafts could not be
+  // filed; it is saved from its row like anywhere else.
+  const handleSaved = useCallback((itemId: string) => {
+    setState((prev) =>
+      prev.phase === "loaded"
+        ? {
+            ...prev,
+            items: prev.items.map((it) => (it.id === itemId ? { ...it, status: "saved" } : it)),
+          }
+        : prev,
+    );
+  }, []);
+  const drafts = useSaveDraft({ onSaved: handleSaved, onStale: load });
 
   return (
     <>
@@ -195,6 +210,8 @@ export default function FolderDetailPage({
                     item={item}
                     onOpen={handleOpen}
                     onMove={setMovingItem}
+                    onSaveDraft={drafts.save}
+                    savingDraft={drafts.isSaving(item.id)}
                   />
                 ))}
               </div>

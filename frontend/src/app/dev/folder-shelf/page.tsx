@@ -296,6 +296,7 @@ export default function FolderShelfSpecimensPage() {
                   markdown: "",
                   body: { markdown: "" },
                   folderId: "f1",
+                  status: "saved",
                 }}
                 folderLabel={{ name: "Machine Learning", emoji: "🧠" }}
                 onMove={() => {}}

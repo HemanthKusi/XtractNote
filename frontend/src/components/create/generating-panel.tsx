@@ -49,8 +49,16 @@ const STEP_COPY: Record<GenerationStep, { running: string; done: string; icon: L
   drafting: { running: "Drafting your content", done: "Drafted", icon: PenLine },
 };
 
-/** The line under the heading. True whatever happens to the tab. */
-const LEAVE_COPY = "Closing this tab won't stop it. If it finishes, you'll find it in your drafts.";
+/**
+ * The line under the heading, for each state of the run. Until the start is
+ * accepted, closing the tab can stop it: the request may not have been sent,
+ * or may not have arrived.
+ */
+const LEAVE_COPY: Record<GenerationRunState, string> = {
+  "not-sent": "Keep this tab open until it starts. Once it has, closing the tab won't stop it.",
+  sent: "Keep this tab open until it starts. Once it has, closing the tab won't stop it.",
+  accepted: "Closing this tab won't stop it. If it finishes, you'll find it in your drafts.",
+};
 
 /** What the stop-waiting confirmation says, for each state of the run. */
 const STOP_COPY: Record<GenerationRunState, string> = {
@@ -123,7 +131,7 @@ export function GeneratingPanel({ meta, type, run, step, starts, wordCount, onCa
           <h1 className="text-h2 text-xn-ink">
             Making your <span style={{ color: format.color }}>{format.label.toLowerCase()}</span>
           </h1>
-          <p className="mt-2 text-body text-xn-ink-muted">{LEAVE_COPY}</p>
+          <p className="mt-2 text-body text-xn-ink-muted">{LEAVE_COPY[run]}</p>
         </div>
         <p className="font-mono text-h3 tabular-nums text-xn-ink">
           <span className="sr-only">Elapsed </span>

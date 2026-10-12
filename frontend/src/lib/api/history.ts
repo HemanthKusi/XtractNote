@@ -211,13 +211,14 @@ export async function fetchFolderContents(folderId: string): Promise<HistoryResu
 export async function fetchContentById(id: string): Promise<ContentDetailResult> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) return { ok: false, reason: "not-authenticated" };
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+
     const { data, error } = await supabase
       .from("generated_content")
       .select(DETAIL_COLUMNS)
@@ -245,13 +246,14 @@ async function runHistoryQuery(
 ): Promise<HistoryResult> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) return { ok: false, reason: "not-authenticated" };
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+
     let query = supabase
       .from("generated_content")
       .select(COLUMNS)

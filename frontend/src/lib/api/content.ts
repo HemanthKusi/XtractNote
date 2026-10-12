@@ -66,16 +66,17 @@ function countWords(text: string): number {
 export async function saveDraft(id: string): Promise<SaveResult> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { ok: false, reason: "not-authenticated" };
-  }
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { ok: false, reason: "not-authenticated" };
+    }
+
     const { data, error } = await supabase
       .from("generated_content")
       .update({ status: "saved" })
@@ -144,20 +145,21 @@ export async function updateContent(
 
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { ok: false, reason: "not-authenticated" };
-  }
-
-  const markdown = patch.markdown.trim();
-  // Empty title → null, so the History list falls back to the video title.
-  const title = patch.contentTitle.trim() || null;
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { ok: false, reason: "not-authenticated" };
+    }
+
+    const markdown = patch.markdown.trim();
+    // Empty title → null, so the History list falls back to the video title.
+    const title = patch.contentTitle.trim() || null;
+
     const { data, error } = await supabase
       .from("generated_content")
       .update({
@@ -207,16 +209,17 @@ export async function updateContent(
 export async function deleteContent(id: string): Promise<DeleteResult> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { ok: false, reason: "not-authenticated" };
-  }
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return { ok: false, reason: "not-authenticated" };
+    }
+
     const { data, error } = await supabase
       .from("generated_content")
       .delete()

@@ -2,8 +2,9 @@
 
 // src/app/dev/drafts-band-states/band-states.tsx
 //
-// The drafts band's three unbuilt states, each in the directions on offer.
-// The loaded band is not here: it is the real DraftsBand, unchanged.
+// The directions compared for the drafts band's loading, no-drafts and
+// failed states. The page shows the band with drafts through the real
+// DraftsBand.
 
 import { useEffect, useState } from "react";
 

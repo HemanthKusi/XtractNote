@@ -2,13 +2,13 @@
 
 // src/app/dev/history-drafts/page.tsx  →  route: /dev/history-drafts
 //
-// How a draft could be marked in the History list (#423). Not shipped; the
-// real row is unchanged until a treatment is chosen.
+// How a draft could be marked in the History list (#423): the treatments it
+// was chosen from, kept as the record. B + D with the solid chip shipped.
 //
 // Each treatment shows the same list: two drafts and two saved items, one of
 // them in a folder. The saved rows are the real HistoryCard, so a treatment
-// that disturbed them would show up here as a difference. "Today" is the list
-// as it ships now, drafts unmarked, for reference.
+// that disturbed them would show up here as a difference. "Before" is the
+// list as it was before drafts were marked, for reference.
 //
 // Rendered inside the real AppShell at History's own column (`max-w-wide`).
 
@@ -24,8 +24,8 @@ import { DraftRow, type ChipStrength, type Treatment } from "./draft-row";
 const TREATMENTS: { id: Treatment; label: string; note: string }[] = [
   {
     id: "today",
-    label: "Today",
-    note: "As it ships now: a draft is indistinguishable from a saved item. For reference.",
+    label: "Before",
+    note: "Before drafts were marked: a draft looked exactly like a saved item. For reference.",
   },
   {
     id: "word",
@@ -129,7 +129,8 @@ export default function HistoryDraftsPage() {
               ) : (
                 <HistoryCard
                   key={item.id}
-                  item={item}
+                  // "Before" drops the status, which rows did not carry then.
+                  item={treatment === "today" ? { ...item, status: null } : item}
                   folderLabel={item.folderId ? FOLDER : null}
                   onOpen={() => {}}
                   onMove={() => {}}

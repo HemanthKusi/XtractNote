@@ -3,8 +3,8 @@
 // src/app/dev/drafts-band-states/page.tsx  →  route: /dev/drafts-band-states
 //
 // The create page's drafts band while it loads, when there are no drafts,
-// and when the fetch fails (#423). Not shipped; the real band is unchanged
-// until directions are chosen.
+// and when the fetch fails (#423): the directions each state was chosen
+// from, kept as the record. The choices shipped in DraftsBand.
 //
 // Each load is simulated: it waits the chosen time, then lands on the chosen
 // outcome, so a direction is judged in motion — including how the

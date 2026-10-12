@@ -17,7 +17,7 @@ import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
 import type { VideoMeta } from "@/lib/youtube/types";
 
 import {
-  LEAVE_COPY,
+  leaveCopy,
   RunningLabel,
   SAMPLE_WORD_COUNT,
   StepMark,
@@ -41,9 +41,10 @@ export function DirectionChecklist({ meta, type, run }: { meta: VideoMeta; type:
           <h1 className="text-h2 text-xn-ink">
             Making your <span style={{ color: format.color }}>{format.label.toLowerCase()}</span>
           </h1>
-          <p className="mt-2 text-body text-xn-ink-muted">{LEAVE_COPY}</p>
+          <p className="mt-2 text-body text-xn-ink-muted">{leaveCopy(run)}</p>
         </div>
-        <p className="font-mono text-h3 tabular-nums text-xn-ink" aria-label={`${clock(run.elapsedMs)} elapsed`}>
+        <p className="font-mono text-h3 tabular-nums text-xn-ink">
+          <span className="sr-only">Elapsed </span>
           {clock(run.elapsedMs)}
         </p>
       </header>

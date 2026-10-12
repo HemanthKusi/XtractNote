@@ -18,8 +18,8 @@ import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
 import type { VideoMeta } from "@/lib/youtube/types";
 
 import {
+  leaveCopy,
   FormatSkeleton,
-  LEAVE_COPY,
   RunningLabel,
   StepMark,
   StopWaiting,
@@ -62,7 +62,7 @@ export function DirectionSheet({ meta, type, run }: { meta: VideoMeta; type: Con
       </Card>
 
       <p className="mt-3 text-sm text-xn-ink-muted">
-        {run.longWait ? longWaitCopy(meta) : LEAVE_COPY}
+        {run.longWait ? longWaitCopy(meta) : leaveCopy(run)}
       </p>
 
       {/* ── The sheet ── */}

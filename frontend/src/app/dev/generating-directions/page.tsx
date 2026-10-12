@@ -3,7 +3,8 @@
 // src/app/dev/generating-directions/page.tsx  →  route: /dev/generating-directions
 //
 // Four directions for the generating screen once it shows only real steps
-// (#424). Not shipped; the real panel is unchanged until one is chosen.
+// (#424). A, Checklist, was chosen and is what the real panel renders; the
+// page keeps all four as the record of what was compared.
 //
 // Rendered inside the real AppShell at the create route's own column, for the
 // same reason the other direction specimens are: /create is behind auth, and
@@ -30,7 +31,7 @@ const DIRECTIONS = [
   {
     id: "checklist",
     label: "A · Checklist",
-    note: "The one that came closest, finished. One card: source above, steps below. The running row carries its own counter and sweep; finished rows show measured times.",
+    note: "Chosen. One card: source on the left, steps on the right, stacked on a phone. The running row carries its own counter and sweep; finished rows show measured times.",
   },
   {
     id: "sheet",

@@ -16,7 +16,7 @@ import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
 import type { VideoMeta } from "@/lib/youtube/types";
 
 import {
-  LEAVE_COPY,
+  leaveCopy,
   SAMPLE_TRANSCRIPT,
   SAMPLE_WORD_COUNT,
   StepMark,
@@ -39,7 +39,7 @@ export function DirectionSource({ meta, type, run }: { meta: VideoMeta; type: Co
         <h1 className="text-h2 text-xn-ink">
           Making your <span style={{ color: format.color }}>{format.label.toLowerCase()}</span>
         </h1>
-        <p className="mt-2 text-body text-xn-ink-muted">{run.longWait ? longWaitCopy(meta) : LEAVE_COPY}</p>
+        <p className="mt-2 text-body text-xn-ink-muted">{run.longWait ? longWaitCopy(meta) : leaveCopy(run)}</p>
       </header>
 
       <Card variant="default" padding="none" className="overflow-hidden">

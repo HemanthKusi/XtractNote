@@ -200,9 +200,16 @@ export function videoLength(durationSeconds: number | null | undefined): string 
 
 // ── Copy ──────────────────────────────────────────────────────
 
-/** The line under the heading. True whatever happens to the tab. */
-export const LEAVE_COPY =
-  "Closing this tab won't stop it. If it finishes, you'll find it in your drafts.";
+/**
+ * The line under the heading. Until the start is accepted, closing the tab can
+ * stop it. The simulated run has no separate accepted state, so it shows the
+ * earlier line until drafting begins; the shipped panel switches on acceptance.
+ */
+export function leaveCopy(run: RunView): string {
+  return run.active === "drafting"
+    ? "Closing this tab won't stop it. If it finishes, you'll find it in your drafts."
+    : "Keep this tab open until it starts. Once it has, closing the tab won't stop it.";
+}
 
 /** Shown once drafting has run long. Uses the video's real length, no estimate. */
 export function longWaitCopy(meta: VideoMeta): string {
@@ -244,7 +251,11 @@ export function StepMark({ step, color, size = "md" }: { step: StepView; color: 
         className={`relative grid ${box} shrink-0 place-items-center rounded-xn-pill border-2`}
         style={{ borderColor: color, color }}
       >
-        <span className="gd-ring absolute inset-0 rounded-xn-pill" style={{ backgroundColor: color }} aria-hidden="true" />
+        <span
+          className="absolute inset-0 rounded-xn-pill animate-ring motion-reduce:hidden"
+          style={{ backgroundColor: color }}
+          aria-hidden="true"
+        />
         <Icon className={`relative ${glyph}`} strokeWidth={2.25} aria-hidden="true" />
       </span>
     );
@@ -282,7 +293,10 @@ export function SweepBar({ color, className = "" }: { color: string; className?:
       aria-label="Working"
       aria-busy="true"
     >
-      <span className="gd-sweep absolute inset-y-0 rounded-xn-pill" style={{ backgroundColor: color }} />
+      <span
+        className="absolute inset-y-0 left-0 w-1/3 rounded-xn-pill animate-sweep motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-40"
+        style={{ backgroundColor: color }}
+      />
     </div>
   );
 }
@@ -375,7 +389,7 @@ export function FormatSkeleton({ type }: { type: ContentType }) {
         </span>
       </span>
       {["100%", "94%", "97%", "58%"].map((width, line) => (
-        <Bar key={line} w={width} className="mt-3 first-of-type:mt-5" />
+        <Bar key={line} w={width} className={line === 0 ? "mt-5" : "mt-3"} />
       ))}
       <span className="gd-skel mt-5 block aspect-[1.91/1] w-full rounded-xn-md" aria-hidden="true" />
     </div>
@@ -383,25 +397,14 @@ export function FormatSkeleton({ type }: { type: ContentType }) {
 }
 
 /**
- * Keyframes for this specimen. Scoped here on purpose: none of them is in the
- * design system until a direction is chosen, and each has a still form for
- * reduced motion, since the global rule would otherwise freeze it mid-frame.
+ * The skeleton shimmer and the transcript's faded edges, which only the
+ * unchosen directions use. The sweep and the ring are the app's own
+ * `animate-sweep` and `animate-ring`, so the specimen moves as the shipped
+ * panel does.
  */
 export function SpecimenMotion() {
   return (
     <style>{`
-      @keyframes gd-sweep {
-        0%   { transform: translateX(-100%); }
-        100% { transform: translateX(290%); }
-      }
-      .gd-sweep { left: 0; width: 35%; animation: gd-sweep 1.6s var(--xn-ease-in-out) infinite; }
-
-      @keyframes gd-ring {
-        0%   { transform: scale(1);   opacity: 0.32; }
-        100% { transform: scale(1.75); opacity: 0; }
-      }
-      .gd-ring { animation: gd-ring 2s var(--xn-ease-out) infinite; }
-
       @keyframes gd-skel {
         0%   { background-position: 100% 0; }
         100% { background-position: -100% 0; }
@@ -422,9 +425,7 @@ export function SpecimenMotion() {
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .gd-sweep { animation: none; width: 100%; transform: none; opacity: 0.35; }
-        .gd-ring  { animation: none; opacity: 0; }
-        .gd-skel  { animation: none; background: var(--xn-ink-faint); }
+        .gd-skel { animation: none; background: var(--xn-ink-faint); }
       }
     `}</style>
   );

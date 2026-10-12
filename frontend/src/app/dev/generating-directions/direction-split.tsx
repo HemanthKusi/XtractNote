@@ -14,8 +14,8 @@ import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
 import type { VideoMeta } from "@/lib/youtube/types";
 
 import {
+  leaveCopy,
   FormatSkeleton,
-  LEAVE_COPY,
   StepMark,
   StopWaiting,
   SweepBar,
@@ -73,7 +73,7 @@ export function DirectionSplit({ meta, type, run }: { meta: VideoMeta; type: Con
                   <p className="font-mono text-micro tabular-nums text-xn-ink-muted">
                     {step.status === "done" && seconds(step.durationMs ?? 0)}
                     {running && `${clock(step.runningForMs ?? 0)} so far`}
-                    {step.status === "waiting" && " "}
+                    {step.status === "waiting" && "\u00a0"}
                   </p>
                   {running && <SweepBar color={format.color} className="mt-2" />}
                 </div>
@@ -83,7 +83,7 @@ export function DirectionSplit({ meta, type, run }: { meta: VideoMeta; type: Con
         </ol>
 
         <p className="mt-5 text-sm leading-snug text-xn-ink-muted">
-          {run.longWait ? longWaitCopy(meta) : LEAVE_COPY}
+          {run.longWait ? longWaitCopy(meta) : leaveCopy(run)}
         </p>
         <StopWaiting align="start" />
       </aside>

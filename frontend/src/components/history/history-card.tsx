@@ -24,8 +24,7 @@
 // ── A draft ──
 // A finished generation the user has not saved. It carries the draft
 // badge after its date, and offers Save draft where a saved row offers
-// Move: a draft cannot be filed until it is kept. Only a draft gains
-// either; a saved row has neither.
+// Move: a draft cannot be filed until it is kept.
 
 "use client";
 

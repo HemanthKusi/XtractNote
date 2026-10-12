@@ -295,6 +295,22 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(-10px) scaleY(0.94)" },
           to:   { opacity: "1", transform: "translateY(0) scaleY(1)" },
         },
+
+        // Work under way with no amount to report: a short segment crossing
+        // its track. The segment is a third of the track, so it travels from
+        // fully off the left edge to fully off the right one. Transform
+        // only, so it never triggers layout.
+        "sweep": {
+          from: { transform: "translateX(-100%)" },
+          to:   { transform: "translateX(300%)" },
+        },
+
+        // A ring leaving the running step's mark — the one thing on the
+        // generating screen that says "this one, now".
+        "ring": {
+          from: { transform: "scale(1)",    opacity: "0.32" },
+          to:   { transform: "scale(1.75)", opacity: "0" },
+        },
       },
       animation: {
         "fade-in":        "fade-in var(--xn-dur-base) var(--xn-ease-out)",
@@ -324,6 +340,14 @@ const config: Config = {
         //
         // If one of these changes, change both.
         "unfold":         "unfold 450ms var(--xn-ease-out) both",
+
+        // Ambient, like rise-in: these run for as long as a generation does,
+        // so they are slow and eased at both ends rather than fast-out. Under
+        // reduced motion the global rule cuts each to one near-instant run,
+        // which leaves neither in a useful resting state, so the generating
+        // panel gives each a still form of its own.
+        "sweep":          "sweep 1.6s var(--xn-ease-in-out) infinite",
+        "ring":           "ring 2s var(--xn-ease-out) infinite",
       },
 
     },

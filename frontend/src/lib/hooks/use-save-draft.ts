@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useToast } from "@/components/shared/toast-provider";
-import { saveDraft, type SaveFailReason } from "@/lib/api/content";
+import { saveDraft, type SaveFailReason, type SaveResult } from "@/lib/api/content";
 
 const SAVE_ERRORS: Record<SaveFailReason, string> = {
   "not-authenticated": "Please sign in again — your session may have expired.",
@@ -55,11 +55,15 @@ export function useSaveDraft({ onSaved, onStale }: SaveDraftHandlers) {
       inFlight.current.add(id);
       setSaving(new Set(inFlight.current));
 
-      const result = await saveDraft(id);
-
-      inFlight.current.delete(id);
+      // Released in `finally`, so a row is never left saving for good.
+      let result: SaveResult;
+      try {
+        result = await saveDraft(id);
+      } finally {
+        inFlight.current.delete(id);
+        if (mounted.current) setSaving(new Set(inFlight.current));
+      }
       if (!mounted.current) return;
-      setSaving(new Set(inFlight.current));
 
       if (result.ok) {
         onSaved(id);

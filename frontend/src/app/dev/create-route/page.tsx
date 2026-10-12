@@ -34,12 +34,60 @@ const META: VideoMeta = {
   durationSeconds: 1687,
 };
 
-const STATES = ["hero", "hero-error", "ready", "transcribing", "generating"] as const;
+const STATES = [
+  "hero",
+  "hero-error",
+  "ready",
+  "transcribing",
+  "gen · transcript",
+  "gen · starting",
+  "gen · drafting",
+  "gen · long wait",
+] as const;
 type State = (typeof STATES)[number];
+
+/**
+ * Each generating state as the page would hand it to the panel: the run's
+ * progress, the step, and when each step started — set back from `base` so
+ * the finished steps carry durations and the running one has been going a
+ * while. The values stand in for what the page measures.
+ */
+function generatingProps(state: State, base: number) {
+  switch (state) {
+    case "gen · transcript":
+      return { run: "not-sent", step: "transcript", starts: { transcript: base - 1200 }, wordCount: null } as const;
+    case "gen · starting":
+      return {
+        run: "sent",
+        step: "starting",
+        starts: { transcript: base - 2700, starting: base - 400 },
+        wordCount: 4312,
+      } as const;
+    case "gen · drafting":
+      return {
+        run: "accepted",
+        step: "drafting",
+        starts: { transcript: base - 27_000, starting: base - 24_700, drafting: base - 24_000 },
+        wordCount: 4312,
+      } as const;
+    case "gen · long wait":
+      return {
+        run: "accepted",
+        step: "drafting",
+        starts: { transcript: base - 97_000, starting: base - 94_700, drafting: base - 94_000 },
+        wordCount: 4312,
+      } as const;
+    default:
+      return null;
+  }
+}
 
 export default function DevCreateRoutePage() {
   const [state, setState] = useState<State>("hero");
   const [type] = useState<ContentType>("notes");
+  // When the current state was picked. Generating states count from here.
+  const [pickedAt, setPickedAt] = useState(() => Date.now());
+  const generating = generatingProps(state, pickedAt);
 
   return (
     <AppShell>
@@ -49,7 +97,10 @@ export default function DevCreateRoutePage() {
             <button
               key={entry}
               type="button"
-              onClick={() => setState(entry)}
+              onClick={() => {
+                setState(entry);
+                setPickedAt(Date.now());
+              }}
               className={[
                 "rounded-xn-sm px-2.5 py-1 font-mono text-micro transition-colors duration-xn ease-xn",
                 entry === state
@@ -115,8 +166,16 @@ export default function DevCreateRoutePage() {
           </>
         )}
 
-        {state === "generating" && (
-          <GeneratingPanel meta={META} type={type} run="accepted" onCancel={() => {}} />
+        {generating && (
+          <GeneratingPanel
+            meta={META}
+            type={type}
+            run={generating.run}
+            step={generating.step}
+            starts={generating.starts}
+            wordCount={generating.wordCount}
+            onCancel={() => {}}
+          />
         )}
       </div>
     </AppShell>

@@ -20,10 +20,17 @@
 // The height is fixed rather than derived, so a row carrying a folder
 // pill is exactly as tall as one without and the column reads as a list
 // instead of a ragged stack. The title clamps to two lines to hold it.
+//
+// ── A draft ──
+// A finished generation the user has not saved. It carries the draft
+// badge after its date, and offers Save draft where a saved row offers
+// Move: a draft cannot be filed until it is kept. Only a draft gains
+// either; a saved row has neither.
 
 "use client";
 
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
+import { DraftBadge } from "@/components/ui/draft-badge";
 import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { contentTypeColors, folderAmber } from "@/lib/constants/theme";
 import type { HistoryItem } from "@/lib/api/history";
@@ -67,12 +74,24 @@ interface HistoryCardProps {
   onOpen?: (id: string) => void;
   /** The folder this item is in (page resolves it from folderId); null = none. */
   folderLabel?: FolderLabel | null;
-  /** Called with the full item when the Move button is clicked. */
+  /** Called with the full item when the Move button is clicked. Saved rows only. */
   onMove?: (item: HistoryItem) => void;
+  /** Called with the item id when a draft's Save draft is clicked. */
+  onSaveDraft?: (id: string) => void;
+  /** This draft's save is in progress. */
+  savingDraft?: boolean;
 }
 
-export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardProps) {
+export function HistoryCard({
+  item,
+  onOpen,
+  folderLabel,
+  onMove,
+  onSaveDraft,
+  savingDraft = false,
+}: HistoryCardProps) {
   const meta = contentTypeColors[item.contentType];
+  const isDraft = item.status === "draft";
 
   return (
     <article
@@ -113,13 +132,14 @@ export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardPr
           <span className="font-mono text-sm text-xn-ink-soft">
             · {formatRelativeDate(item.createdAt)}
           </span>
+          {isDraft && <DraftBadge />}
         </div>
 
         <h3 className="mt-1.5 line-clamp-2 text-[17px] font-semibold leading-snug text-xn-ink">
           {item.title}
         </h3>
 
-        <div className="mt-1.5 flex items-center gap-2 font-mono text-sm text-xn-ink-soft">
+        <div className="mt-1.5 flex min-w-0 items-center gap-2 font-mono text-sm text-xn-ink-soft">
           {item.channel && <span className="truncate">{item.channel}</span>}
           {item.channel && <span aria-hidden>·</span>}
           {item.wordCount > 0 && (
@@ -128,18 +148,19 @@ export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardPr
 
           {/* Outlined rather than filled, so it holds its weight against a
               row that already carries a rail and a format icon. The amber
-              is the tile's amber — the two finally agree. */}
+              is the tile's amber — the two finally agree. It may shrink,
+              its name truncating: at a phone's width it overran the row. */}
           {folderLabel && (
             <span
-              className="ml-1 inline-flex shrink-0 items-center gap-1.5 rounded-xn-pill px-2.5 py-1 font-sans text-sm font-medium"
+              className="ml-1 inline-flex min-w-0 items-center gap-1.5 rounded-xn-pill px-2.5 py-1 font-sans text-sm font-medium"
               style={{
                 backgroundColor: amberTint(20),
                 color: "var(--xn-ink)",
                 border: `1px solid ${folderAmber}`,
               }}
             >
-              <span aria-hidden>{folderLabel.emoji}</span>
-              <span className="max-w-[140px] truncate">{folderLabel.name}</span>
+              <span className="shrink-0" aria-hidden>{folderLabel.emoji}</span>
+              <span className="min-w-0 max-w-[140px] truncate">{folderLabel.name}</span>
             </span>
           )}
         </div>
@@ -148,7 +169,23 @@ export function HistoryCard({ item, onOpen, folderLabel, onMove }: HistoryCardPr
       {/* Always visible rather than revealed on hover: a control that
           appears only under a cursor is unreachable by touch and easy to
           miss by keyboard. Focus adds an outline and nothing else. */}
-      {onMove && (
+      {/* A draft offers Save draft in Move's place. Bordered and in ink, so
+          the way to keep it reads as the row's one action. */}
+      {isDraft && onSaveDraft && (
+        <button
+          type="button"
+          disabled={savingDraft}
+          onClick={(e) => {
+            e.stopPropagation(); // don't also trigger the row's onOpen
+            onSaveDraft(item.id);
+          }}
+          className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-xn-md border border-xn-border-strong bg-xn-surface px-2.5 py-1.5 text-sm font-medium text-xn-ink shadow-xn-1 transition-colors duration-xn ease-xn hover:bg-xn-surface-alt focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-xn-ink disabled:cursor-wait disabled:opacity-60"
+        >
+          {savingDraft ? "Saving…" : "Save draft"}
+        </button>
+      )}
+
+      {!isDraft && onMove && (
         <button
           type="button"
           onClick={(e) => {

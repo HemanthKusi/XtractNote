@@ -592,11 +592,12 @@ export default function CreatePage() {
     // the durations the screen shows are measured, not budgeted.
     const contentType = selectedType;
     let progress: GenerationRunState = "not-sent";
+    let transcriptRead = false;
     let jobStatus: JobStatus | null = null;
     let starts: StepStarts = {};
     let wordCount: number | null = null;
     const show = () => {
-      const step = currentStep(progress, jobStatus);
+      const step = currentStep(progress, transcriptRead, jobStatus);
       starts = markStep(starts, step, Date.now());
       setStatus({ phase: "generating", meta, contentType, run: progress, step, starts, wordCount });
     };
@@ -620,6 +621,8 @@ export default function CreatePage() {
     }
     const transcript = transcriptResult.data;
     wordCount = countWords(transcript.fullText);
+    transcriptRead = true;
+    show();
 
     // Only send a platform for social — computed explicitly so a leftover
     // value can't ride along with another type.

@@ -50,11 +50,16 @@ for (const status of JOB_STATUSES) {
 }
 
 // ── The page's own progress ──
-check("fetching the transcript is the transcript step", currentStep("not-sent", null), "transcript");
-check("an unanswered start is starting", currentStep("sent", null), "starting");
-check("an accepted job no check has reported is still starting", currentStep("accepted", null), "starting");
-check("an accepted job reported pending is still starting", currentStep("accepted", "pending"), "starting");
-check("an accepted job reported drafting is drafting", currentStep("accepted", "drafting"), "drafting");
+check("fetching the transcript is the transcript step", currentStep("not-sent", false, null), "transcript");
+check(
+  "the work between the transcript and the request counts as starting, not as the transcript",
+  currentStep("not-sent", true, null),
+  "starting",
+);
+check("an unanswered start is starting", currentStep("sent", true, null), "starting");
+check("an accepted job no check has reported is still starting", currentStep("accepted", true, null), "starting");
+check("an accepted job reported pending is still starting", currentStep("accepted", true, "pending"), "starting");
+check("an accepted job reported drafting is drafting", currentStep("accepted", true, "drafting"), "drafting");
 
 // ── Marking steps ──
 {

@@ -62,14 +62,23 @@ export function stepForStatus(status: JobStatus): GenerationStep {
 }
 
 /**
- * The running step, from what the page knows: how far its start has got, and
- * the job's status from the latest check, null until a check has answered.
- * An accepted job counts as starting until a check says it has left pending.
+ * The running step, from what the page knows: whether the transcript has
+ * arrived, how far the start has got, and the job's status from the latest
+ * check, null until a check has answered.
+ *
+ * Starting begins when the transcript arrives, not when the request goes
+ * out, so the work in between — the sign-in lookup and the request key — is
+ * counted as starting rather than added to the transcript's time. An
+ * accepted job counts as starting until a check says it has left pending.
  */
-export function currentStep(run: GenerationRunState, jobStatus: JobStatus | null): GenerationStep {
+export function currentStep(
+  run: GenerationRunState,
+  transcriptRead: boolean,
+  jobStatus: JobStatus | null,
+): GenerationStep {
   switch (run) {
     case "not-sent":
-      return "transcript";
+      return transcriptRead ? "starting" : "transcript";
     case "sent":
       return "starting";
     case "accepted":

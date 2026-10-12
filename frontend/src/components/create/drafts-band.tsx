@@ -34,8 +34,8 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Chip } from "@/components/ui/chip";
 import { ContentTypeIcon } from "@/components/ui/content-type-icon";
+import { DraftBadge } from "@/components/ui/draft-badge";
 import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import { contentTypeColors } from "@/lib/constants/theme";
 import type { HistoryItem } from "@/lib/api/history";
@@ -101,7 +101,7 @@ export function DraftsBand({ drafts, onOpen }: DraftsBandProps) {
                   <span className="truncate text-ui font-medium text-xn-ink">
                     {contentTypeColors[draft.contentType].label}
                   </span>
-                  <Chip status="draft" />
+                  <DraftBadge />
                 </span>
                 {/* The video it came from, because that is what a person
                     recognises — not the title the generator wrote. */}

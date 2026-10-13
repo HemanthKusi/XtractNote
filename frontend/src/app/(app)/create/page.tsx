@@ -87,8 +87,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/shared/toast-provider";
 
 // ── Friendly copy for every failure reason ──────────────────
-// One map covering extract, metadata, transcript, search, AND generate
-// reasons. Change wording here without touching any logic.
+// One map covering extract, metadata, search, AND generate reasons. Change wording here without touching any logic.
 // Note: "network"/"unknown" are shared across metadata and generate — each
 // appears once, not twice.
 type FailReason =
@@ -131,10 +130,6 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   "search-failed":
     "We couldn't run that search just now. Please try again in a moment.",
   // From generation — refused when the job is started
-  "empty-transcript":
-    "There's no transcript text to work from. Try fetching the video again.",
-  "transcript-too-long":
-    "This video's transcript is too long to process in one pass. Try a shorter video for now.",
   "unknown-content-type":
     "That content type isn't available yet. Pick another format.",
   "auth-unavailable":
@@ -149,6 +144,10 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   // The key is settled when this arrives, so trying again sends a new one.
   "request-key-reused": "We couldn't start the generation. Please try again.",
   // From generation — recorded on a job that failed
+  "empty-transcript":
+    "This video's transcript has no text we can work from. Try another video.",
+  "transcript-too-long":
+    "This video's transcript is too long to process in one pass. Try a shorter video for now.",
   "provider-misconfigured":
     "The AI service isn't configured correctly on our end. Please try again shortly.",
   "generation-failed":
@@ -194,11 +193,9 @@ function pause(ms: number): Promise<void> {
 
 // ── A small, explicit state machine ─────────────────────────
 // Metadata stage (idle/loading/error) + topic-search stage
-// (searching/search-results/search-error) + transcript stage
-// (transcribing/transcript-error) + generation stage
-// (picking/generating/output). Every stage past metadata carries `meta`,
-// and every stage past transcript also carries `transcript`, so nothing
-// loaded is ever thrown away by a later error.
+// (searching/search-results/search-error) + generation stage
+// (picking/generating/generate-error/output). Every stage past metadata
+// carries `meta`, so nothing loaded is ever thrown away by a later error.
 //
 // The chosen content type and social platform are NOT phases — they're
 // transient picker state (selectedType / selectedPlatform below), the same
@@ -212,9 +209,7 @@ function pause(ms: number): Promise<void> {
 // carries a "Change video" control, so the flow asked a question whose answer
 // was available one step later anyway.
 //
-// Metadata now runs straight into the transcript fetch, so `loading` leads to
-// `transcribing` with nothing in between. `transcript-error` keeps its own
-// retry, which is the only place that fetch is triggered by a person.
+// Metadata now leads straight to the picker.
 type Status =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -223,7 +218,7 @@ type Status =
   | { phase: "searching"; query: string }
   | { phase: "search-results"; query: string; results: SearchResultVideo[] }
   | { phase: "search-error"; query: string; message: string }
-  // ── The transcript is fetched inside GENERATION, not before it ──
+  // ── The transcript is read by the generation's job, not before it ──
   //
   // It used to have its own phase between metadata and the picker, so the
   // user watched a spinner before they were allowed to choose anything. The
@@ -250,7 +245,7 @@ type Status =
       // clock — the panel's durations are measured from these.
       step: GenerationStep;
       starts: StepStarts;
-      // Words in the fetched transcript, null until it has arrived.
+      // Words in the job's transcript, null until the job reports it.
       wordCount: number | null;
     }
   | {
@@ -564,10 +559,6 @@ export default function CreatePage() {
     if (type !== "social") setSelectedPlatform(null);
   }
 
-  // The transcript retry lived here. It is gone with the phase it served:
-  // the fetch now happens inside handleGenerate, so retrying it is retrying
-  // the generation, and `generate-error` already has that button.
-
   /**
    * Stop waiting for a run — back to the picker, video intact.
    *
@@ -784,9 +775,7 @@ export default function CreatePage() {
     beginRun();
     setSelectedType(null);
     setSelectedPlatform(null);
-    // Back to the picker. The transcript is refetched on the next generate
-    // rather than carried — one extra call, in exchange for the picker no
-    // longer being a phase that has to hold a payload it does not use.
+    // Back to the picker. The next generation's job reads the transcript itself.
     setStatus({ phase: "picking", meta: current.meta });
   }
 

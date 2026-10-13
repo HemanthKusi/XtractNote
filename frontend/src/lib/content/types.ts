@@ -257,8 +257,8 @@ export interface GenerationJob {
  *
  * Refused when the job is started (the response's detail.code):
  *   empty-transcript, transcript-too-long, unknown-content-type,
- *   not-authenticated, auth-unavailable, generation-busy, job-not-created,
- *   request-key-reused
+ *   not-authenticated, auth-unavailable, generation-busy, generation-limit,
+ *   job-not-created, request-key-reused
  *
  * Recorded on a job that failed (its errorCode):
  *   provider-misconfigured, generation-failed, invalid-structured-output,
@@ -281,6 +281,7 @@ export type GenerateFailReason =
   | "not-authenticated"
   | "auth-unavailable"
   | "generation-busy"
+  | "generation-limit"
   | "job-not-created"
   | "request-key-reused"
   | "provider-misconfigured"

@@ -5,9 +5,9 @@ The module that owns `generation_jobs` within this service. It creates the row,
 moves it through its states, and reads it back, and nothing else in the backend
 writes to that table.
 
-**That is a convention here, not a guarantee from the database.** Migration 005
-grants users insert and update policies on this table, so a client holding the
-anon key can write to it directly without going through anything here.
+Migration 010 leaves users only a read policy on this table, so job rows are
+written through this module. Until that migration is applied to a database,
+migration 005's insert and update policies still let a client write them.
 
 It does no generation and fetches no transcript. Its only outbound calls are the
 database requests below — every `.execute()` is an HTTP round trip to PostgREST.
@@ -36,6 +36,13 @@ CONTENT_TABLE = "generated_content"
 
 #: Postgres's code for a unique-constraint violation.
 UNIQUE_VIOLATION = "23505"
+
+#: Raised by migration 010's `admit_generation_job` when the user is at their
+#: limit of unfinished jobs.
+GENERATION_LIMIT = "XN429"
+
+#: The database function that creates a job (migration 010).
+ADMIT_FUNCTION = "admit_generation_job"
 
 
 # --- Typed error --------------------------------------------------------------
@@ -74,8 +81,8 @@ LEGAL_STATUSES: frozenset[str] = frozenset(
     }
 )
 
-#: The state a job is created in. `create_job` writes it as part of the insert,
-#: and `advance` refuses it: moving a running job back to `pending` would reset
+#: The state a job is created in. Migration 010's admission function writes it
+#: (a test pins the two), and `advance` refuses it: moving a running job back to `pending` would reset
 #: its progress to zero and claim it had not started.
 CREATION_STATUS = "pending"
 
@@ -258,9 +265,14 @@ def create_job(
     content_type: str,
     request_id: str,
     platform: str | None,
+    limit: int,
 ) -> str:
     """
-    Insert a `pending` job and return its id.
+    Create a `pending` job and return its id, if the user has fewer than
+    `limit` unfinished jobs.
+
+    Created by the database function from migration 010, which counts and
+    inserts under a lock per user.
 
     `platform` is the social platform, or None for any other type; migration
     009 constrains it to the platforms that can be run.
@@ -269,36 +281,43 @@ def create_job(
     it unique per user, so a second job for the same request is refused by the
     database itself — including when two copies of the request race.
 
+    Raises JobError("generation-limit") when the user is at `limit`.
     Raises JobError("duplicate-request") when this user already has a job for
     `request_id`; the caller looks that job up instead. Raises
-    JobError("job-not-created") when the insert returns nothing, rather than
-    handing back an id of None to fail somewhere less obvious later.
+    JobError("job-not-created") when the call returns no id, rather than
+    handing back None to fail somewhere less obvious later.
     """
     try:
         response = (
             get_supabase_client()
-            .table(TABLE)
-            .insert(
+            .rpc(
+                ADMIT_FUNCTION,
                 {
-                    "user_id": user_id,
-                    "video_id": video_id,
-                    "content_type": content_type,
-                    "platform": platform,
-                    "request_id": request_id,
-                    **patch_for_status("pending"),
-                }
+                    "p_user_id": user_id,
+                    "p_video_id": video_id,
+                    "p_content_type": content_type,
+                    "p_request_id": request_id,
+                    "p_platform": platform,
+                    "p_limit": limit,
+                },
             )
             .execute()
         )
     except APIError as exc:
+        if exc.code == GENERATION_LIMIT:
+            raise JobError(
+                "generation-limit", "This user is at their limit of unfinished generations."
+            ) from exc
         if exc.code == UNIQUE_VIOLATION:
             raise JobError(
                 "duplicate-request", "A job already exists for this request."
             ) from exc
         raise
-    if not response.data:
+    rows = response.data
+    job_id = rows[0].get("job_id") if rows and isinstance(rows[0], dict) else None
+    if not isinstance(job_id, str) or not job_id:
         raise JobError("job-not-created", "The job record could not be created.")
-    return str(response.data[0]["id"])
+    return job_id
 
 
 def find_job_for_request(user_id: str, request_id: str) -> dict[str, Any] | None:

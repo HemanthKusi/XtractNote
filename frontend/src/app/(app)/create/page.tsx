@@ -145,6 +145,10 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
     "We couldn't check your sign-in just now. Please try again in a moment.",
   "generation-busy":
     "We're generating a lot right now. Please try again in a moment.",
+  // The user's own limit, not the server's. No job was made, so the key is
+  // kept and trying again later starts this one.
+  "generation-limit":
+    "You already have generations running. Start this one when one of them finishes.",
   "job-not-created": "We couldn't start the generation. Please try again.",
   // The key is settled when this arrives, so trying again sends a new one.
   "request-key-reused": "We couldn't start the generation. Please try again.",

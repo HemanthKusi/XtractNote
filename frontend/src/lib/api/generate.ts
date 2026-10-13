@@ -60,6 +60,7 @@ const START_REASONS: readonly GenerateFailReason[] = [
   "not-authenticated",
   "auth-unavailable",
   "generation-busy",
+  "generation-limit",
   "job-not-created",
   "request-key-reused",
 ];

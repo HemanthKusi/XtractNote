@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from app.db.supabase import get_supabase_client
 from app.services.drafts import count_words
+from app.services.generate import MAX_TRANSCRIPT_CHARS
 from app.services.transcript import (
     TranscriptData,
     TranscriptServiceError,
@@ -134,9 +135,17 @@ def obtain(
     there is one, otherwise a fresh fetch, stored.
 
     Raises the fetch's TranscriptServiceError subclasses unchanged, so their
-    codes reach the job.
+    codes reach the job. A transcript too long to generate from is refused
+    with "transcript-too-long" before it is stored, so a run that cannot use
+    it leaves nothing behind.
     """
     found = find_reusable(video_id, reuse_for, now())
     if found is not None:
         return found
-    return insert(fetch(video_id))
+    data = fetch(video_id)
+    if len(data.full_text) > MAX_TRANSCRIPT_CHARS:
+        raise TranscriptServiceError(
+            "This video's transcript is too long to process in one pass.",
+            code="transcript-too-long",
+        )
+    return insert(data)

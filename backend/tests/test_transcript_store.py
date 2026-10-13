@@ -16,6 +16,7 @@ import pytest
 
 from app.services import transcript_store
 from app.services.drafts import count_words
+from app.services.generate import MAX_TRANSCRIPT_CHARS
 from app.services.transcript import (
     TranscriptServiceError,
     TranscriptUnavailableError,
@@ -221,6 +222,26 @@ def test_without_a_recent_row_the_video_is_fetched_and_stored(monkeypatch) -> No
     assert effects.fetched == ["dQw4w9WgXcQ"]
     assert effects.inserted == [DATA]
     assert stored.id == "new"
+
+
+def sized(characters: int) -> Any:
+    """A fetched transcript whose text is exactly `characters` long."""
+    return _build_transcript_data("dQw4w9WgXcQ", fetched(("x" * characters, 0.0, 1.0)))
+
+
+def test_a_transcript_too_long_to_use_is_refused_before_it_is_stored(monkeypatch) -> None:
+    """Otherwise a run that can never use it would still leave it in the shared table."""
+    effects = Effects(monkeypatch, found=None)
+    with pytest.raises(TranscriptServiceError) as caught:
+        obtain("dQw4w9WgXcQ", MONTH, fetch=lambda video_id: sized(MAX_TRANSCRIPT_CHARS + 1), now=lambda: NOW)
+    assert caught.value.code == "transcript-too-long"
+    assert effects.inserted == []
+
+
+def test_a_transcript_exactly_at_the_limit_is_stored(monkeypatch) -> None:
+    effects = Effects(monkeypatch, found=None)
+    obtain("dQw4w9WgXcQ", MONTH, fetch=lambda video_id: sized(MAX_TRANSCRIPT_CHARS), now=lambda: NOW)
+    assert len(effects.inserted) == 1
 
 
 def test_a_failed_fetch_stores_nothing_and_keeps_its_code(monkeypatch) -> None:

@@ -19,9 +19,9 @@ belongs to — nothing in a request body names one.
 returns the job already made rather than creating another, so a start whose
 reply was lost can be tried again without paying twice.
 
-**One user cannot hold every generation.** A user at their limit of unfinished
-generations is refused; the database counts and creates the job in one step,
-so two starts from one user cannot both pass.
+**Each user has a limit of unfinished generations** (`generation_per_user`).
+A start is refused once the user has reached it. The database counts and
+creates the job together, taking one user's starts one at a time.
 """
 
 import logging

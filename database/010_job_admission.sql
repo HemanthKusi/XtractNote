@@ -1,5 +1,5 @@
 -- ──────────────────────────────────────
--- XtractNote — Migration 010: One user cannot hold every generation
+-- XtractNote — Migration 010: A per-user limit on unfinished generations
 -- ──────────────────────────────────────
 -- Generation runs on a fixed number of slots, and nothing limited how many
 -- one user held: a user starting several different generations, or a script,

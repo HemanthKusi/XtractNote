@@ -272,8 +272,7 @@ def create_job(
     `limit` unfinished jobs.
 
     Created by the database function from migration 010, which counts and
-    inserts under a lock per user, so two starts from one user cannot both
-    pass a count made before either job existed.
+    inserts under a lock per user.
 
     `platform` is the social platform, or None for any other type; migration
     009 constrains it to the platforms that can be run.

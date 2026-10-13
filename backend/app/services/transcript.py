@@ -201,7 +201,7 @@ def _build_transcript_data(video_id: str, fetched) -> TranscriptData:
             )
         )
 
-    full_text = _normalize_whitespace(" ".join(seg.text for seg in segments))
+    full_text = join_segment_texts(seg.text for seg in segments)
     if not full_text:
         raise TranscriptUnavailableError("The transcript for this video is empty.")
 
@@ -214,6 +214,16 @@ def _build_transcript_data(video_id: str, fetched) -> TranscriptData:
         full_text=full_text,
         segments=segments,
     )
+
+
+def join_segment_texts(texts: Iterable[str]) -> str:
+    """
+    The text a generation reads, from caption lines in order.
+
+    The one place it is built: a fetch builds it here, and a stored transcript
+    is rebuilt here from its segments, so the two cannot drift apart.
+    """
+    return _normalize_whitespace(" ".join(texts))
 
 
 def _normalize_whitespace(text: str) -> str:

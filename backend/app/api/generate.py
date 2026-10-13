@@ -9,7 +9,8 @@ The route prefix "/api/generate" is added in main.py via include_router.
 
 **A generation runs in the background.** The POST checks who is asking and what
 they asked for, reserves a place in the generation pool, creates the job and
-starts the work, then returns at once. The result is saved as a draft row and
+starts the work, then returns at once. The request names a video; the run
+fetches its transcript, so no text to generate from arrives in a request. The result is saved as a draft row and
 linked to the job; the caller polls the GET to learn when, and reads the row.
 
 Both routes require a signed-in user. The user is whoever the access token
@@ -36,7 +37,7 @@ from app.config import settings
 from app.services import jobs
 from app.services.dispatch import GenerationPool, get_generation_pool
 from app.services.drafts import VideoSource
-from app.services.generate import GenerationError, prepare_request
+from app.services.generate import GenerationError, system_prompt_for
 from app.services.prompts import ContentType, SocialPlatform
 from app.services.worker import GenerationInput, run_job
 
@@ -57,7 +58,6 @@ class GenerateRequest(BaseModel):
     # camelCase to match what the frontend sends. `contentType` is the
     # ContentType literal, so anything outside the seven types is a 422 before
     # our code runs.
-    fullText: str
     contentType: ContentType
     # Required only when contentType == "social". Ignored (and cleared) otherwise.
     platform: SocialPlatform | None = None
@@ -76,6 +76,18 @@ class GenerateRequest(BaseModel):
     # another, so a start whose reply was lost is safe to try again. Required,
     # and must be a UUID, so no client skips it and no junk is stored.
     requestId: UUID
+
+    @model_validator(mode="before")
+    @classmethod
+    def refuse_supplied_text(cls, data: object) -> object:
+        """
+        The transcript is fetched by the run from `videoId`. A request that
+        still sends text is refused rather than having it ignored, so a client
+        built against the old contract fails loudly instead of quietly.
+        """
+        if isinstance(data, dict) and "fullText" in data:
+            raise ValueError("fullText is not accepted; the transcript is fetched from videoId")
+        return data
 
     @field_validator("thumbnailUrl")
     @classmethod
@@ -114,6 +126,8 @@ class JobStatusResponse(BaseModel):
     errorCode: str | None
     createdAt: str
     completedAt: str | None
+    # Words in the transcript the job generates from, once it has one.
+    transcriptWords: int | None
 
 
 # ── Error mapping ────────────────────────────────────────────
@@ -121,8 +135,6 @@ class JobStatusResponse(BaseModel):
 # during the run — provider errors, unusable model output — are not here: they
 # arrive later, as the job's errorCode.
 _REQUEST_ERROR_STATUS = {
-    "empty-transcript": 422,
-    "transcript-too-long": 422,
     "unknown-content-type": 422,
 }
 
@@ -199,7 +211,7 @@ def start_generation(
     runs this on a request thread. The generation itself runs on the pool.
     """
     try:
-        prepare_request(req.fullText, req.contentType, req.platform)
+        system_prompt_for(req.contentType, req.platform)
     except GenerationError as exc:
         raise _refuse(_REQUEST_ERROR_STATUS.get(exc.code, 422), exc.code, exc.message)
 
@@ -240,7 +252,6 @@ def start_generation(
         raise _not_started()
 
     request = GenerationInput(
-        full_text=req.fullText,
         content_type=req.contentType,
         platform=req.platform,
         video=VideoSource(
@@ -295,7 +306,16 @@ def get_job_status(
         errorCode=row.get("error_code"),
         createdAt=str(row["created_at"]),
         completedAt=_optional_str(row.get("completed_at")),
+        transcriptWords=_transcript_words(row.get("transcripts")),
     )
+
+
+def _transcript_words(transcript: object) -> int | None:
+    """The word count from the job's embedded transcript, or None without one."""
+    if not isinstance(transcript, dict):
+        return None
+    words = transcript.get("word_count")
+    return words if isinstance(words, int) and not isinstance(words, bool) else None
 
 
 def _optional_str(value: object) -> str | None:

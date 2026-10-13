@@ -340,10 +340,11 @@ def find_job_for_request(user_id: str, request_id: str) -> dict[str, Any] | None
 
 def claim(job_id: str, user_id: str) -> dict[str, Any]:
     """
-    Start a run: move a `pending` job to `drafting`, and return the updated row.
+    Start a run: move a `pending` job to `fetching`, its first stage, and
+    return the updated row.
 
     **Only a `pending` job matches**, and that is in the statement's predicate.
-    `advance` would also accept a job already `drafting`, so two runs started
+    `advance` would also accept a job already under way, so two runs started
     for one job could both pass it and both pay for a generation. Here the
     second finds nothing to update.
 
@@ -353,7 +354,7 @@ def claim(job_id: str, user_id: str) -> dict[str, Any]:
     Raises JobError("job-not-claimed") when no row matched: no such job, not
     this user's, or already started or finished.
     """
-    patch = patch_for_status("drafting")
+    patch = patch_for_status("fetching")
     patch["heartbeat_at"] = _utc_now_iso()
     response = (
         get_supabase_client()
@@ -405,6 +406,18 @@ def advance(job_id: str, user_id: str, status: str) -> dict[str, Any]:
     if (reason := advance_target_error(status)) is not None:
         raise JobError("illegal-status", reason)
     return _update_unfinished(job_id, user_id, patch_for_status(status))
+
+
+def begin_drafting(job_id: str, user_id: str, transcript_id: str) -> dict[str, Any]:
+    """
+    Record the transcript a job generates from, and move it to `drafting`.
+
+    Both are written in one statement. Transcripts belong to no user, so there
+    is no owner to check; the foreign key proves the row exists.
+    """
+    patch = patch_for_status("drafting")
+    patch["transcript_id"] = transcript_id
+    return _update_unfinished(job_id, user_id, patch)
 
 
 def complete(job_id: str, user_id: str, result_id: str) -> dict[str, Any]:
@@ -488,11 +501,15 @@ def get_job(job_id: str, user_id: str) -> dict[str, Any]:
     Raises JobError("job-not-found") when there is no such job *or* it belongs
     to someone else. Deliberately one error: distinguishing them would confirm
     that a job id exists to somebody who does not own it.
+
+    The row carries `transcripts`: `{"word_count": n}` for the transcript the
+    job records, or None before it has one. Only the count is read — the
+    segments can be large, and this is asked for on every poll.
     """
     response = (
         get_supabase_client()
         .table(TABLE)
-        .select("*")
+        .select("*, transcripts(word_count)")
         .eq("id", job_id)
         .eq("user_id", user_id)
         .limit(1)

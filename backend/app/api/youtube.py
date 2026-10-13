@@ -3,8 +3,10 @@ backend/app/api/youtube.py
 
 YouTube endpoints:
   - POST /api/youtube/metadata    -> video title, channel, thumbnail, duration
-  - POST /api/youtube/transcript  -> cleaned transcript text + language info
   - POST /api/youtube/search      -> relevance-ordered topic-search results
+
+There is no transcript endpoint: a generation fetches its own transcript from
+the video id (app/services/transcript_store.py), so none is handed to clients.
 
 The route prefix "/api/youtube" is added in main.py via include_router,
 so here we only declare paths relative to that ("/metadata", etc.).
@@ -18,12 +20,10 @@ import re
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.config import settings
 from app.services.search import SearchServiceError, search_videos
-from app.services.transcript import TranscriptServiceError, fetch_transcript
 from app.utils.youtube import (
     YOUTUBE_VIDEOS_URL,
     best_thumbnail,
@@ -54,24 +54,6 @@ class VideoMeta(BaseModel):
     thumbnailUrl: str
     url: str
     durationSeconds: int | None = None
-
-
-class TranscriptRequest(BaseModel):
-    # Same camelCase contract as the metadata request.
-    videoId: str
-
-
-class TranscriptResponse(BaseModel):
-    # camelCase to mirror the frontend's Transcript type exactly.
-    # Note: we deliberately do NOT ship the per-line `segments` array yet.
-    # fullText is what the AI step needs; segments (with timestamps) are
-    # computed server-side and can be exposed later for timestamp features.
-    videoId: str
-    language: str          # human-readable, e.g. "English"
-    languageCode: str      # e.g. "en"
-    isGenerated: bool       # True = auto-captions, False = human-written
-    segmentCount: int
-    fullText: str
 
 
 class SearchRequest(BaseModel):
@@ -107,13 +89,6 @@ class SearchResponse(BaseModel):
 # ── Error-code -> HTTP status maps ───────────────────────────
 # The codes come from the service layer and flow straight through to the
 # frontend's ERROR_MESSAGES map as structured `detail`.
-_TRANSCRIPT_ERROR_STATUS = {
-    "no-captions": 422,        # video is fine, but there's no usable transcript
-    "video-not-found": 404,    # bad / private / removed video
-    "transcript-blocked": 502, # YouTube blocked our server's request
-    "transcript-failed": 502,  # any other upstream retrieval failure
-}
-
 _SEARCH_ERROR_STATUS = {
     "quota-exceeded": 429,     # daily YouTube quota / rate limit hit
     "search-failed": 502,      # bad key, upstream 5xx, unreadable body, network
@@ -189,42 +164,6 @@ async def get_metadata(req: MetadataRequest) -> VideoMeta:
     )
 
 
-# ── Transcript endpoint ──────────────────────────────────────
-@router.post("/transcript", response_model=TranscriptResponse)
-async def get_transcript(req: TranscriptRequest) -> TranscriptResponse:
-    video_id = req.videoId.strip()
-
-    # 1. Re-validate the ID, same as metadata — never trust the client.
-    if not _VIDEO_ID_RE.match(video_id):
-        raise HTTPException(status_code=400, detail="Invalid video ID.")
-
-    # 2. fetch_transcript() is BLOCKING (the library uses `requests` under
-    #    the hood). Calling it directly inside an async route would freeze
-    #    the whole event loop while it waits on the network. run_in_threadpool
-    #    runs it on a worker thread so the server stays responsive.
-    try:
-        data = await run_in_threadpool(fetch_transcript, video_id)
-    except TranscriptServiceError as exc:
-        # 3. The service raised a known, typed error. Translate its `code`
-        #    into an HTTP status and pass the code through to the frontend
-        #    as structured detail so the UI can pick the right message.
-        status = _TRANSCRIPT_ERROR_STATUS.get(exc.code, 502)
-        raise HTTPException(
-            status_code=status,
-            detail={"code": exc.code, "message": str(exc)},
-        )
-
-    # 4. Success. Reshape the dataclass into our camelCase contract.
-    return TranscriptResponse(
-        videoId=data.video_id,
-        language=data.language,
-        languageCode=data.language_code,
-        isGenerated=data.is_generated,
-        segmentCount=data.segment_count,
-        fullText=data.full_text,
-    )
-
-
 # ── Search endpoint ──────────────────────────────────────────
 @router.post("/search", response_model=SearchResponse)
 async def search(req: SearchRequest) -> SearchResponse:
@@ -244,13 +183,12 @@ async def search(req: SearchRequest) -> SearchResponse:
             detail="Server is missing YOUTUBE_API_KEY.",
         )
 
-    # 3. Run the search service. It's already async (httpx), so we await it
-    #    directly — no threadpool needed (unlike the blocking transcript lib).
+    # 3. Run the search service. It's async (httpx), so it is awaited directly.
     try:
         results = await search_videos(query, api_key, max_results=req.maxResults)
     except SearchServiceError as exc:
-        # Same pattern as transcript: map the typed .code to an HTTP status
-        # and pass structured detail through so the UI can message it.
+        # Map the typed .code to an HTTP status and pass structured detail
+        # through so the UI can message it.
         status = _SEARCH_ERROR_STATUS.get(exc.code, 502)
         raise HTTPException(
             status_code=status,

@@ -18,6 +18,13 @@ import pytest
 
 from app.services.drafts import VideoSource
 from app.services.generate import GenerationError
+from app.services.transcript import (
+    TranscriptBlockedError,
+    TranscriptServiceError,
+    TranscriptUnavailableError,
+    VideoNotFoundError,
+)
+from app.services.transcript_store import StoredTranscript
 from app.services.worker import (
     UNEXPECTED_CODE,
     UNEXPECTED_MESSAGE,
@@ -30,9 +37,9 @@ JOB = "job-1"
 USER = "user-1"
 DRAFT = "draft-1"
 BODY = {"markdown": "Tides follow the moon."}
+TRANSCRIPT = StoredTranscript(id="transcript-1", full_text="A transcript about tides.", word_count=4)
 
 REQUEST = GenerationInput(
-    full_text="A transcript about tides.",
     content_type="social",
     platform="linkedin",
     video=VideoSource(
@@ -48,7 +55,7 @@ REQUEST = GenerationInput(
 
 class Recorder:
     """
-    Stand-ins for the six effects. Each call is recorded by name and
+    Stand-ins for the eight effects. Each call is recorded by name and
     arguments; `raises` names the steps that should raise, and with what.
 
     `generate_takes` makes generation slow enough for heartbeats to land, and
@@ -79,6 +86,13 @@ class Recorder:
             self._call("heartbeat", job_id, user_id)
             return self.job_still_open
 
+        def obtain_transcript(video_id: str) -> StoredTranscript:
+            self._call("obtain_transcript", video_id)
+            return TRANSCRIPT
+
+        def begin_drafting(job_id: str, user_id: str, transcript_id: str) -> None:
+            self._call("begin_drafting", job_id, user_id, transcript_id)
+
         def generate(full_text: str, content_type: Any, platform: Any) -> dict[str, Any]:
             self._call("generate", full_text, content_type, platform)
             time.sleep(self.generate_takes)
@@ -97,6 +111,8 @@ class Recorder:
         return Steps(
             claim=claim,
             heartbeat=heartbeat,
+            obtain_transcript=obtain_transcript,
+            begin_drafting=begin_drafting,
             generate=generate,
             insert_draft=insert_draft,
             complete=complete,
@@ -131,12 +147,14 @@ def test_default_steps_are_the_real_functions() -> None:
     Every test below passes stand-ins, so none of them would notice a default
     being something other than the real function. This one would.
     """
-    from app.services import drafts, jobs
+    from app.services import drafts, jobs, worker
     from app.services.generate import generate_content
 
     steps = Steps()
     assert steps.claim is jobs.claim
     assert steps.heartbeat is jobs.heartbeat
+    assert steps.obtain_transcript is worker.obtain_transcript
+    assert steps.begin_drafting is jobs.begin_drafting
     assert steps.generate is generate_content
     assert steps.insert_draft is drafts.insert_draft
     assert steps.complete is jobs.complete
@@ -146,10 +164,23 @@ def test_default_steps_are_the_real_functions() -> None:
 # --- The path that works ------------------------------------------------------
 
 
-def test_a_run_claims_then_generates_then_saves_then_completes() -> None:
+FULL_PATH = ["claim", "obtain_transcript", "begin_drafting", "generate", "insert_draft", "complete"]
+
+
+def test_a_run_claims_then_reads_then_drafts_then_saves_then_completes() -> None:
     outcome, recorder = run()
     assert outcome == "completed"
-    assert recorder.names == ["claim", "generate", "insert_draft", "complete"]
+    assert recorder.names == FULL_PATH
+
+
+def test_the_transcript_is_obtained_for_the_requested_video() -> None:
+    _, recorder = run()
+    assert recorder.args("obtain_transcript") == (REQUEST.video.video_id,)
+
+
+def test_drafting_records_the_transcript_it_will_generate_from() -> None:
+    _, recorder = run()
+    assert recorder.args("begin_drafting") == (JOB, USER, TRANSCRIPT.id)
 
 
 def test_the_job_is_claimed_before_anything_is_spent() -> None:
@@ -157,9 +188,9 @@ def test_the_job_is_claimed_before_anything_is_spent() -> None:
     assert recorder.args("claim") == (JOB, USER)
 
 
-def test_generation_receives_the_request_unchanged() -> None:
+def test_generation_reads_the_transcript_it_obtained() -> None:
     _, recorder = run()
-    assert recorder.args("generate") == (REQUEST.full_text, "social", "linkedin")
+    assert recorder.args("generate") == (TRANSCRIPT.full_text, "social", "linkedin")
 
 
 def test_the_draft_belongs_to_the_given_user_and_holds_the_result() -> None:
@@ -169,6 +200,7 @@ def test_the_draft_belongs_to_the_given_user_and_holds_the_result() -> None:
     assert row["status"] == "draft"
     assert row["content_body"] is BODY
     assert row["metadata"] == {"platform": "linkedin"}
+    assert row["transcript_id"] == TRANSCRIPT.id
 
 
 def test_the_job_is_completed_with_the_draft_it_produced() -> None:
@@ -178,7 +210,7 @@ def test_the_job_is_completed_with_the_draft_it_produced() -> None:
 
 def test_every_job_write_uses_the_same_owner() -> None:
     _, recorder = run()
-    for name in ("claim", "complete"):
+    for name in ("claim", "begin_drafting", "complete"):
         assert recorder.args(name)[1] == USER
 
 
@@ -194,11 +226,42 @@ def test_a_job_that_cannot_be_claimed_spends_nothing_and_is_left_alone() -> None
 # --- Failures after the job has started ---------------------------------------
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        TranscriptUnavailableError("No captions."),
+        VideoNotFoundError("Gone."),
+        TranscriptBlockedError("Blocked."),
+        TranscriptServiceError("Something else."),
+    ],
+)
+def test_a_transcript_failure_is_recorded_with_its_own_code_and_nothing_is_spent(
+    error: TranscriptServiceError,
+) -> None:
+    outcome, recorder = run({"obtain_transcript": error})
+    assert outcome == "failed"
+    assert recorder.names == ["claim", "obtain_transcript", "fail"]
+    assert recorder.args("fail") == (JOB, USER, error.code, str(error))
+
+
+def test_any_other_transcript_exception_is_unexpected() -> None:
+    outcome, recorder = run({"obtain_transcript": RuntimeError("database down")})
+    assert outcome == "failed"
+    assert recorder.args("fail") == (JOB, USER, UNEXPECTED_CODE, UNEXPECTED_MESSAGE)
+
+
+def test_a_job_that_cannot_move_to_drafting_generates_nothing() -> None:
+    outcome, recorder = run({"begin_drafting": RuntimeError("job-not-updated")})
+    assert outcome == "failed"
+    assert recorder.names == ["claim", "obtain_transcript", "begin_drafting", "fail"]
+    assert recorder.args("fail")[2] == UNEXPECTED_CODE
+
+
 def test_a_generation_error_is_recorded_with_its_own_code() -> None:
     error = GenerationError("transcript-too-long", "Too long.")
     outcome, recorder = run({"generate": error})
     assert outcome == "failed"
-    assert recorder.names == ["claim", "generate", "fail"]
+    assert recorder.names == FULL_PATH[:4] + ["fail"]
     assert recorder.args("fail") == (JOB, USER, "transcript-too-long", "Too long.")
 
 
@@ -217,21 +280,24 @@ def test_an_unexpected_failure_does_not_store_the_exception_text() -> None:
 def test_a_draft_that_cannot_be_saved_is_recorded_and_nothing_is_completed() -> None:
     outcome, recorder = run({"insert_draft": RuntimeError("insert returned nothing")})
     assert outcome == "failed"
-    assert recorder.names == ["claim", "generate", "insert_draft", "fail"]
+    assert recorder.names == FULL_PATH[:5] + ["fail"]
     assert recorder.args("fail")[2] == "draft-not-saved"
 
 
 def test_a_draft_that_cannot_be_linked_is_kept_and_the_job_fails() -> None:
     outcome, recorder = run({"complete": RuntimeError("network")})
     assert outcome == "failed"
-    assert recorder.names == ["claim", "generate", "insert_draft", "complete", "fail"]
+    assert recorder.names == FULL_PATH + ["fail"]
     assert recorder.args("fail")[2] == UNEXPECTED_CODE
 
 
 # --- It never raises ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("failing_step", ["generate", "insert_draft", "complete"])
+@pytest.mark.parametrize(
+    "failing_step",
+    ["obtain_transcript", "begin_drafting", "generate", "insert_draft", "complete"],
+)
 def test_a_failure_that_cannot_be_recorded_still_does_not_raise(failing_step: str) -> None:
     outcome, recorder = run(
         {failing_step: RuntimeError("step failed"), "fail": RuntimeError("db down")}

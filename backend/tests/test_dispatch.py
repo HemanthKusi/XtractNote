@@ -210,6 +210,39 @@ def test_the_setting_defaults_to_four_and_refuses_zero(monkeypatch: pytest.Monke
         Settings(_env_file=None)
 
 
+def placeholder_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
+    monkeypatch.setenv("SUPABASE_URL", "https://placeholder.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "placeholder")
+    for name in ("GENERATION_WORKERS", "GENERATION_PER_USER"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+
+
+def test_the_per_user_limit_defaults_to_two(monkeypatch: pytest.MonkeyPatch) -> None:
+    placeholder_env(monkeypatch)
+    assert Settings(_env_file=None).generation_per_user == 2
+
+
+@pytest.mark.parametrize("limit", ["0", "-1"])
+def test_the_per_user_limit_is_at_least_one(monkeypatch: pytest.MonkeyPatch, limit: str) -> None:
+    placeholder_env(monkeypatch, GENERATION_PER_USER=limit)
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_the_per_user_limit_may_not_exceed_the_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    placeholder_env(monkeypatch, GENERATION_WORKERS="2", GENERATION_PER_USER="3")
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_the_per_user_limit_may_equal_the_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A one-slot server can still run one generation for one user."""
+    placeholder_env(monkeypatch, GENERATION_WORKERS="1", GENERATION_PER_USER="1")
+    assert Settings(_env_file=None).generation_per_user == 1
+
+
 def test_the_process_pool_is_sized_by_the_setting() -> None:
     process_pool = get_generation_pool()
     slots = [process_pool.reserve() for _ in range(settings.generation_workers)]

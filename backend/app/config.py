@@ -5,7 +5,7 @@ Loads environment variables and validates that required values are present.
 If a required variable is missing, the app won't start (fail fast).
 """
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 from typing import Literal
 
@@ -44,6 +44,18 @@ class Settings(BaseSettings):
     # How many generations this server process runs at once. Requests beyond
     # it are refused as busy rather than queued.
     generation_workers: int = Field(default=4, ge=1)
+    # How many unfinished generations one user may have. Enforced by the
+    # database when a job is created (migration 010), so it holds across
+    # processes. It may not exceed generation_workers.
+    generation_per_user: int = Field(default=2, ge=1)
+
+    @model_validator(mode="after")
+    def _per_user_limit_fits_the_pool(self) -> "Settings":
+        if self.generation_per_user > self.generation_workers:
+            raise ValueError(
+                "generation_per_user cannot be larger than generation_workers"
+            )
+        return self
 
     class Config:
         env_file = ".env"

@@ -18,6 +18,10 @@ belongs to — nothing in a request body names one.
 **Starting is safe to repeat.** Each start carries a request key; repeating it
 returns the job already made rather than creating another, so a start whose
 reply was lost can be tried again without paying twice.
+
+**One user cannot hold every generation.** A user at their limit of unfinished
+generations is refused; the database counts and creates the job in one step,
+so two starts from one user cannot both pass.
 """
 
 import logging
@@ -28,6 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.dependencies import CurrentUser, get_current_user
+from app.config import settings
 from app.services import jobs
 from app.services.dispatch import GenerationPool, get_generation_pool
 from app.services.drafts import VideoSource
@@ -42,6 +47,9 @@ router = APIRouter()
 VIDEO_ID_PATTERN = r"^[A-Za-z0-9_-]{11}$"
 THUMBNAIL_PREFIX = "https://i.ytimg.com/"
 BUSY_RETRY_AFTER_SECONDS = 30
+#: Roughly how long a generation takes, so a refused user asks again once one
+#: of theirs might have finished.
+LIMIT_RETRY_AFTER_SECONDS = 60
 
 
 # ── Request / Response shapes ────────────────────────────────
@@ -160,6 +168,15 @@ def _busy() -> HTTPException:
     )
 
 
+def _at_limit() -> HTTPException:
+    return _refuse(
+        429,
+        "generation-limit",
+        "You already have as many generations running as you can at once.",
+        headers={"Retry-After": str(LIMIT_RETRY_AFTER_SECONDS)},
+    )
+
+
 # ── Start a generation ───────────────────────────────────────
 @router.post("", status_code=202, response_model=StartedResponse)
 def start_generation(
@@ -174,7 +191,8 @@ def start_generation(
       1. the request's own checks — a failure is a 422, and no job exists
       2. the request key — a job already made for it is returned, not repeated
       3. a place in the pool — none free is a 503, and no job exists
-      4. the job row — if it cannot be created, the place is given back
+      4. the job row, if the user is under their limit — at it is a 429; if
+         the row is not created for any reason, the place is given back
       5. the work starts in that place
 
     A plain `def`: creating the job is a blocking database call, so FastAPI
@@ -196,10 +214,17 @@ def start_generation(
 
     try:
         job_id = jobs.create_job(
-            user.id, req.videoId, req.contentType, request_id, req.platform
+            user.id,
+            req.videoId,
+            req.contentType,
+            request_id,
+            req.platform,
+            settings.generation_per_user,
         )
     except jobs.JobError as exc:
         slot.release()
+        if exc.code == "generation-limit":
+            raise _at_limit()
         if exc.code != "duplicate-request":
             logger.warning("could not create a generation job: %s", exc.code)
             raise _not_started()

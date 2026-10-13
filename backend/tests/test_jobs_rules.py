@@ -21,7 +21,9 @@ from typing import get_args
 import pytest
 
 from app.services.jobs import (
+    ADMIT_FUNCTION,
     CREATION_STATUS,
+    GENERATION_LIMIT,
     HEARTBEAT_EVERY,
     INTERRUPTED_CODE,
     INTERRUPTED_MESSAGE,
@@ -433,3 +435,58 @@ def test_the_platforms_the_database_allows_are_the_ones_that_can_run() -> None:
     accepts and the database refuses fails only when a job is created for it.
     """
     assert platforms_in_migration() == set(get_args(SocialPlatform))
+
+
+ADMISSION_MIGRATION = (
+    Path(__file__).resolve().parents[2] / "database" / "010_job_admission.sql"
+)
+
+
+def admission_sql() -> str:
+    return ADMISSION_MIGRATION.read_text()
+
+
+def test_the_admission_function_is_the_one_the_backend_calls() -> None:
+    assert re.search(
+        rf"create or replace function public\.{ADMIT_FUNCTION}\(", admission_sql()
+    )
+
+
+def test_the_admission_function_creates_the_job_the_backend_would() -> None:
+    """The row's status and progress are written in SQL now, not by patch_for_status."""
+    match = re.search(r"values\s*\((.*?)\)\s*returning", admission_sql(), re.S | re.I)
+    assert match, "could not find the insert's values in migration 010"
+    values = [value.strip() for value in match.group(1).split(",")]
+    expected = patch_for_status(CREATION_STATUS)
+    assert values[-2:] == [f"'{expected['status']}'", str(expected["progress"])]
+
+
+def test_the_admission_function_counts_what_the_backend_calls_unfinished() -> None:
+    match = re.search(r"status\s+not\s+in\s*\((.*?)\)", admission_sql(), re.S | re.I)
+    assert match, "could not find the unfinished-job count in migration 010"
+    assert set(re.findall(r"'([a-z]+)'", match.group(1))) == TERMINAL_STATUSES
+
+
+def test_the_limit_is_raised_with_the_code_the_backend_maps() -> None:
+    assert f"errcode = '{GENERATION_LIMIT}'" in admission_sql()
+
+
+def test_a_reused_key_is_answered_before_the_limit_is_counted() -> None:
+    """Otherwise the second copy of one request is refused for the job its first copy made."""
+    sql = admission_sql()
+    assert sql.index("request_id = p_request_id") < sql.index("select count(*)")
+
+
+def test_only_the_backend_may_call_the_admission_function() -> None:
+    """A client that could call it would choose its own limit, and its own user."""
+    sql = " ".join(admission_sql().split())
+    assert f"revoke all on function public.{ADMIT_FUNCTION}(" in sql
+    assert "from public, anon, authenticated;" in sql
+    assert re.search(rf"grant execute on function public\.{ADMIT_FUNCTION}\([^)]*\) to service_role;", sql)
+
+
+def test_users_can_no_longer_write_job_rows() -> None:
+    sql = admission_sql()
+    assert 'drop policy if exists "Users can create own jobs"' in sql
+    assert 'drop policy if exists "Users can update own jobs"' in sql
+    assert "revoke insert, update, delete on public.generation_jobs from anon, authenticated;" in sql

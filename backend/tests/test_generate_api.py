@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import CurrentUser, get_current_user
+from app.config import settings
 from app.main import app
 from app.services import jobs
 from app.services.dispatch import get_generation_pool
@@ -68,6 +69,7 @@ class FakeJobs:
 
     def __init__(self) -> None:
         self.created: list[tuple[str, str, str, str, str | None]] = []
+        self.limits: list[int] = []
         self.failed: list[tuple[str, str, str, str]] = []
         self.read: list[tuple[str, str]] = []
         self.looked_up: list[tuple[str, str]] = []
@@ -79,9 +81,16 @@ class FakeJobs:
         self.find_raises: Exception | None = None
 
     def create_job(
-        self, user_id: str, video_id: str, content_type: str, request_id: str, platform: str | None
+        self,
+        user_id: str,
+        video_id: str,
+        content_type: str,
+        request_id: str,
+        platform: str | None,
+        limit: int,
     ) -> str:
         self.created.append((user_id, video_id, content_type, request_id, platform))
+        self.limits.append(limit)
         if self.create_raises:
             raise self.create_raises
         return JOB
@@ -355,6 +364,31 @@ def test_a_full_pool_is_503_busy_and_creates_no_job(client, pool, fake_jobs) -> 
     assert response.json()["detail"]["code"] == "generation-busy"
     assert response.headers["retry-after"] == "30"
     assert fake_jobs.created == []
+
+
+def test_the_job_is_created_under_the_configured_per_user_limit(client, fake_jobs) -> None:
+    post(client)
+    assert fake_jobs.limits == [settings.generation_per_user]
+
+
+def test_a_user_at_their_limit_is_429_and_starts_nothing(client, pool, fake_jobs) -> None:
+    fake_jobs.create_raises = jobs.JobError("generation-limit", "at the limit")
+    response = post(client)
+    assert response.status_code == 429
+    assert response.json()["detail"]["code"] == "generation-limit"
+    assert response.headers["retry-after"] == "60"
+    assert pool.slot.released is True and pool.slot.work is None
+    assert fake_jobs.failed == []
+
+
+def test_a_repeat_is_answered_even_at_the_limit(client, pool, fake_jobs) -> None:
+    """The job already exists, so the user's count is no reason to refuse the answer."""
+    fake_jobs.existing = [EARLIER]
+    fake_jobs.create_raises = jobs.JobError("generation-limit", "at the limit")
+    response = post(client)
+    assert response.status_code == 202
+    assert response.json() == {"jobId": EARLIER["id"]}
+    assert fake_jobs.created == [] and pool.reserved == 0
 
 
 def test_a_job_that_cannot_be_created_gives_its_slot_back(client, pool, fake_jobs) -> None:

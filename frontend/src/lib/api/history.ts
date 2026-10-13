@@ -12,7 +12,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { contentTypeColors, type ContentType } from "@/lib/constants/theme";
-import type { ContentBody } from "@/lib/content/types";
+import { CONTENT_STATUSES, type ContentBody, type ContentStatus } from "@/lib/content/types";
 
 // What the History list actually needs from each saved row.
 export interface HistoryItem {
@@ -26,6 +26,7 @@ export interface HistoryItem {
   markdown: string;       // prose body text; "" for structured types
   body: ContentBody;      // the full validated body (prose or structured)
   folderId: string | null; // which folder it's in (null = none)
+  status: ContentStatus | null; // null when the row holds a value the schema does not name
 }
 
 // What the single-item editor needs. Richer than HistoryItem, and crucially
@@ -45,6 +46,7 @@ export interface ContentDetail {
   folderId: string | null;
   createdAt: string;       // ISO timestamp
   updatedAt: string;       // ISO timestamp — powers "last edited"
+  status: ContentStatus | null; // null when the row holds a value the schema does not name
 }
 
 export type HistoryFailReason = "not-authenticated" | "fetch-failed" | "network";
@@ -67,11 +69,11 @@ export type ContentDetailResult =
 
 // The columns the list needs (lighter than select("*")).
 const COLUMNS =
-  "id, content_type, content_title, video_title, video_channel, video_thumbnail, word_count, created_at, content_body, folder_id";
+  "id, content_type, content_title, video_title, video_channel, video_thumbnail, word_count, created_at, content_body, folder_id, status";
 
 // The detail read needs a few more: video_url + updated_at for the editor.
 const DETAIL_COLUMNS =
-  "id, content_type, content_title, video_title, video_channel, video_thumbnail, video_url, word_count, folder_id, created_at, updated_at, content_body";
+  "id, content_type, content_title, video_title, video_channel, video_thumbnail, video_url, word_count, folder_id, created_at, updated_at, content_body, status";
 
 // Valid ContentType keys, taken from the single source of truth. Already
 // covers all seven types since it reads the token registry.
@@ -83,6 +85,18 @@ function toContentType(value: unknown): ContentType {
   return typeof value === "string" && VALID_TYPES.includes(value as ContentType)
     ? (value as ContentType)
     : "summary"; // safe fallback — never crash the icon/label lookup
+}
+
+/**
+ * A row's status, checked against the values the schema allows. The column
+ * has a CHECK but no NOT NULL, so a hand-written row can hold NULL; anything
+ * unnamed comes back as null rather than as a guess, and only "draft" is ever
+ * shown as a draft.
+ */
+function toContentStatus(value: unknown): ContentStatus | null {
+  return typeof value === "string" && (CONTENT_STATUSES as readonly string[]).includes(value)
+    ? (value as ContentStatus)
+    : null;
 }
 
 /**
@@ -130,6 +144,7 @@ interface RawRow {
   created_at: string;
   content_body: unknown;
   folder_id: string | null;
+  status: unknown;
 }
 
 // Detail row = list row + the two extra columns the editor needs.
@@ -152,6 +167,7 @@ function mapRow(row: RawRow): HistoryItem {
     markdown: bodyMarkdown(body),
     body,
     folderId: row.folder_id,
+    status: toContentStatus(row.status),
   };
 }
 
@@ -173,6 +189,7 @@ function mapDetail(row: RawDetailRow): ContentDetail {
     folderId: row.folder_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    status: toContentStatus(row.status),
   };
 }
 
@@ -194,13 +211,14 @@ export async function fetchFolderContents(folderId: string): Promise<HistoryResu
 export async function fetchContentById(id: string): Promise<ContentDetailResult> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) return { ok: false, reason: "not-authenticated" };
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+
     const { data, error } = await supabase
       .from("generated_content")
       .select(DETAIL_COLUMNS)
@@ -228,13 +246,14 @@ async function runHistoryQuery(
 ): Promise<HistoryResult> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) return { ok: false, reason: "not-authenticated" };
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+
     let query = supabase
       .from("generated_content")
       .select(COLUMNS)

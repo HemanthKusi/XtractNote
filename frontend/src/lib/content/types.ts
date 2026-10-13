@@ -194,6 +194,23 @@ export function isMarkdownBody(body: ContentBody): body is MarkdownBody {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Saved content                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every status a piece of generated content can have — the values migration
+ * 003's CHECK constraint allows. A finished generation is written as a
+ * `draft`; saving it makes it `saved`. A list rather than only a type, so a
+ * status read from a row can be checked against it instead of cast.
+ *
+ * `npm run lint` fails if this and the migration disagree
+ * (scripts/check-job-vocabulary.mjs).
+ */
+export const CONTENT_STATUSES = ["draft", "saved", "archived", "exported"] as const;
+
+export type ContentStatus = (typeof CONTENT_STATUSES)[number];
+
+/* -------------------------------------------------------------------------- */
 /* Generation jobs and failures                                                */
 /* -------------------------------------------------------------------------- */
 

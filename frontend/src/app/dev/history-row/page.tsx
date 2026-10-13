@@ -497,6 +497,7 @@ export default function HistoryRowSpecimensPage() {
                   markdown: "",
                   body: { markdown: "" },
                   folderId: item.folder ? "f1" : null,
+                  status: "saved",
                 }}
                 folderLabel={item.folder ?? null}
                 onMove={() => {}}

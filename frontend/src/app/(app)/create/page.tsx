@@ -23,7 +23,7 @@
 // draft row's metadata.
 // ─────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -76,11 +76,11 @@ import { CreateHero } from "@/components/create/create-hero";
 import { GeneratingPanel } from "@/components/create/generating-panel";
 import { SocialPlatformPicker } from "@/components/create/social-platform-picker";
 import { SearchResults } from "@/components/create/search-results";
-import { DraftsBand } from "@/components/create/drafts-band";
+import { DraftsBand, type DraftsState } from "@/components/create/drafts-band";
 import { SourcePanel } from "@/components/create/source-panel";
 import { VideoGridItem } from "@/components/create/video-grid-item";
 import { OutputView } from "@/components/output/output-view";
-import { fetchContentById, fetchDrafts, type HistoryItem } from "@/lib/api/history";
+import { fetchContentById, fetchDrafts } from "@/lib/api/history";
 import { contentTypeColors } from "@/lib/constants/theme";
 import { ROUTES } from "@/lib/constants/routes";
 import { RECOMMENDED_VIDEOS } from "@/lib/constants/recommended-videos";
@@ -279,11 +279,12 @@ export default function CreatePage() {
     useState<SocialPlatform | null>(null);
 
   // Unfinished work for the "pick up where you left off" band: finished
-  // generations the user has not saved. The band renders nothing on an empty
-  // list, so a failed fetch degrades to the same thing as no drafts, which is
-  // why the error is swallowed rather than surfaced: a suggestion band cannot
-  // be worth an error message on the page the user came here to use.
-  const [drafts, setDrafts] = useState<HistoryItem[]>([]);
+  // generations the user has not saved. A failed fetch is shown as one, with
+  // a retry: this page's own messages send people to their drafts.
+  const [drafts, setDrafts] = useState<DraftsState>({ phase: "loading" });
+  // Bumped by every drafts fetch and when the band goes away; a result whose
+  // number is no longer current is dropped.
+  const draftsRun = useRef(0);
 
   // Refresh rotates the curated list. It is deterministic (no Math.random at
   // render) so the server and client agree on first paint.
@@ -407,20 +408,36 @@ export default function CreatePage() {
 
   // Load unfinished work each time the page lands on a screen that shows the
   // band — on first load, and on every return to it — so a run that finished
-  // after the user stopped waiting appears without a reload. Not awaited by
-  // anything; a list that arrives late simply appears.
+  // after the user stopped waiting appears without a reload.
+  //
+  // A list already on screen stays while it is fetched again, rather than
+  // turning back into placeholders on every return. Try again always shows
+  // the placeholders, so the click visibly does something.
+  const loadDrafts = useCallback(async (mode: "keep-list" | "show-loading") => {
+    const run = ++draftsRun.current;
+    setDrafts((previous) =>
+      mode === "keep-list" && previous.phase === "loaded"
+        ? previous
+        : { phase: "loading" },
+    );
+    const result = await fetchDrafts();
+    if (run !== draftsRun.current) return;
+    setDrafts(
+      result.ok
+        ? { phase: "loaded", drafts: result.data }
+        : { phase: "failed", reason: result.reason },
+    );
+  }, []);
+
   const showsDrafts = status.phase === "idle" || status.phase === "error";
   useEffect(() => {
     if (!showsDrafts) return;
-    let live = true;
-    void (async () => {
-      const result = await fetchDrafts();
-      if (live && result.ok) setDrafts(result.data);
-    })();
+    void loadDrafts("keep-list");
+    const runs = draftsRun;
     return () => {
-      live = false;
+      runs.current += 1;
     };
-  }, [showsDrafts]);
+  }, [showsDrafts, loadDrafts]);
 
   // Leaving the page invalidates whatever is in flight, so a generation's
   // polling stops at its next check instead of running on behind a page
@@ -872,11 +889,11 @@ export default function CreatePage() {
           {(status.phase === "idle" || status.phase === "error") && (
             <>
               {/* Unfinished work first, then suggestions — your own things
-                  before ours. Renders nothing at all when there are no
-                  drafts, rather than an empty state. */}
+                  before ours. */}
               <DraftsBand
-                drafts={drafts}
+                state={drafts}
                 onOpen={(id) => router.push(ROUTES.output(id))}
+                onRetry={() => void loadDrafts("show-loading")}
               />
 
               {/* A curated list, not a recommender. The heading says "worth

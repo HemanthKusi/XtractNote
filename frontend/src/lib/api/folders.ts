@@ -67,13 +67,14 @@ function mapFolder(row: RawFolderRow): Folder {
 export async function fetchFolders(): Promise<FoldersResult> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) return { ok: false, reason: "not-authenticated" };
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+
     const { data, error } = await supabase
       .from("folders")
       .select(SELECT)
@@ -95,16 +96,17 @@ export async function createFolder(input: {
 }): Promise<CreateFolderResult> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) return { ok: false, reason: "not-authenticated" };
-
-  const name = input.name.trim();
-  if (!name) return { ok: false, reason: "create-failed" };
-
   try {
+    // The lookup is inside the try because it can throw.
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) return { ok: false, reason: "not-authenticated" };
+
+    const name = input.name.trim();
+    if (!name) return { ok: false, reason: "create-failed" };
+
     const { data, error } = await supabase
       .from("folders")
       .insert({
@@ -136,13 +138,14 @@ export async function moveToFolder(
   ): Promise<MoveResult> {
     const supabase = createClient();
   
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-    if (userError || !user) return { ok: false, reason: "not-authenticated" };
-  
     try {
+      // The lookup is inside the try because it can throw.
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) return { ok: false, reason: "not-authenticated" };
+  
       // If filing into a folder (not clearing), verify the folder is the user's.
       // The folders SELECT policy only returns the user's own rows, so a folder
       // that isn't theirs (or doesn't exist) comes back as no row → reject.
@@ -180,13 +183,14 @@ export async function moveToFolder(
 export async function fetchFolder(folderId: string): Promise<SingleFolderResult> {
     const supabase = createClient();
   
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-    if (userError || !user) return { ok: false, reason: "not-authenticated" };
-  
     try {
+      // The lookup is inside the try because it can throw.
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) return { ok: false, reason: "not-authenticated" };
+  
       const { data, error } = await supabase
         .from("folders")
         .select(SELECT) // same columns + generated_content(count) as fetchFolders

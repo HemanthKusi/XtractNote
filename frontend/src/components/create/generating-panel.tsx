@@ -8,9 +8,9 @@
 //
 // ── What it shows ──
 //
-// Only steps that happen: reading the transcript, starting the generation,
-// drafting. Which one is running comes from the page — its own fetch and start
-// request, then the job's status (lib/generation/stage.ts). A finished step
+// Only steps that happen: starting the generation, reading the transcript,
+// drafting. Which one is running comes from the page — its start request,
+// then the job's status (lib/generation/stage.ts). A finished step
 // shows how long it took, measured by the page; the running one shows its own
 // time so far and a sweep. There is no percentage: nothing reports how far
 // through drafting a run is, so the screen does not say.
@@ -32,6 +32,7 @@ import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { VideoThumbnail } from "@/components/ui/video-thumbnail";
 import {
+  GENERATION_STEPS,
   isLongWait,
   stepViews,
   type GenerationRunState,
@@ -116,7 +117,9 @@ export function GeneratingPanel({ meta, type, run, step, starts, wordCount, onCa
   }, []);
 
   const views = stepViews(starts, step, now);
-  const elapsed = starts.transcript === undefined ? 0 : Math.max(0, now - starts.transcript);
+  // From the first step's start: when the run began, by the steps' own clock.
+  const began = starts[GENERATION_STEPS[0]];
+  const elapsed = began === undefined ? 0 : Math.max(0, now - began);
   const longWait = isLongWait(starts, now);
   const length = spokenLength(meta.durationSeconds);
   const facts = [

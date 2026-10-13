@@ -9,13 +9,14 @@
 //         -> (not a URL, a topic)-> searchVideos -> SearchResults
 //                                -> (Use this video) -> fetchVideoMetadata -> …
 //         -> (pick a type) -> [if social: pick a platform]
-//         -> fetchTranscript -> startGeneration -> poll the job (fetchJob)
+//         -> startGeneration -> poll the job (fetchJob), which reads the
+//            video's transcript itself
 //         -> load the draft it wrote -> OutputView -> Save promotes it
 //
 // It's a Client Component because it holds state and handles events.
 // This is also the ONE place that turns machine-readable failure
-// reasons (from extract, metadata, transcript, search, AND generation)
-// into friendly, human messages.
+// reasons (from extract, metadata, search, AND generation — including a
+// job that could not read the transcript) into friendly, human messages.
 //
 // Social is a two-step choice: picking "Social" reveals a platform
 // sub-picker, and Generate stays disabled until a platform is chosen. The
@@ -31,12 +32,10 @@ import {
   type ExtractFailReason,
 } from "@/lib/youtube/extract-video-id";
 import { fetchVideoMetadata, type MetaFailReason } from "@/lib/api/youtube";
-import { fetchTranscript } from "@/lib/api/transcript";
 import { fetchJob, signedInUserId, startGeneration } from "@/lib/api/generate";
 import { saveDraft, type SaveFailReason } from "@/lib/api/content";
 import { searchVideos } from "@/lib/api/search";
 import type { VideoMeta } from "@/lib/youtube/types";
-import type { TranscriptFailReason } from "@/lib/youtube/transcript-types";
 import type {
   SearchResultVideo,
   SearchFailReason,
@@ -56,7 +55,6 @@ import {
   nextPollDecision,
 } from "@/lib/generation/poll";
 import {
-  countWords,
   currentStep,
   markStep,
   type GenerationRunState,
@@ -91,13 +89,11 @@ import { useToast } from "@/components/shared/toast-provider";
 // ── Friendly copy for every failure reason ──────────────────
 // One map covering extract, metadata, transcript, search, AND generate
 // reasons. Change wording here without touching any logic.
-// Note: "network"/"unknown" are shared across metadata and generate, and
-// "request-failed" is shared between transcript and search — each appears
-// once, not twice.
+// Note: "network"/"unknown" are shared across metadata and generate — each
+// appears once, not twice.
 type FailReason =
   | ExtractFailReason
   | MetaFailReason
-  | TranscriptFailReason
   | SearchFailReason
   | GenerateFailReason
   | SaveFailReason;
@@ -118,7 +114,7 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   network:
     "We couldn't reach the server. Check your connection and that the app is running.",
   unknown: "Something went wrong. Please try again.",
-  // From fetchTranscript
+  // From generation — the job could not read the video's transcript
   "no-captions":
     "This video doesn't have captions we can read. Try another video with captions or subtitles turned on.",
   "video-not-found":
@@ -613,37 +609,18 @@ export default function CreatePage() {
     // the durations the screen shows are measured, not budgeted.
     const contentType = selectedType;
     let progress: GenerationRunState = "not-sent";
-    let transcriptRead = false;
     let jobStatus: JobStatus | null = null;
     let starts: StepStarts = {};
     let wordCount: number | null = null;
     const show = () => {
-      const step = currentStep(progress, transcriptRead, jobStatus);
+      const step = currentStep(progress, jobStatus);
       starts = markStep(starts, step, Date.now());
       setStatus({ phase: "generating", meta, contentType, run: progress, step, starts, wordCount });
     };
     show();
 
-    // ── The transcript is fetched HERE now ──
-    //
-    // It used to be a phase of its own before the picker, which made the user
-    // wait before they were allowed to choose anything. Both waits are now one
-    // wait, in the place a wait is expected — and the generation screen shows
-    // "Reading the transcript" as a real step rather than a decorative one.
-    const transcriptResult = await fetchTranscript(meta.videoId);
-    if (isStale(run)) return;
-    if (!transcriptResult.ok) {
-      setStatus({
-        phase: "generate-error",
-        meta,
-        message: ERROR_MESSAGES[transcriptResult.reason],
-      });
-      return;
-    }
-    const transcript = transcriptResult.data;
-    wordCount = countWords(transcript.fullText);
-    transcriptRead = true;
-    show();
+    // The transcript is not fetched here: the job reads it from the video id,
+    // as its `fetching` stage, and reports its word count once it has it.
 
     // Only send a platform for social — computed explicitly so a leftover
     // value can't ride along with another type.
@@ -677,7 +654,6 @@ export default function CreatePage() {
     progress = "sent";
     show();
     const started = await startGeneration(
-      transcript.fullText,
       selectedType,
       platform,
       meta,
@@ -714,8 +690,12 @@ export default function CreatePage() {
       }
       const report = await fetchJob(started.jobId);
       if (isStale(run)) return;
-      if (report.ok && report.job.status !== jobStatus) {
+      if (
+        report.ok &&
+        (report.job.status !== jobStatus || report.job.transcriptWords !== wordCount)
+      ) {
         jobStatus = report.job.status;
+        wordCount = report.job.transcriptWords;
         show();
       }
 

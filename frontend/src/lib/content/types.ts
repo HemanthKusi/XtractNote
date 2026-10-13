@@ -250,19 +250,23 @@ export interface GenerationJob {
   errorCode: string | null;
   createdAt: string;
   completedAt: string | null;
+  /** Words in the transcript the job generates from; null until it has one. */
+  transcriptWords: number | null;
 }
 
 /**
  * Every reason a generation can fail, as a closed union.
  *
  * Refused when the job is started (the response's detail.code):
- *   empty-transcript, transcript-too-long, unknown-content-type,
- *   not-authenticated, auth-unavailable, generation-busy, generation-limit,
- *   job-not-created, request-key-reused
+ *   unknown-content-type, not-authenticated, auth-unavailable,
+ *   generation-busy, generation-limit, job-not-created, request-key-reused
  *
  * Recorded on a job that failed (its errorCode):
- *   provider-misconfigured, generation-failed, invalid-structured-output,
- *   draft-not-saved, unexpected, interrupted
+ *   no-captions, video-not-found, transcript-blocked, transcript-failed — the
+ *   job could not read the video's transcript;
+ *   empty-transcript, transcript-too-long, provider-misconfigured,
+ *   generation-failed, invalid-structured-output, draft-not-saved,
+ *   unexpected, interrupted
  *
  * Reported while polling: job-not-found
  *
@@ -275,6 +279,10 @@ export interface GenerationJob {
  * should say so. Stopping waiting for a run is not a failure and is not here.
  */
 export type GenerateFailReason =
+  | "no-captions"
+  | "video-not-found"
+  | "transcript-blocked"
+  | "transcript-failed"
   | "empty-transcript"
   | "transcript-too-long"
   | "unknown-content-type"

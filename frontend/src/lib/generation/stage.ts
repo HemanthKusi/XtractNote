@@ -4,10 +4,9 @@
 // Which step of a generation is running, and what each step on the generating
 // screen shows: done with the time it took, running for how long, or waiting.
 //
-// Only steps that happen are steps. Three today: the page fetching the
-// transcript, the start request until the job is under way, and the job
-// drafting. Nothing reports anything finer while drafting runs, so nothing
-// finer is shown.
+// Only steps that happen are steps. Three today: starting, until the job is
+// under way; the job reading its transcript; and the job drafting. Nothing
+// reports anything finer while drafting runs, so nothing finer is shown.
 //
 // Times are the page's own: a step starts when the page learns it has, so a
 // finished step's duration is something the page measured, never a budget.
@@ -21,12 +20,12 @@ import type { JobStatus } from "@/lib/content/types";
 export type GenerationStep = "transcript" | "starting" | "drafting";
 
 /** The steps, in the order they run. */
-export const GENERATION_STEPS: readonly GenerationStep[] = ["transcript", "starting", "drafting"];
+export const GENERATION_STEPS: readonly GenerationStep[] = ["starting", "transcript", "drafting"];
 
 /**
- * How far the start has got: `not-sent` while the transcript is fetched,
- * `sent` while the start request is unanswered — the backend may already have
- * accepted it — and `accepted` once it has.
+ * How far the start has got: `not-sent` while the page prepares the request,
+ * `sent` while it is unanswered — the backend may already have accepted it —
+ * and `accepted` once it has.
  */
 export type GenerationRunState = "not-sent" | "sent" | "accepted";
 
@@ -37,16 +36,18 @@ export const LONG_WAIT_MS = 60_000;
  * The step a job's status belongs to. A status added to the vocabulary fails
  * to compile here until it is placed.
  *
- * Fetching, reading, understanding and polishing sit under drafting: nothing
- * writes them today, and each becomes a step of its own when the work behind
- * it exists. The two terminal statuses also map to drafting, the last step;
- * the page leaves this screen when it sees either.
+ * `fetching` is the job reading its transcript. Reading, understanding and
+ * polishing sit under drafting: nothing writes them today, and each becomes a
+ * step of its own when the work behind it exists. The two terminal statuses
+ * also map to drafting, the last step; the page leaves this screen when it
+ * sees either.
  */
 export function stepForStatus(status: JobStatus): GenerationStep {
   switch (status) {
     case "pending":
       return "starting";
     case "fetching":
+      return "transcript";
     case "reading":
     case "understanding":
     case "drafting":
@@ -62,23 +63,16 @@ export function stepForStatus(status: JobStatus): GenerationStep {
 }
 
 /**
- * The running step, from what the page knows: whether the transcript has
- * arrived, how far the start has got, and the job's status from the latest
- * check, null until a check has answered.
+ * The running step, from what the page knows: how far the start has got, and
+ * the job's status from the latest check, null until a check has answered.
  *
- * Starting begins when the transcript arrives, not when the request goes
- * out, so the work in between — the sign-in lookup and the request key — is
- * counted as starting rather than added to the transcript's time. An
- * accepted job counts as starting until a check says it has left pending.
+ * Everything before the job is under way is starting — the sign-in lookup,
+ * the request key and the request itself. An accepted job counts as starting
+ * until a check says it has left pending.
  */
-export function currentStep(
-  run: GenerationRunState,
-  transcriptRead: boolean,
-  jobStatus: JobStatus | null,
-): GenerationStep {
+export function currentStep(run: GenerationRunState, jobStatus: JobStatus | null): GenerationStep {
   switch (run) {
     case "not-sent":
-      return transcriptRead ? "starting" : "transcript";
     case "sent":
       return "starting";
     case "accepted":
@@ -144,10 +138,4 @@ export function stepViews(starts: StepStarts, current: GenerationStep, now: numb
 export function isLongWait(starts: StepStarts, now: number): boolean {
   const drafting = starts.drafting;
   return drafting !== undefined && now - drafting >= LONG_WAIT_MS;
-}
-
-/** Words in a transcript, for the source's facts. */
-export function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
 }

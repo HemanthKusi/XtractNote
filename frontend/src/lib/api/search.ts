@@ -8,9 +8,8 @@
 // (URL, method, status codes, envelope parsing) live here so components
 // stay clean.
 //
-// Twin of fetchTranscript in lib/api/transcript.ts — same result shape,
-// same try/catch structure, same detail.code-then-status fallback. Two
-// search-specific differences, both noted inline below:
+// A detail.code-then-status fallback for failures, and two search-specific
+// behaviours, both noted inline below:
 //   1. Success unwraps the { results } ENVELOPE the backend returns.
 //   2. An empty results array is a SUCCESS ({ ok: true, data: [] }), not a
 //      failure — the caller shows its "No videos matched…" empty state.

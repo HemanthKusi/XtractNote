@@ -67,7 +67,7 @@ const STOP_COPY: Record<GenerationRunState, string> = {
     "Nothing has started yet, so nothing has been spent. You can pick a format and start again.",
   sent: "It may already have started in the background — it can't be stopped yet. If it did, it will appear in your drafts.",
   accepted:
-    "It keeps going in the background — it can't be stopped yet, and its credits are spent either way. If it finishes, you'll find it in your drafts.",
+    "It keeps going in the background — it can't be stopped yet, and stopping waiting won't save its credits. If it finishes, you'll find it in your drafts.",
 };
 
 /** How often the clocks on the screen move. */

@@ -564,7 +564,7 @@ export default function CreatePage() {
    *
    * ── This does not stop the work ──
    *
-   * The run is on the server and carries on; the tokens are spent either way.
+   * The run is on the server and carries on, whether or not the page waits.
    * If it finishes, its result is in drafts. What beginRun() below stops is
    * this page's polling, so the result is not shown here once the user has
    * moved on. Stopping the run itself is separate work.

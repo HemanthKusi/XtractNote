@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # database when a job is created (migration 010), so it holds across
     # processes. It may not exceed generation_workers.
     generation_per_user: int = Field(default=2, ge=1)
+    # How old a stored transcript may be and still be used instead of fetching
+    # the video's captions again (migration 011).
+    transcript_reuse_days: int = Field(default=30, ge=0)
 
     @model_validator(mode="after")
     def _per_user_limit_fits_the_pool(self) -> "Settings":

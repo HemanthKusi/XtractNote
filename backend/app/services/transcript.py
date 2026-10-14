@@ -16,7 +16,9 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
+from requests import RequestException, Session
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import (
     CouldNotRetrieveTranscript,
@@ -35,6 +37,23 @@ from youtube_transcript_api._errors import (
 PREFERRED_LANGUAGES: tuple[str, ...] = ("en", "en-US", "en-GB")
 
 _WHITESPACE_RE = re.compile(r"\s+")
+
+#: How long one request to YouTube may take, in seconds. The captions library
+#: sets no timeout of its own, and a fetch runs inside a generation slot, so a
+#: request that never answers would hold that slot for as long as it hung.
+CAPTION_REQUEST_TIMEOUT_SECONDS = 15.0
+
+
+class _TimeoutSession(Session):
+    """A requests session that gives every request a timeout unless it sets one."""
+
+    def __init__(self, timeout: float) -> None:
+        super().__init__()
+        self._timeout = timeout
+
+    def request(self, method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
+        kwargs.setdefault("timeout", self._timeout)
+        return super().request(method, url, *args, **kwargs)
 
 
 # --------------------------------------------------------------------------- #
@@ -111,10 +130,11 @@ def fetch_transcript(
         TranscriptUnavailableError: no usable captions exist.
         VideoNotFoundError: bad/private/unavailable video.
         TranscriptBlockedError: YouTube blocked the request.
-        TranscriptServiceError: any other unexpected retrieval failure.
+        TranscriptServiceError: any other retrieval failure, including YouTube
+            not answering within CAPTION_REQUEST_TIMEOUT_SECONDS.
     """
     languages = list(preferred_languages)
-    api = YouTubeTranscriptApi()
+    api = YouTubeTranscriptApi(http_client=_TimeoutSession(CAPTION_REQUEST_TIMEOUT_SECONDS))
 
     # Step 1: list the available transcript tracks for this video.
     try:
@@ -135,6 +155,8 @@ def fetch_transcript(
         raise TranscriptServiceError(
             f"Could not retrieve the transcript list: {exc}"
         ) from exc
+    except RequestException as exc:  # a timeout, or no connection at all
+        raise TranscriptServiceError("YouTube could not be reached for captions.") from exc
 
     # Step 2: pick the best track (English preferred; translate as a fallback).
     transcript = _select_transcript(transcript_list, languages)
@@ -150,6 +172,8 @@ def fetch_transcript(
         raise TranscriptServiceError(
             f"Could not fetch the transcript: {exc}"
         ) from exc
+    except RequestException as exc:
+        raise TranscriptServiceError("YouTube could not be reached for captions.") from exc
 
     # Step 4: normalize into our clean output shape.
     return _build_transcript_data(video_id, fetched)
@@ -201,7 +225,7 @@ def _build_transcript_data(video_id: str, fetched) -> TranscriptData:
             )
         )
 
-    full_text = _normalize_whitespace(" ".join(seg.text for seg in segments))
+    full_text = join_segment_texts(seg.text for seg in segments)
     if not full_text:
         raise TranscriptUnavailableError("The transcript for this video is empty.")
 
@@ -214,6 +238,16 @@ def _build_transcript_data(video_id: str, fetched) -> TranscriptData:
         full_text=full_text,
         segments=segments,
     )
+
+
+def join_segment_texts(texts: Iterable[str]) -> str:
+    """
+    The text a generation reads, from caption lines in order.
+
+    The one place it is built: a fetch builds it here, and a stored transcript
+    is rebuilt here from its segments, so the two cannot drift apart.
+    """
+    return _normalize_whitespace(" ".join(texts))
 
 
 def _normalize_whitespace(text: str) -> str:

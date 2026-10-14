@@ -146,9 +146,13 @@ def build_draft_row(
     content_type: ContentType,
     platform: SocialPlatform | None,
     body: dict[str, Any],
+    *,
+    transcript_id: str,
 ) -> dict[str, Any]:
     """
     The `generated_content` row for one finished generation.
+
+    `transcript_id` is the stored transcript it was generated from.
 
     `metadata` is `{"platform": ...}` for social and None otherwise — not `{}` —
     so "social items with a platform" stays a plain `is not null` query.
@@ -169,6 +173,7 @@ def build_draft_row(
         "metadata": {"platform": recorded} if recorded is not None else None,
         "status": DRAFT_STATUS,
         "word_count": count_body_words(body),
+        "transcript_id": transcript_id,
     }
 
 

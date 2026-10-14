@@ -79,6 +79,10 @@ export function isTerminal(status: JobStatus): boolean {
 // The codes a failed job records that the create page has copy for. The
 // backend's set is open, so anything else is `unknown`.
 const JOB_FAILURE_REASONS: readonly GenerateFailReason[] = [
+  "no-captions",
+  "video-not-found",
+  "transcript-blocked",
+  "transcript-failed",
   "empty-transcript",
   "transcript-too-long",
   "unknown-content-type",

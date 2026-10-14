@@ -2,8 +2,9 @@
 XtractNote — The generation worker
 
 `run_job` takes one job from `pending` to a finished state: it claims the job,
-moving it to `drafting`, runs the generation, saves the result as a draft row,
-and links that row to the job.
+moving it to `fetching`; obtains the video's transcript, stored or fetched; moves
+the job to `drafting` with that transcript recorded; runs the generation; saves
+the result as a draft row; and links that row to the job.
 
 It is synchronous because generation is a blocking call, so whoever starts it
 runs it on a thread.
@@ -12,7 +13,7 @@ runs it on a thread.
 
 **It does not raise.** Nobody is waiting on it, so an escaped exception would
 leave the job unfinished with only a log line to show for it. Once the job is
-`drafting`, a failure at any later step is recorded on it. When the job cannot
+claimed, a failure at any later step is recorded on it. When the job cannot
 be started, or the failure cannot be written, the reason is logged instead.
 
 **The owner is the `user_id` argument and nothing else.** `GenerationInput`
@@ -30,10 +31,13 @@ from datetime import timedelta
 from types import TracebackType
 from typing import Any, Callable, Literal
 
-from app.services import drafts, jobs
+from app.config import settings
+from app.services import drafts, jobs, transcript_store
 from app.services.drafts import VideoSource
 from app.services.generate import GenerationError, generate_content
 from app.services.prompts import ContentType, SocialPlatform
+from app.services.transcript import TranscriptServiceError
+from app.services.transcript_store import StoredTranscript
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +49,20 @@ UNEXPECTED_CODE = "unexpected"
 UNEXPECTED_MESSAGE = "An unexpected error stopped this generation."
 
 
+def obtain_transcript(video_id: str) -> StoredTranscript:
+    """The video's transcript, reused while `transcript_reuse_days` allows."""
+    return transcript_store.obtain(
+        video_id, timedelta(days=settings.transcript_reuse_days)
+    )
+
+
 @dataclass(frozen=True)
 class GenerationInput:
-    """What one generation needs. Deliberately has no user field."""
+    """
+    What one generation needs. Deliberately has no user field, and no
+    transcript: the run obtains that itself from the video id.
+    """
 
-    full_text: str
     content_type: ContentType
     platform: SocialPlatform | None
     video: VideoSource
@@ -61,6 +74,8 @@ class Steps:
 
     claim: Callable[[str, str], Any] = jobs.claim
     heartbeat: Callable[[str, str], bool] = jobs.heartbeat
+    obtain_transcript: Callable[[str], StoredTranscript] = obtain_transcript
+    begin_drafting: Callable[[str, str, str], Any] = jobs.begin_drafting
     generate: Callable[
         [str, ContentType, SocialPlatform | None], dict[str, Any]
     ] = generate_content
@@ -94,9 +109,23 @@ def run_job(
 def _run_claimed(
     job_id: str, user_id: str, request: GenerationInput, steps: Steps
 ) -> Outcome:
-    """Everything after the claim: generate, save the draft, complete."""
+    """Everything after the claim: the transcript, generation, the draft, completion."""
     try:
-        body = steps.generate(request.full_text, request.content_type, request.platform)
+        transcript = steps.obtain_transcript(request.video.video_id)
+    except TranscriptServiceError as exc:
+        return _fail(steps, job_id, user_id, exc.code, str(exc))
+    except Exception:
+        logger.exception("job %s: the transcript could not be obtained", job_id)
+        return _fail(steps, job_id, user_id, UNEXPECTED_CODE, UNEXPECTED_MESSAGE)
+
+    try:
+        steps.begin_drafting(job_id, user_id, transcript.id)
+    except Exception:
+        logger.exception("job %s: could not move to drafting", job_id)
+        return _fail(steps, job_id, user_id, UNEXPECTED_CODE, UNEXPECTED_MESSAGE)
+
+    try:
+        body = steps.generate(transcript.full_text, request.content_type, request.platform)
     except GenerationError as exc:
         return _fail(steps, job_id, user_id, exc.code, exc.message)
     except Exception:
@@ -105,7 +134,12 @@ def _run_claimed(
 
     try:
         row = drafts.build_draft_row(
-            user_id, request.video, request.content_type, request.platform, body
+            user_id,
+            request.video,
+            request.content_type,
+            request.platform,
+            body,
+            transcript_id=transcript.id,
         )
         result_id = steps.insert_draft(row)
     except Exception:

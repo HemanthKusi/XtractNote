@@ -20,14 +20,12 @@ from app.config import settings
 from app.main import app
 from app.services import jobs
 from app.services.dispatch import get_generation_pool
-from app.services.generate import MAX_TRANSCRIPT_CHARS
 from app.services.worker import GenerationInput, run_job
 
 USER = "e6a969d8-0000-0000-0000-000000000001"
 JOB = "11111111-2222-3333-4444-555555555555"
 
 VALID = {
-    "fullText": "A transcript about tides.",
     "contentType": "summary",
     "videoId": "dQw4w9WgXcQ",
     "title": "How tides work",
@@ -161,8 +159,8 @@ def test_a_valid_request_is_accepted_with_its_job_id(client, pool, fake_jobs) ->
 def test_the_job_runs_for_the_signed_in_user(client, pool) -> None:
     post(client)
     request = started(pool)
-    assert request.full_text == VALID["fullText"]
     assert request.content_type == "summary"
+    assert request.video.video_id == VALID["videoId"]
 
 
 def test_a_user_named_in_the_body_is_ignored(client, fake_jobs) -> None:
@@ -202,17 +200,26 @@ def test_duration_is_optional(client, pool) -> None:
 # --- Refused before any job exists --------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("changes", "code"),
-    [
-        ({"fullText": "   "}, "empty-transcript"),
-        ({"fullText": "x" * (MAX_TRANSCRIPT_CHARS + 1)}, "transcript-too-long"),
-    ],
-)
-def test_input_that_would_fail_is_a_coded_422(client, pool, fake_jobs, changes, code) -> None:
-    response = post(client, **changes)
+@pytest.mark.parametrize("text", ["A transcript about tides.", "", "x" * 600_000])
+def test_a_request_that_sends_text_is_refused(client, pool, fake_jobs, text) -> None:
+    """The run fetches the transcript; text in a request would be any text, paid for."""
+    response = post(client, fullText=text)
     assert response.status_code == 422
-    assert response.json()["detail"]["code"] == code
+    assert pool.reserved == 0 and fake_jobs.created == []
+    assert (text or "tides") not in response.text
+
+
+def test_a_format_with_no_prompt_is_a_coded_422(client, pool, fake_jobs, monkeypatch) -> None:
+    from app.api import generate as route
+    from app.services.generate import GenerationError
+
+    def refuse(content_type, platform):
+        raise GenerationError("unknown-content-type", "No prompt.")
+
+    monkeypatch.setattr(route, "system_prompt_for", refuse)
+    response = post(client)
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "unknown-content-type"
     assert pool.reserved == 0 and fake_jobs.created == []
 
 
@@ -426,6 +433,7 @@ ROW = {
     "created_at": "2026-10-09T12:00:00+00:00",
     "completed_at": "2026-10-09T12:01:00+00:00",
     "heartbeat_at": "2026-10-09T12:00:30+00:00",
+    "transcripts": None,
 }
 
 
@@ -441,8 +449,20 @@ def test_a_job_is_reported_to_its_owner(client, fake_jobs) -> None:
         "errorCode": "generation-failed",
         "createdAt": "2026-10-09T12:00:00+00:00",
         "completedAt": "2026-10-09T12:01:00+00:00",
+        "transcriptWords": None,
     }
     assert fake_jobs.read == [(JOB, USER)]
+
+
+def test_a_job_with_a_transcript_reports_its_word_count(client, fake_jobs) -> None:
+    fake_jobs.get_result = {**ROW, "transcripts": {"word_count": 1234}}
+    assert client.get(f"/api/generate/jobs/{JOB}").json()["transcriptWords"] == 1234
+
+
+@pytest.mark.parametrize("embedded", [None, {}, {"word_count": None}, {"word_count": "12"}, {"word_count": True}, []])
+def test_a_job_without_a_readable_count_reports_none(client, fake_jobs, embedded) -> None:
+    fake_jobs.get_result = {**ROW, "transcripts": embedded}
+    assert client.get(f"/api/generate/jobs/{JOB}").json()["transcriptWords"] is None
 
 
 def test_the_error_message_is_never_returned(client, fake_jobs) -> None:

@@ -102,6 +102,23 @@ class PreparedRequest:
     system_prompt: str
 
 
+def system_prompt_for(
+    content_type: ContentType, platform: SocialPlatform | None = None
+) -> str:
+    """
+    The system prompt for this format, or GenerationError("unknown-content-type").
+
+    The endpoint calls this before creating a job, so a format that cannot be
+    generated is refused on the request rather than after a transcript fetch.
+    """
+    # get_system_prompt raises ValueError for an unknown type, a missing
+    # platform on social, or an unknown platform.
+    try:
+        return get_system_prompt(content_type, platform)
+    except ValueError as exc:
+        raise GenerationError("unknown-content-type", str(exc))
+
+
 def prepare_request(
     full_text: str,
     content_type: ContentType,
@@ -110,9 +127,7 @@ def prepare_request(
     """
     Check a generation request before anything is spent on it.
 
-    `generate_content` calls this first, and the endpoint calls it before
-    creating a job — so input that would fail here is refused on the request,
-    rather than becoming a job that fails moments later.
+    `generate_content` calls this first, once the run has its transcript.
 
     Raises GenerationError with a typed `.code`:
       - "empty-transcript"     : nothing to generate from
@@ -130,14 +145,7 @@ def prepare_request(
             "This video's transcript is too long to process in one pass.",
         )
 
-    # get_system_prompt raises ValueError for an unknown type, a missing
-    # platform on social, or an unknown platform.
-    try:
-        system_prompt = get_system_prompt(content_type, platform)
-    except ValueError as exc:
-        raise GenerationError("unknown-content-type", str(exc))
-
-    return PreparedRequest(text=text, system_prompt=system_prompt)
+    return PreparedRequest(text=text, system_prompt=system_prompt_for(content_type, platform))
 
 
 # --- Public entry point -------------------------------------------------------

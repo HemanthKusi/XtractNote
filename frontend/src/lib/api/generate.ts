@@ -54,8 +54,6 @@ export type FetchJobResult =
 // The codes POST /api/generate refuses with, in detail.code. Checked against
 // this before being trusted, so an unexpected string cannot pass as a reason.
 const START_REASONS: readonly GenerateFailReason[] = [
-  "empty-transcript",
-  "transcript-too-long",
   "unknown-content-type",
   "not-authenticated",
   "auth-unavailable",
@@ -119,7 +117,6 @@ async function codeFrom(response: Response): Promise<string | null> {
  * repeated without paying twice.
  */
 export async function startGeneration(
-  fullText: string,
   contentType: GeneratableContentType,
   platform: SocialPlatform | undefined,
   meta: VideoMeta,
@@ -133,7 +130,6 @@ export async function startGeneration(
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        fullText,
         contentType,
         // Only sent for social, so other types carry no stray value.
         ...(platform ? { platform } : {}),
@@ -185,7 +181,8 @@ function parseJob(raw: unknown): GenerationJob | null {
     !isStringOrNull(r.resultId) ||
     !isStringOrNull(r.errorCode) ||
     typeof r.createdAt !== "string" ||
-    !isStringOrNull(r.completedAt)
+    !isStringOrNull(r.completedAt) ||
+    !(r.transcriptWords === null || (Number.isInteger(r.transcriptWords) && (r.transcriptWords as number) >= 0))
   ) {
     return null;
   }
@@ -198,6 +195,7 @@ function parseJob(raw: unknown): GenerationJob | null {
     errorCode: r.errorCode as string | null,
     createdAt: r.createdAt,
     completedAt: r.completedAt as string | null,
+    transcriptWords: r.transcriptWords as number | null,
   };
 }
 

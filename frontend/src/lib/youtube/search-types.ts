@@ -57,7 +57,7 @@ export interface SearchResultVideo {
   /**
    * Every reason a topic search can fail, as a closed union.
    *
-   * Parallels TranscriptFailReason. The first two come straight from the backend
+   * The first two come straight from the backend
    * (sent as detail.code); request-failed is client-side only — used whenever the
    * request never reaches a coded response (network down, server unreachable,
    * unparseable body).

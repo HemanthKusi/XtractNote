@@ -22,6 +22,7 @@ import pytest
 
 from app.services.jobs import (
     ADMIT_FUNCTION,
+    CLAIM_STATUS,
     CREATION_STATUS,
     GENERATION_LIMIT,
     HEARTBEAT_EVERY,
@@ -33,7 +34,7 @@ from app.services.jobs import (
     SWEEP_EVERY,
     TERMINAL_STATUSES,
     JobError,
-    _utc_now_iso,
+    utc_now_iso,
     advance_target_error,
     failure_code_error,
     interrupted_cutoff,
@@ -42,6 +43,7 @@ from app.services.jobs import (
     patch_for_status,
     progress_for,
     request_matches,
+    stage_patch,
 )
 from app.services.prompts import SocialPlatform
 
@@ -322,7 +324,7 @@ def test_completed_at_is_parseable_utc() -> None:
     as text to parse rather than a function to call, so the timestamp is built
     here and has to be a real one.
     """
-    parsed = datetime.fromisoformat(_utc_now_iso())
+    parsed = datetime.fromisoformat(utc_now_iso())
     assert parsed.tzinfo is not None
     assert parsed.utcoffset().total_seconds() == 0
 
@@ -490,3 +492,47 @@ def test_users_can_no_longer_write_job_rows() -> None:
     assert 'drop policy if exists "Users can create own jobs"' in sql
     assert 'drop policy if exists "Users can update own jobs"' in sql
     assert "revoke insert, update, delete on public.generation_jobs from anon, authenticated;" in sql
+
+
+# --- Stages -------------------------------------------------------------------
+
+
+def test_entering_a_stage_writes_its_status_every_stage_time_and_the_transcript() -> None:
+    times = {"fetching": "t0", "drafting": "t1"}
+    assert stage_patch("drafting", times, "transcript-1") == {
+        "status": "drafting",
+        "stage_started_at": {"fetching": "t0", "drafting": "t1"},
+        "transcript_id": "transcript-1",
+    }
+
+
+def test_a_stage_entered_before_there_is_a_transcript_writes_none() -> None:
+    assert "transcript_id" not in stage_patch("drafting", {"drafting": "t1"}, None)
+
+
+def test_the_stage_times_written_are_a_copy() -> None:
+    """The run keeps adding to its own record; the patch must not change with it."""
+    times = {"fetching": "t0"}
+    patch = stage_patch("drafting", times, None)
+    times["polishing"] = "t9"
+    assert patch["stage_started_at"] == {"fetching": "t0"}
+
+
+@pytest.mark.parametrize("status", ["pending", "completed", "failed", "cooking"])
+def test_entering_a_stage_refuses_anything_that_is_not_a_running_stage(status: str) -> None:
+    with pytest.raises(JobError) as caught:
+        stage_patch(status, {}, None)
+    assert caught.value.code == "illegal-status"
+
+
+def test_a_job_is_claimed_into_a_running_stage() -> None:
+    assert advance_target_error(CLAIM_STATUS) is None
+
+
+STAGE_MIGRATION = Path(__file__).resolve().parents[2] / "database" / "012_stage_times.sql"
+
+
+def test_the_stage_times_column_holds_an_object_and_defaults_to_empty() -> None:
+    sql = " ".join(STAGE_MIGRATION.read_text().split())
+    assert "add column if not exists stage_started_at jsonb not null default '{}'::jsonb" in sql
+    assert "check (jsonb_typeof(stage_started_at) = 'object')" in sql

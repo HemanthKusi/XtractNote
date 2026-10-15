@@ -116,3 +116,63 @@ def test_a_call_that_returns_no_job_id_is_not_created(monkeypatch, data) -> None
     with pytest.raises(JobError) as caught:
         create()
     assert caught.value.code == "job-not-created"
+
+
+# --- Claiming, entering a stage, and checking a job ---------------------------
+
+
+class FakeTable:
+    """Records a chained PostgREST call and answers it with `rows`."""
+
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.not_ = self
+
+    def __getattr__(self, name: str) -> Any:
+        def record(*args: Any) -> "FakeTable":
+            self.calls.append((name, args))
+            return self
+        return record
+
+    def execute(self) -> Any:
+        return type("Response", (), {"data": self.rows})()
+
+
+def use_table(monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, Any]]) -> FakeTable:
+    table = FakeTable(rows)
+    monkeypatch.setattr(jobs, "get_supabase_client", lambda: table)
+    return table
+
+
+def test_claiming_records_when_the_first_stage_began(monkeypatch) -> None:
+    table = use_table(monkeypatch, [{"id": "job-1"}])
+    jobs.claim("job-1", "user-1")
+    (patch,) = [args[0] for name, args in table.calls if name == "update"]
+    assert patch["status"] == jobs.CLAIM_STATUS
+    assert patch["stage_started_at"] == {jobs.CLAIM_STATUS: patch["heartbeat_at"]}
+
+
+def test_entering_a_stage_matches_only_this_users_unfinished_job(monkeypatch) -> None:
+    """The predicate is the run's check that it may go on."""
+    table = use_table(monkeypatch, [{"id": "job-1"}])
+    jobs.enter_stage("job-1", "user-1", "drafting", {"drafting": "t1"}, "transcript-1")
+    assert ("eq", ("id", "job-1")) in table.calls
+    assert ("eq", ("user_id", "user-1")) in table.calls
+    assert ("in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
+
+
+def test_entering_a_stage_of_a_finished_job_is_job_not_updated(monkeypatch) -> None:
+    use_table(monkeypatch, [])
+    with pytest.raises(JobError) as caught:
+        jobs.enter_stage("job-1", "user-1", "drafting", {"drafting": "t1"}, None)
+    assert caught.value.code == "job-not-updated"
+
+
+@pytest.mark.parametrize(("rows", "expected"), [([{"id": "job-1"}], True), ([], False)])
+def test_a_job_is_unfinished_only_while_this_users_unfinished_row_exists(monkeypatch, rows, expected) -> None:
+    table = use_table(monkeypatch, rows)
+    assert jobs.is_unfinished("job-1", "user-1") is expected
+    assert ("eq", ("user_id", "user-1")) in table.calls
+    assert ("in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
+

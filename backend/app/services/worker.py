@@ -14,9 +14,9 @@ runs it on a thread.
 
 **A run stops when its job finishes under it.** Entering a stage matches only
 an unfinished job, so a job the sweep has already failed stops the run as it
-enters its next stage, before that stage's node runs; and the job is checked
-again before the draft is saved.
-A stopped run writes nothing more — the job already says how it ended.
+enters its next stage, before that stage's node runs. The job is checked again
+before the draft is saved; a job failed after that check still gets its
+draft, unlinked, so the check narrows that window without closing it.
 
 **It does not raise.** Nobody is waiting on it, so an escaped exception would
 leave the job unfinished with only a log line to show for it. Once the job is
@@ -159,9 +159,10 @@ def _run_claimed(
         logger.error("job %s: the graph finished without a body and transcript", job_id)
         return _fail(steps, job_id, user_id, UNEXPECTED_CODE, UNEXPECTED_MESSAGE)
 
-    # A job failed while the last node ran gets no draft: it would be linked
-    # to nothing. If the check itself cannot be made, the draft is saved
-    # anyway — keeping a result that was paid for beats losing it to a read.
+    # A job already failed by now gets no draft: it would be linked to nothing.
+    # One failed between here and the insert still gets one. If the check
+    # itself cannot be made, the draft is saved anyway — keeping a result that
+    # was paid for beats losing it to a read.
     try:
         unfinished = steps.is_unfinished(job_id, user_id)
     except Exception:

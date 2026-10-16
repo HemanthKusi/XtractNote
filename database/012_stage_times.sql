@@ -9,9 +9,9 @@
 -- `{"fetching": "2026-10-13T…", "drafting": "2026-10-13T…"}`
 --
 -- Written by the run, in the same statement as the status change. The whole
--- object is written each time rather than merged: a job has one writer — the
--- run `claim` admitted — since the sweep writes only terminal fields and
--- users cannot write jobs (migration 010).
+-- object is written each time rather than merged: nothing else writes this
+-- column — the sweep writes only terminal fields, and users cannot write jobs
+-- (migration 010).
 --
 -- Existing jobs get `{}`: their stages were never timed.
 --

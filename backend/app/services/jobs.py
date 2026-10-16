@@ -350,9 +350,9 @@ def stage_patch(
     The columns entering a stage writes: the status, every stage time so far,
     and the transcript the run is reading, once it has one.
 
-    `stage_started_at` is written whole rather than merged. A job has one
-    writer — the run `claim` admitted — so the run's own record of its stages
-    is the complete one.
+    `stage_started_at` is written whole rather than merged. Nothing else writes
+    that column — the sweep writes only terminal fields, and users cannot write
+    jobs — so the run's own record of its stages is the complete one.
 
     Raises JobError("illegal-status") for a target `advance` would refuse.
     """

@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_model: str = "gpt-4o"
     anthropic_model: str = "claude-sonnet-4-6"
+    # The model the pipeline's analysis step uses. Empty means the main model
+    # above; set it once a cheaper model's current pricing has been checked.
+    openai_analysis_model: str = ""
+    anthropic_analysis_model: str = ""
+    # The model notes and research are drafted with. gpt-5.4 was chosen
+    # 2026-10-16 after a side-by-side test showed gpt-4o ignoring the structure
+    # those formats ask for. Empty means the main model above. Its output limit
+    # must cover DEPTH_OUTPUT_TOKENS in generate.py.
+    openai_depth_model: str = "gpt-5.4"
+    anthropic_depth_model: str = ""
 
     # ── YouTube ──
     youtube_api_key: str = ""

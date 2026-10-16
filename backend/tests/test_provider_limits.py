@@ -1,5 +1,5 @@
 """
-The model call's time limits reach the clients actually built.
+The model call's time and output limits reach the clients actually built.
 
 These tests check a limit exists and that both clients carry it.
 
@@ -12,6 +12,8 @@ import pytest
 
 from app.config import settings
 from app.services.generate import (
+    DEPTH_OUTPUT_TOKENS,
+    MAX_OUTPUT_TOKENS,
     PROVIDER_MAX_RETRIES,
     PROVIDER_TIMEOUT_SECONDS,
     _build_anthropic,
@@ -38,3 +40,11 @@ def test_the_anthropic_client_carries_the_limits(monkeypatch: pytest.MonkeyPatch
     client = _build_anthropic()._client
     assert client.timeout == PROVIDER_TIMEOUT_SECONDS
     assert client.max_retries == PROVIDER_MAX_RETRIES
+
+
+def test_both_clients_carry_the_output_cap_they_are_given(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "openai_api_key", "sk-test-placeholder")
+    monkeypatch.setattr(settings, "anthropic_api_key", "sk-test-placeholder")
+    assert _build_openai(max_tokens=DEPTH_OUTPUT_TOKENS).max_tokens == DEPTH_OUTPUT_TOKENS
+    assert _build_anthropic(max_tokens=DEPTH_OUTPUT_TOKENS).max_tokens == DEPTH_OUTPUT_TOKENS
+    assert _build_openai().max_tokens == MAX_OUTPUT_TOKENS

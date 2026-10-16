@@ -1,8 +1,9 @@
 """
 XtractNote — Content Generation Service
 
-Framework-free generation: given a transcript's full text and a content type,
-call the configured AI provider and return the generated content body.
+Framework-free generation: given the text to work from and a content type,
+call the configured AI provider and return the generated content body. In the
+pipeline, the text is the outline and sections `draft` sends.
 
 Provider-abstracted via LangChain. The active provider (openai | anthropic) and
 its model are read from settings, so swapping is an env change, not a code edit.
@@ -37,7 +38,7 @@ import json
 import math
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
@@ -46,6 +47,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.config import settings
 from app.services.prompts import (
     ContentType,
+    DEPTH_CONTENT_TYPES,
     SocialPlatform,
     STRUCTURED_CONTENT_TYPES,
     get_system_prompt,
@@ -61,6 +63,15 @@ MAX_TRANSCRIPT_CHARS = 500_000
 
 # Cap on generated output length in tokens. A long blog post fits comfortably.
 MAX_OUTPUT_TOKENS = 8_000
+
+# The cap for notes and research. Their drafts run to thousands of words, and a
+# reasoning model's reasoning counts against the same cap. A reply that reaches
+# either cap is refused rather than saved cut off.
+DEPTH_OUTPUT_TOKENS = 32_000
+
+# Which model setting a call uses: the main one, the depth one for notes and
+# research, or the analysis one.
+Purpose = Literal["draft", "depth", "analysis"]
 
 # How long the HTTP client waits on the provider, and how many times it retries.
 # The clients' own defaults are no limit and two retries, so a provider that
@@ -154,51 +165,35 @@ def generate_content(
     full_text: str,
     content_type: ContentType,
     platform: SocialPlatform | None = None,
+    guidance: str = "",
 ) -> dict[str, Any]:
     """
-    Generate content of `content_type` from a transcript's `full_text`.
+    Generate content of `content_type` from `full_text`.
 
     `platform` is required when content_type == "social" and ignored otherwise.
+    `guidance`, when given, is added to the format's system prompt — the
+    pipeline's `draft` node uses it to say how to read the outline and
+    sections it sends as `full_text`.
 
     Returns the content body dict (see module docstring for the three shapes).
     Raises GenerationError with a typed `.code` — the three from
     `prepare_request`, plus:
       - "provider-misconfigured"  : missing key / bad provider setting
-      - "generation-failed"       : the provider call errored or returned nothing
+      - "generation-failed"       : the provider call errored, returned
+                                    nothing, or stopped at its output limit
       - "invalid-structured-output": the model's JSON was unparseable or the
                                     wrong shape (flashcards / quiz only)
     """
     prepared = prepare_request(full_text, content_type, platform)
-    text, system_prompt = prepared.text, prepared.system_prompt
+    system_prompt = prepared.system_prompt
+    if guidance:
+        system_prompt = f"{system_prompt}\n\n{guidance}"
 
     # Structured types get JSON mode where the provider supports it, and take a
     # different post-processing path below.
     wants_json = content_type in STRUCTURED_CONTENT_TYPES
-
-    # Build the right chat model. Provider-specific config lives in the builders;
-    # the invoke below is identical regardless of provider.
-    provider = (settings.ai_provider or "openai").lower()
-    if provider == "openai":
-        llm = _build_openai(json_mode=wants_json)
-    elif provider == "anthropic":
-        llm = _build_anthropic()
-    else:
-        raise GenerationError(
-            "provider-misconfigured",
-            f"Unknown AI provider: {provider!r}. Set AI_PROVIDER to 'openai' or 'anthropic'.",
-        )
-
-    messages = [SystemMessage(content=system_prompt), HumanMessage(content=text)]
-    try:
-        response = llm.invoke(messages)
-    except Exception as exc:  # network / API / auth / SDK errors
-        raise GenerationError("generation-failed", f"The {provider} request failed: {exc}")
-
-    # For text chat models, response.content is a string. Guard anyway.
-    raw = response.content
-    content = raw.strip() if isinstance(raw, str) else ""
-    if not content:
-        raise GenerationError("generation-failed", "The model returned no content.")
+    purpose: Purpose = "depth" if content_type in DEPTH_CONTENT_TYPES else "draft"
+    content = complete(system_prompt, prepared.text, json_mode=wants_json, purpose=purpose)
 
     if content_type == "flashcards":
         return _build_flashcards_body(content)
@@ -207,9 +202,68 @@ def generate_content(
     return {"markdown": content}
 
 
+# --- One model call -----------------------------------------------------------
+
+def complete(
+    system_prompt: str, user_text: str, *, json_mode: bool, purpose: Purpose = "draft"
+) -> str:
+    """
+    One call to the configured provider, returning its text, stripped.
+
+    `purpose` picks the model setting — the depth and analysis settings fall
+    back to the main model when unset — and "depth" also gets the larger output
+    cap. `json_mode` constrains OpenAI to a JSON object; Anthropic has no
+    equivalent, so its JSON relies on the prompt and on `parse_json_object`.
+
+    Raises GenerationError:
+      - "provider-misconfigured" : missing key / unknown provider
+      - "generation-failed"      : the call errored, returned nothing, or
+                                   stopped at its output limit
+    """
+    provider = (settings.ai_provider or "openai").lower()
+    max_tokens = DEPTH_OUTPUT_TOKENS if purpose == "depth" else MAX_OUTPUT_TOKENS
+    if provider == "openai":
+        chosen = {"depth": settings.openai_depth_model, "analysis": settings.openai_analysis_model}
+        model = chosen.get(purpose, "") or settings.openai_model
+        llm: ChatOpenAI | ChatAnthropic = _build_openai(
+            json_mode=json_mode, model=model, max_tokens=max_tokens
+        )
+    elif provider == "anthropic":
+        chosen = {"depth": settings.anthropic_depth_model, "analysis": settings.anthropic_analysis_model}
+        model = chosen.get(purpose, "") or settings.anthropic_model
+        llm = _build_anthropic(model=model, max_tokens=max_tokens)
+    else:
+        raise GenerationError(
+            "provider-misconfigured",
+            f"Unknown AI provider: {provider!r}. Set AI_PROVIDER to 'openai' or 'anthropic'.",
+        )
+
+    messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_text)]
+    try:
+        response = llm.invoke(messages)
+    except Exception as exc:  # network / API / auth / SDK errors
+        raise GenerationError("generation-failed", f"The {provider} request failed: {exc}")
+
+    # A reply cut off at the cap would otherwise be saved as if it were whole.
+    # OpenAI reports it as finish_reason "length", Anthropic as stop_reason
+    # "max_tokens".
+    metadata = response.response_metadata or {}
+    if metadata.get("finish_reason") == "length" or metadata.get("stop_reason") == "max_tokens":
+        raise GenerationError(
+            "generation-failed", f"The {provider} reply stopped at its {max_tokens}-token output limit."
+        )
+
+    # For text chat models, response.content is a string. Guard anyway.
+    raw = response.content
+    content = raw.strip() if isinstance(raw, str) else ""
+    if not content:
+        raise GenerationError("generation-failed", "The model returned no content.")
+    return content
+
+
 # --- Structured output handling -----------------------------------------------
 
-def _parse_json_object(content: str) -> dict[str, Any]:
+def parse_json_object(content: str) -> dict[str, Any]:
     """
     Parse the model's response into a JSON object.
 
@@ -281,7 +335,7 @@ def _build_flashcards_body(content: str) -> dict[str, Any]:
     Cards missing a front or back are dropped rather than failing the whole
     generation; we only error if nothing usable survives.
     """
-    parsed = _parse_json_object(content)
+    parsed = parse_json_object(content)
     raw_cards = parsed.get("cards")
     if not isinstance(raw_cards, list):
         raise GenerationError(
@@ -325,7 +379,7 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
     wrong. If the answer's own option did not survive, the question is dropped
     rather than pointed somewhere else.
     """
-    parsed = _parse_json_object(content)
+    parsed = parse_json_object(content)
     raw_questions = parsed.get("questions")
     if not isinstance(raw_questions, list):
         raise GenerationError(
@@ -415,7 +469,9 @@ def _build_quiz_body(content: str) -> dict[str, Any]:
 
 # --- Provider builders --------------------------------------------------------
 
-def _build_openai(json_mode: bool = False) -> ChatOpenAI:
+def _build_openai(
+    json_mode: bool = False, model: str | None = None, max_tokens: int = MAX_OUTPUT_TOKENS
+) -> ChatOpenAI:
     """
     Build the OpenAI chat model (primary provider).
 
@@ -428,9 +484,9 @@ def _build_openai(json_mode: bool = False) -> ChatOpenAI:
         raise GenerationError("provider-misconfigured", "OPENAI_API_KEY is not set.")
 
     kwargs: dict[str, Any] = {
-        "model": settings.openai_model,
+        "model": model or settings.openai_model,
         "api_key": settings.openai_api_key,
-        "max_tokens": MAX_OUTPUT_TOKENS,
+        "max_tokens": max_tokens,
         "timeout": PROVIDER_TIMEOUT_SECONDS,
         "max_retries": PROVIDER_MAX_RETRIES,
     }
@@ -439,20 +495,20 @@ def _build_openai(json_mode: bool = False) -> ChatOpenAI:
     return ChatOpenAI(**kwargs)
 
 
-def _build_anthropic() -> ChatAnthropic:
+def _build_anthropic(model: str | None = None, max_tokens: int = MAX_OUTPUT_TOKENS) -> ChatAnthropic:
     """
     Build the Anthropic chat model (secondary provider).
 
     Anthropic has no direct equivalent of OpenAI's JSON mode, so structured
     output relies on the prompt plus the fence-stripping and validation in
-    _parse_json_object.
+    parse_json_object.
     """
     if not settings.anthropic_api_key:
         raise GenerationError("provider-misconfigured", "ANTHROPIC_API_KEY is not set.")
     return ChatAnthropic(
-        model=settings.anthropic_model,
+        model=model or settings.anthropic_model,
         api_key=settings.anthropic_api_key,
-        max_tokens=MAX_OUTPUT_TOKENS,
+        max_tokens=max_tokens,
         timeout=PROVIDER_TIMEOUT_SECONDS,
         max_retries=PROVIDER_MAX_RETRIES,
     )

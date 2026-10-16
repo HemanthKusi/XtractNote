@@ -3,7 +3,7 @@ Generation's pure layer: parsing and validating the model's structured output.
 
 Five helpers, in two groups.
 
-`_parse_json_object` takes the model's response as a string and returns the JSON
+`parse_json_object` takes the model's response as a string and returns the JSON
 object it parsed — whatever the model sent, unexamined. `_build_flashcards_body`
 and `_build_quiz_body` take that same string and return a storage body, with the
 `kind` discriminant attached here rather than taken from the model. All three
@@ -33,7 +33,7 @@ from app.services.generate import (
     _build_quiz_body,
     _clean_option,
     _clean_str,
-    _parse_json_object,
+    parse_json_object,
 )
 
 
@@ -54,7 +54,7 @@ def only_question(payload: str) -> dict[str, Any]:
     return _build_quiz_body(payload)["questions"][0]
 
 
-# --- _parse_json_object -------------------------------------------------------
+# --- parse_json_object -------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -67,12 +67,12 @@ def only_question(payload: str) -> dict[str, Any]:
     ],
     ids=["bare", "json-fence", "plain-fence", "surrounding-whitespace"],
 )
-def test_parse_json_object_strips_fences(raw: str) -> None:
+def testparse_json_object_strips_fences(raw: str) -> None:
     """
     The prompts forbid code fences and models add them anyway, which is why
     stripping exists: recovering is cheaper than discarding a paid generation.
     """
-    assert _parse_json_object(raw) == {"a": 1}
+    assert parse_json_object(raw) == {"a": 1}
 
 
 @pytest.mark.parametrize(
@@ -98,14 +98,14 @@ def test_parse_json_object_strips_fences(raw: str) -> None:
         "top-level-null",
     ],
 )
-def test_parse_json_object_rejects_non_objects(raw: str) -> None:
+def testparse_json_object_rejects_non_objects(raw: str) -> None:
     """
     Anything that is not a JSON object raises the typed error. The array case
     matters most: `json.loads` accepts it happily, so without the isinstance
     check it would flow on and fail later as an attribute error.
     """
     with pytest.raises(GenerationError) as excinfo:
-        _parse_json_object(raw)
+        parse_json_object(raw)
     assert excinfo.value.code == "invalid-structured-output"
 
 

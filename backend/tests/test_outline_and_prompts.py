@@ -11,7 +11,8 @@ from typing import Any
 import pytest
 
 from app.agents import analysis
-from app.agents.nodes.segment import MAX_SECTIONS_CHARS, segment
+from app.agents.nodes import segment as segment_node
+from app.agents.nodes.segment import MAX_SECTIONS_TOKENS, section_tokens, segment
 from app.agents.outline import (
     MAX_POINT,
     MAX_TOPICS,
@@ -23,7 +24,7 @@ from app.agents.outline import (
 from app.agents.prompts.analyse import ANALYSE_SYSTEM_PROMPT
 from app.agents.prompts.data import DATA_RULE, clock, neutralise, sections_block
 from app.agents.prompts.draft import RESEARCH_EXAMPLE, draft_material, guidance_for, outline_block
-from app.agents.sections import Section
+from app.agents.sections import Section, sections_of
 from app.services.generate import GenerationError
 from app.services.prompts import BEYOND_THE_VIDEO, SYSTEM_PROMPTS
 from app.services.transcript import TranscriptSegment
@@ -449,11 +450,12 @@ def test_a_failed_or_unusable_analysis_is_analysis_failed(monkeypatch, answer: A
     assert caught.value.code == "analysis-failed"
 
 
-def test_a_provider_that_is_not_configured_keeps_its_own_code(monkeypatch) -> None:
-    answering(monkeypatch, GenerationError("provider-misconfigured", "OPENAI_API_KEY is not set."))
+@pytest.mark.parametrize("code", ["provider-misconfigured", "transcript-too-long"])
+def test_failures_trying_again_cannot_fix_keep_their_own_code(monkeypatch, code: str) -> None:
+    answering(monkeypatch, GenerationError(code, "Not something a retry fixes."))
     with pytest.raises(GenerationError) as caught:
         analysis.analyse_sections(SECTIONS)
-    assert caught.value.code == "provider-misconfigured"
+    assert caught.value.code == code
 
 
 # --- The segment node ---------------------------------------------------------
@@ -468,11 +470,34 @@ def test_segment_groups_the_transcript_into_sections() -> None:
     assert [s.text for s in result["sections"]] == ["Hello there."]
 
 
+def lines(text: str, count: int) -> tuple[TranscriptSegment, ...]:
+    return tuple(TranscriptSegment(text, i * 5.0, 4.0) for i in range(count))
+
+
 def test_a_transcript_too_long_to_send_is_refused_before_anything_is_paid_for() -> None:
     long_line = "word " * 2_000
-    segments = tuple(TranscriptSegment(long_line, i * 5.0, 4.0) for i in range(MAX_SECTIONS_CHARS // len(long_line) + 2))
     with pytest.raises(GenerationError) as caught:
-        segment({"transcript": stored(*segments)}, {})
+        segment({"transcript": stored(*lines(long_line, MAX_SECTIONS_TOKENS // 2_000 + 2))}, {})
+    assert caught.value.code == "transcript-too-long"
+
+
+def test_a_dense_transcript_is_measured_in_tokens_not_characters() -> None:
+    """Chinese runs about two characters a token, against about five for English."""
+    dense = lines("机器学习模型通过数据调整参数" * 150, 110)
+    assert sum(len(s.text) for s in dense) < 380_000  # what the old character limit allowed
+    with pytest.raises(GenerationError) as caught:
+        segment({"transcript": stored(*dense)}, {})
+    assert caught.value.code == "transcript-too-long"
+
+
+def test_the_token_limit_is_inclusive(monkeypatch: pytest.MonkeyPatch) -> None:
+    transcript = stored(*lines("The tide rises and the moon pulls the sea.", 3))
+    exact = section_tokens(sections_of(transcript.segments))
+    monkeypatch.setattr(segment_node, "MAX_SECTIONS_TOKENS", exact)
+    assert segment({"transcript": transcript}, {})["sections"]
+    monkeypatch.setattr(segment_node, "MAX_SECTIONS_TOKENS", exact - 1)
+    with pytest.raises(GenerationError) as caught:
+        segment({"transcript": transcript}, {})
     assert caught.value.code == "transcript-too-long"
 
 

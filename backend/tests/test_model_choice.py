@@ -131,6 +131,36 @@ def test_a_reply_cut_off_at_the_cap_is_refused(
     assert str(DEPTH_OUTPUT_TOKENS) in caught.value.message
 
 
+class ProviderError(Exception):
+    """Carries `code` the way the OpenAI client's errors do."""
+
+    def __init__(self, code: str | None) -> None:
+        super().__init__("Error code: 400")
+        self.code = code
+
+
+class RefusingClient:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def invoke(self, messages: Any) -> AIMessage:
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [("context_length_exceeded", "transcript-too-long"), ("rate_limit_exceeded", "generation-failed"), (None, "generation-failed")],
+)
+def test_a_request_too_long_for_the_model_is_transcript_too_long(
+    monkeypatch: pytest.MonkeyPatch, code: str | None, expected: str
+) -> None:
+    building(monkeypatch)
+    monkeypatch.setattr(generate, "_build_openai", lambda **kwargs: RefusingClient(ProviderError(code)))
+    with pytest.raises(GenerationError) as caught:
+        complete("system", "user", json_mode=False)
+    assert caught.value.code == expected
+
+
 @pytest.mark.parametrize(
     ("provider", "metadata"),
     [("openai", {"finish_reason": "stop"}), ("anthropic", {"stop_reason": "end_turn"}), ("openai", {})],

@@ -1,9 +1,9 @@
 """
 The model call behind `analyse`: the sections in, a checked outline out.
 
-A failed call and an unusable answer both fail the job with "analysis-failed";
-a provider that is not configured keeps its own code, since that is not
-something trying again can fix.
+A failed call and an unusable answer both fail the job with "analysis-failed".
+A provider that is not configured, and a transcript too long for the model,
+keep their own codes, since trying again cannot fix either.
 """
 
 from typing import Sequence
@@ -32,7 +32,7 @@ def analyse_sections(sections: Sequence[Section]) -> Outline:
         )
         parsed = parse_json_object(content)
     except GenerationError as exc:
-        if exc.code == "provider-misconfigured":
+        if exc.code in ("provider-misconfigured", "transcript-too-long"):
             raise
         raise GenerationError(ANALYSIS_FAILED, exc.message) from exc
     return outline_from(parsed, len(sections))

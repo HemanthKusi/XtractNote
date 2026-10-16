@@ -217,6 +217,8 @@ def complete(
 
     Raises GenerationError:
       - "provider-misconfigured" : missing key / unknown provider
+      - "transcript-too-long"    : OpenAI refused the request as longer than
+                                   the model's context
       - "generation-failed"      : the call errored, returned nothing, or
                                    stopped at its output limit
     """
@@ -242,6 +244,13 @@ def complete(
     try:
         response = llm.invoke(messages)
     except Exception as exc:  # network / API / auth / SDK errors
+        # `segment` measures the transcript before any call, so this is the
+        # backstop for a count that came out under the limit and still did not
+        # fit. Trying again cannot help, so it must not read as a passing fault.
+        if getattr(exc, "code", None) == "context_length_exceeded":
+            raise GenerationError(
+                "transcript-too-long", "This video's transcript is too long to process in one pass."
+            )
         raise GenerationError("generation-failed", f"The {provider} request failed: {exc}")
 
     # A reply cut off at the cap would otherwise be saved as if it were whole.

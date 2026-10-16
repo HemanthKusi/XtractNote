@@ -29,6 +29,11 @@ langchain==1.4.3
 langchain-openai==1.6.7
 langchain-anthropic==1.7.5
 
+# Token counting — the segment step measures a transcript in tokens before any
+# paid call. Already required by langchain-openai; pinned because the backend
+# now imports it directly.
+tiktoken==0.13.0
+
 # Supabase — database + auth
 supabase==2.11.0
 

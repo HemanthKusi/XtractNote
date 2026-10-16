@@ -23,12 +23,11 @@ from langgraph.graph.state import CompiledStateGraph
 from app.agents.nodes.draft import draft
 from app.agents.nodes.fetch import fetch
 from app.agents.state import GenerationState
-from app.services.jobs import CREATION_STATUS, TERMINAL_STATUSES, is_legal_status
 
 Node = Callable[[GenerationState, RunnableConfig], GenerationState]
 
-#: The stages a running job passes through, in order: the job vocabulary
-#: without its creation and terminal states.
+#: The stages a running job passes through, in order. A test checks it is the
+#: job vocabulary without its creation and terminal states.
 STAGE_ORDER: tuple[str, ...] = ("fetching", "reading", "understanding", "drafting", "polishing")
 
 #: The nodes, in the order they run, each with the stage it belongs to.
@@ -42,9 +41,9 @@ def stage_error(nodes: tuple[tuple[str, Node, str], ...]) -> str | None:
     """
     Why `nodes` cannot be built into the graph, or None if it can.
 
-    Every node needs a stage that is a running stage of the job vocabulary,
-    names must be unique, and stages may not run backwards — a job moving
-    from drafting back to fetching would describe work it is not doing.
+    Every node needs a stage in STAGE_ORDER, names must be unique, and stages
+    may not run backwards — a job moving from drafting back to fetching would
+    describe work it is not doing.
     """
     if not nodes:
         return "a generation graph needs at least one node"
@@ -53,7 +52,7 @@ def stage_error(nodes: tuple[tuple[str, Node, str], ...]) -> str | None:
         return "node names must be unique"
     previous = -1
     for name, _, stage in nodes:
-        if not is_legal_status(stage) or stage == CREATION_STATUS or stage in TERMINAL_STATUSES:
+        if stage not in STAGE_ORDER:
             return f"node {name!r} has {stage!r}, which is not a running stage"
         position = STAGE_ORDER.index(stage)
         if position < previous:

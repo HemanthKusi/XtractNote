@@ -144,6 +144,8 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   // The key is settled when this arrives, so trying again sends a new one.
   "request-key-reused": "We couldn't start the generation. Please try again.",
   // From generation — recorded on a job that failed
+  "analysis-failed":
+    "We couldn't work out how this video is organised this time. Please try again.",
   "empty-transcript":
     "This video's transcript has no text we can work from. Try another video.",
   "transcript-too-long":

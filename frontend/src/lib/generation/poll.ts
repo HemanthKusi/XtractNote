@@ -83,6 +83,7 @@ const JOB_FAILURE_REASONS: readonly GenerateFailReason[] = [
   "video-not-found",
   "transcript-blocked",
   "transcript-failed",
+  "analysis-failed",
   "empty-transcript",
   "transcript-too-long",
   "unknown-content-type",

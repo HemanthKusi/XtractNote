@@ -86,6 +86,10 @@ LEGAL_STATUSES: frozenset[str] = frozenset(
 #: its progress to zero and claim it had not started.
 CREATION_STATUS = "pending"
 
+#: The state `claim` moves a job to: the generation graph's first stage. The
+#: graph's tests pin the two together.
+CLAIM_STATUS = "fetching"
+
 #: Once a job reaches one of these it is finished and nothing moves it again.
 #: The guard matters because an abandoned run finishes anyway — the user has
 #: navigated away and nobody is waiting, but its late write would otherwise
@@ -246,9 +250,10 @@ def interrupted_patch(now: datetime) -> dict[str, Any]:
     return patch
 
 
-def _utc_now_iso() -> str:
+def utc_now_iso() -> str:
     """
-    An explicit UTC timestamp, for `completed_at` and `heartbeat_at`.
+    An explicit UTC timestamp, for `completed_at`, `heartbeat_at` and the
+    stage times.
 
     Sent as a value rather than as SQL: PostgREST forwards a patch field as a
     literal, so a string like "now()" would reach Postgres as text to parse
@@ -338,10 +343,32 @@ def find_job_for_request(user_id: str, request_id: str) -> dict[str, Any] | None
     return dict(response.data[0]) if response.data else None
 
 
+def stage_patch(
+    status: str, stage_started_at: dict[str, str], transcript_id: str | None
+) -> dict[str, Any]:
+    """
+    The columns entering a stage writes: the status, every stage time so far,
+    and the transcript the run is reading, once it has one.
+
+    `stage_started_at` is written whole rather than merged. Nothing else writes
+    that column — the sweep writes only terminal fields, and users cannot write
+    jobs — so the run's own record of its stages is the complete one.
+
+    Raises JobError("illegal-status") for a target `advance` would refuse.
+    """
+    if (reason := advance_target_error(status)) is not None:
+        raise JobError("illegal-status", reason)
+    patch = patch_for_status(status)
+    patch["stage_started_at"] = dict(stage_started_at)
+    if transcript_id is not None:
+        patch["transcript_id"] = transcript_id
+    return patch
+
+
 def claim(job_id: str, user_id: str) -> dict[str, Any]:
     """
-    Start a run: move a `pending` job to `fetching`, its first stage, and
-    return the updated row.
+    Start a run: move a `pending` job to `CLAIM_STATUS`, its first stage,
+    record when, and return the updated row.
 
     **Only a `pending` job matches**, and that is in the statement's predicate.
     `advance` would also accept a job already under way, so two runs started
@@ -354,8 +381,10 @@ def claim(job_id: str, user_id: str) -> dict[str, Any]:
     Raises JobError("job-not-claimed") when no row matched: no such job, not
     this user's, or already started or finished.
     """
-    patch = patch_for_status("fetching")
-    patch["heartbeat_at"] = _utc_now_iso()
+    now = utc_now_iso()
+    patch = patch_for_status(CLAIM_STATUS)
+    patch["heartbeat_at"] = now
+    patch["stage_started_at"] = {CLAIM_STATUS: now}
     response = (
         get_supabase_client()
         .table(TABLE)
@@ -383,7 +412,7 @@ def heartbeat(job_id: str, user_id: str) -> bool:
     response = (
         get_supabase_client()
         .table(TABLE)
-        .update({"heartbeat_at": _utc_now_iso()})
+        .update({"heartbeat_at": utc_now_iso()})
         .eq("id", job_id)
         .eq("user_id", user_id)
         .not_.in_("status", sorted(TERMINAL_STATUSES))
@@ -408,16 +437,42 @@ def advance(job_id: str, user_id: str, status: str) -> dict[str, Any]:
     return _update_unfinished(job_id, user_id, patch_for_status(status))
 
 
-def begin_drafting(job_id: str, user_id: str, transcript_id: str) -> dict[str, Any]:
+def enter_stage(
+    job_id: str,
+    user_id: str,
+    status: str,
+    stage_started_at: dict[str, str],
+    transcript_id: str | None,
+) -> dict[str, Any]:
     """
-    Record the transcript a job generates from, and move it to `drafting`.
+    Move a running job to `status`, as the node for that stage starts.
 
-    Both are written in one statement. Transcripts belong to no user, so there
-    is no owner to check; the foreign key proves the row exists.
+    **This is also the run's check that it may go on.** The statement matches
+    only this user's unfinished job, so a job the sweep has already failed
+    matches nothing and raises JobError("job-not-updated") — the run stops
+    there, before the node spends anything.
+
+    Transcripts belong to no user, so `transcript_id` has no owner to check;
+    the foreign key proves the row exists.
     """
-    patch = patch_for_status("drafting")
-    patch["transcript_id"] = transcript_id
-    return _update_unfinished(job_id, user_id, patch)
+    return _update_unfinished(
+        job_id, user_id, stage_patch(status, stage_started_at, transcript_id)
+    )
+
+
+def is_unfinished(job_id: str, user_id: str) -> bool:
+    """Whether this user's job exists and has not finished."""
+    response = (
+        get_supabase_client()
+        .table(TABLE)
+        .select("id")
+        .eq("id", job_id)
+        .eq("user_id", user_id)
+        .not_.in_("status", sorted(TERMINAL_STATUSES))
+        .limit(1)
+        .execute()
+    )
+    return bool(response.data)
 
 
 def complete(job_id: str, user_id: str, result_id: str) -> dict[str, Any]:
@@ -433,7 +488,7 @@ def complete(job_id: str, user_id: str, result_id: str) -> dict[str, Any]:
 
     patch = patch_for_status("completed")
     patch["result_id"] = result_id
-    patch["completed_at"] = _utc_now_iso()
+    patch["completed_at"] = utc_now_iso()
     return _update_unfinished(job_id, user_id, patch)
 
 
@@ -452,7 +507,7 @@ def fail(job_id: str, user_id: str, code: str, message: str) -> dict[str, Any]:
     patch = patch_for_status("failed")
     patch["error_code"] = code
     patch["error_message"] = message
-    patch["completed_at"] = _utc_now_iso()
+    patch["completed_at"] = utc_now_iso()
     return _update_unfinished(job_id, user_id, patch)
 
 

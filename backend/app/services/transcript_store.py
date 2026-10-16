@@ -21,6 +21,7 @@ from app.services.drafts import count_words
 from app.services.generate import MAX_TRANSCRIPT_CHARS
 from app.services.transcript import (
     TranscriptData,
+    TranscriptSegment,
     TranscriptServiceError,
     fetch_transcript,
     join_segment_texts,
@@ -40,6 +41,8 @@ class StoredTranscript:
     id: str
     full_text: str
     word_count: int
+    # The caption lines with their times, which sectioning works from.
+    segments: tuple[TranscriptSegment, ...] = ()
 
 
 # --- Pure rules ---------------------------------------------------------------
@@ -64,23 +67,36 @@ def row_for(data: TranscriptData) -> dict[str, Any]:
     }
 
 
-def text_from_segments(segments: Any) -> str:
+def segments_from(stored: Any) -> tuple[TranscriptSegment, ...]:
     """
-    The text a generation reads, rebuilt from stored segments.
+    Stored segments, checked, as the caption lines they were.
 
     Raises TranscriptServiceError("transcript-failed") when the stored value is
-    not a list of segments with text, rather than generating from a partial or
-    garbled transcript.
+    not a list of segments with text and times, rather than generating from a
+    partial or garbled transcript.
     """
-    if not isinstance(segments, list):
+    if not isinstance(stored, list):
         raise TranscriptServiceError("A stored transcript is not a list of segments.")
-    texts: list[str] = []
-    for segment in segments:
+    segments: list[TranscriptSegment] = []
+    for segment in stored:
         text = segment.get("text") if isinstance(segment, dict) else None
         if not isinstance(text, str):
             raise TranscriptServiceError("A stored transcript segment has no text.")
-        texts.append(text)
-    return join_segment_texts(texts)
+        start, duration = segment.get("start"), segment.get("duration")
+        if not _is_time(start) or not _is_time(duration):
+            raise TranscriptServiceError("A stored transcript segment has no time.")
+        segments.append(TranscriptSegment(text=text, start=float(start), duration=float(duration)))
+    return tuple(segments)
+
+
+def _is_time(value: Any) -> bool:
+    """A number of seconds: an int or a float, not a bool, not negative."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+
+
+def text_from_segments(segments: Any) -> str:
+    """The text a generation reads, rebuilt from stored segments."""
+    return join_segment_texts(segment.text for segment in segments_from(segments))
 
 
 def stored_from_row(row: dict[str, Any]) -> StoredTranscript:
@@ -91,10 +107,12 @@ def stored_from_row(row: dict[str, Any]) -> StoredTranscript:
         raise TranscriptServiceError("A stored transcript has no id.")
     if not isinstance(word_count, int) or isinstance(word_count, bool):
         raise TranscriptServiceError("A stored transcript has no word count.")
+    segments = segments_from(row.get("segments"))
     return StoredTranscript(
         id=transcript_id,
-        full_text=text_from_segments(row.get("segments")),
+        full_text=join_segment_texts(segment.text for segment in segments),
         word_count=word_count,
+        segments=segments,
     )
 
 

@@ -2,9 +2,7 @@
 `prepare_request`: the checks a generation request passes before anything is
 spent on it.
 
-The endpoint runs these before creating a job, and `generate_content` runs them
-before its model call, so both refuse the same input with the same code. No
-network, no model call.
+`generate_content` runs them before its model call. No network, no model call.
 """
 
 from typing import get_args

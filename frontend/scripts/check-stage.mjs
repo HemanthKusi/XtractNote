@@ -47,11 +47,11 @@ check("the steps run starting, then the transcript, then drafting", GENERATION_S
 
 // ── Statuses ──
 check("pending is still starting", stepForStatus("pending"), "starting");
-check("fetching is the job reading its transcript", stepForStatus("fetching"), "transcript");
-check("drafting is drafting", stepForStatus("drafting"), "drafting");
-for (const status of ["reading", "understanding", "polishing"]) {
-  check(`${status}, which nothing writes yet, sits under drafting`, stepForStatus(status), "drafting");
+for (const status of ["fetching", "reading", "understanding"]) {
+  check(`${status} is the job working on its transcript, never drafting`, stepForStatus(status), "transcript");
 }
+check("drafting is drafting", stepForStatus("drafting"), "drafting");
+check("polishing, which nothing writes yet, sits under drafting", stepForStatus("polishing"), "drafting");
 for (const status of JOB_STATUSES) {
   check(`${status} maps to a step that exists`, GENERATION_STEPS.includes(stepForStatus(status)), true);
 }
@@ -62,6 +62,7 @@ check("an unanswered start is starting", currentStep("sent", null), "starting");
 check("an accepted job no check has reported is still starting", currentStep("accepted", null), "starting");
 check("an accepted job reported pending is still starting", currentStep("accepted", "pending"), "starting");
 check("an accepted job reported fetching is reading its transcript", currentStep("accepted", "fetching"), "transcript");
+check("an accepted job reported understanding is still on its transcript", currentStep("accepted", "understanding"), "transcript");
 check("an accepted job reported drafting is drafting", currentStep("accepted", "drafting"), "drafting");
 
 // ── Marking steps ──

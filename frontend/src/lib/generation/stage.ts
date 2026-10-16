@@ -36,20 +36,22 @@ export const LONG_WAIT_MS = 60_000;
  * The step a job's status belongs to. A status added to the vocabulary fails
  * to compile here until it is placed.
  *
- * `fetching` is the job reading its transcript. Reading, understanding and
- * polishing sit under drafting: nothing writes them today, and each becomes a
- * step of its own when the work behind it exists. The two terminal statuses
- * also map to drafting, the last step; the page leaves this screen when it
- * sees either.
+ * `fetching`, `reading` and `understanding` are the job getting, sectioning
+ * and analysing its transcript, so all three show as the transcript step —
+ * never as drafting while the run is still working out what the video says.
+ * Each becomes a step of its own in the generating screen's design pass.
+ * Polishing sits under drafting: nothing writes it yet. The two terminal
+ * statuses also map to drafting, the last step; the page leaves this screen
+ * when it sees either.
  */
 export function stepForStatus(status: JobStatus): GenerationStep {
   switch (status) {
     case "pending":
       return "starting";
     case "fetching":
-      return "transcript";
     case "reading":
     case "understanding":
+      return "transcript";
     case "drafting":
     case "polishing":
     case "completed":

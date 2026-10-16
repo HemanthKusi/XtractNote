@@ -36,9 +36,12 @@ import threading
 from dataclasses import dataclass
 from datetime import timedelta
 from types import TracebackType
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, Sequence
 
+from app.agents.analysis import analyse_sections
 from app.agents.graph import GRAPH, NODE_STAGES
+from app.agents.outline import Outline, outline_metadata
+from app.agents.sections import Section
 from app.agents.state import NodeEffects, run_config
 from app.config import settings
 from app.services import drafts, jobs, transcript_store
@@ -86,8 +89,9 @@ class Steps:
     heartbeat: Callable[[str, str], bool] = jobs.heartbeat
     enter_stage: Callable[[str, str, str, dict[str, str], str | None], Any] = jobs.enter_stage
     obtain_transcript: Callable[[str], StoredTranscript] = obtain_transcript
+    analyse: Callable[[Sequence[Section]], Outline] = analyse_sections
     generate: Callable[
-        [str, ContentType, SocialPlatform | None], dict[str, Any]
+        [str, ContentType, SocialPlatform | None, str], dict[str, Any]
     ] = generate_content
     is_unfinished: Callable[[str, str], bool] = jobs.is_unfinished
     insert_draft: Callable[[dict[str, Any]], str] = drafts.insert_draft
@@ -155,8 +159,15 @@ def _run_claimed(
 
     body = final.get("body")
     transcript = final.get("transcript")
-    if not isinstance(body, dict) or not isinstance(transcript, StoredTranscript):
-        logger.error("job %s: the graph finished without a body and transcript", job_id)
+    outline = final.get("outline")
+    sections = final.get("sections")
+    if (
+        not isinstance(body, dict)
+        or not isinstance(transcript, StoredTranscript)
+        or not isinstance(outline, Outline)
+        or not isinstance(sections, list)
+    ):
+        logger.error("job %s: the graph finished without all of its results", job_id)
         return _fail(steps, job_id, user_id, UNEXPECTED_CODE, UNEXPECTED_MESSAGE)
 
     # A job already failed by now gets no draft: it would be linked to nothing.
@@ -180,6 +191,7 @@ def _run_claimed(
             request.platform,
             body,
             transcript_id=transcript.id,
+            outline=outline_metadata(outline, sections),
         )
         result_id = steps.insert_draft(row)
     except Exception:
@@ -215,7 +227,9 @@ def _run_graph(
     _Stopped when the job is no longer unfinished — the stream is closed, so
     that node never runs — and lets a node's own exception through unchanged.
     """
-    effects = NodeEffects(obtain_transcript=steps.obtain_transcript, generate=steps.generate)
+    effects = NodeEffects(
+        obtain_transcript=steps.obtain_transcript, analyse=steps.analyse, generate=steps.generate
+    )
     state = {
         "video_id": request.video.video_id,
         "content_type": request.content_type,

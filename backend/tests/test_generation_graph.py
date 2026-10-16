@@ -9,17 +9,37 @@ production.
 """
 
 import threading
+from dataclasses import replace
 from typing import Any
 
 import pytest
 
 from app.agents.graph import GRAPH, NODE_STAGES, NODES, STAGE_ORDER, build_graph, stage_error
+from app.agents.nodes.draft import draft
+from app.agents.outline import KeyTerm, Outline, Topic
+from app.agents.prompts.draft import guidance_for
 from app.agents.state import NodeEffects, run_config
+from app.services.generate import GenerationError
+from app.services.transcript import TranscriptSegment
 from app.services.jobs import CREATION_STATUS, LEGAL_STATUSES, TERMINAL_STATUSES
 from app.services.transcript import TranscriptUnavailableError
 from app.services.transcript_store import StoredTranscript
 
-TRANSCRIPT = StoredTranscript(id="transcript-1", full_text="The tide rises.", word_count=3)
+SEGMENTS = (
+    TranscriptSegment(text="The tide rises.", start=0.0, duration=3.0),
+    TranscriptSegment(text="The moon pulls the sea.", start=3.5, duration=3.0),
+)
+TRANSCRIPT = StoredTranscript(
+    id="transcript-1",
+    full_text="The tide rises. The moon pulls the sea.",
+    word_count=9,
+    segments=SEGMENTS,
+)
+OUTLINE = Outline(
+    thesis="The moon moves the tides.",
+    topics=(Topic(heading="Tides", points=("The moon pulls the sea.",), sections=(0,)),),
+    key_terms=(KeyTerm(term="tide", definition="The sea's rise and fall."),),
+)
 BODY = {"markdown": "Tides follow the moon."}
 INPUT = {"video_id": "dQw4w9WgXcQ", "content_type": "social", "platform": "linkedin"}
 
@@ -27,9 +47,16 @@ INPUT = {"video_id": "dQw4w9WgXcQ", "content_type": "social", "platform": "linke
 class Effects:
     """Stand-ins that record each call, in one log shared with the stream's events."""
 
-    def __init__(self, log: list[str] | None = None, obtain_raises: Exception | None = None) -> None:
+    def __init__(
+        self,
+        log: list[str] | None = None,
+        obtain_raises: Exception | None = None,
+        analyse_raises: Exception | None = None,
+    ) -> None:
         self.log = log if log is not None else []
         self.obtain_raises = obtain_raises
+        self.analyse_raises = analyse_raises
+        self.analysed: list[Any] = []
         self.generated: list[tuple[Any, ...]] = []
 
     def obtain_transcript(self, video_id: str) -> StoredTranscript:
@@ -38,13 +65,22 @@ class Effects:
             raise self.obtain_raises
         return TRANSCRIPT
 
-    def generate(self, full_text: str, content_type: Any, platform: Any) -> dict[str, Any]:
+    def analyse(self, sections: Any) -> Outline:
+        self.log.append("analyse")
+        self.analysed.append(sections)
+        if self.analyse_raises:
+            raise self.analyse_raises
+        return OUTLINE
+
+    def generate(self, material: str, content_type: Any, platform: Any, guidance: str) -> dict[str, Any]:
         self.log.append("generate")
-        self.generated.append((full_text, content_type, platform))
+        self.generated.append((material, content_type, platform, guidance))
         return BODY
 
     def node_effects(self) -> NodeEffects:
-        return NodeEffects(obtain_transcript=self.obtain_transcript, generate=self.generate)
+        return NodeEffects(
+            obtain_transcript=self.obtain_transcript, analyse=self.analyse, generate=self.generate
+        )
 
 
 def stream(effects: Effects, graph: Any = GRAPH):
@@ -59,9 +95,14 @@ def test_the_running_stages_are_the_job_vocabulary_in_order() -> None:
     assert STAGE_ORDER.index("fetching") < STAGE_ORDER.index("drafting")
 
 
-def test_the_graph_fetches_then_drafts() -> None:
-    assert [name for name, _, _ in NODES] == ["fetch", "draft"]
-    assert NODE_STAGES == {"fetch": "fetching", "draft": "drafting"}
+def test_the_graph_fetches_sections_analyses_then_drafts() -> None:
+    assert [name for name, _, _ in NODES] == ["fetch", "segment", "analyse", "draft"]
+    assert NODE_STAGES == {
+        "fetch": "fetching",
+        "segment": "reading",
+        "analyse": "understanding",
+        "draft": "drafting",
+    }
 
 
 def test_every_node_the_graph_runs_has_a_stage() -> None:
@@ -98,17 +139,42 @@ def test_two_nodes_may_share_a_stage() -> None:
 # --- Running it ---------------------------------------------------------------
 
 
-def test_a_run_ends_with_the_transcript_and_the_body() -> None:
+def test_a_run_ends_with_the_transcript_its_sections_the_outline_and_the_body() -> None:
     effects = Effects()
     final = [chunk for mode, chunk in stream(effects) if mode == "values"][-1]
     assert final["transcript"] is TRANSCRIPT
+    assert [section.text for section in final["sections"]] == [TRANSCRIPT.full_text]
+    assert final["outline"] is OUTLINE
     assert final["body"] is BODY
 
 
-def test_drafting_reads_the_fetched_transcript_and_the_requested_format() -> None:
+def test_analysis_reads_the_sections() -> None:
     effects = Effects()
     list(stream(effects))
-    assert effects.generated == [(TRANSCRIPT.full_text, "social", "linkedin")]
+    (sections,) = effects.analysed
+    assert [section.index for section in sections] == [0]
+
+
+def test_drafting_reads_the_outline_and_sections_with_its_guidance_and_format() -> None:
+    effects = Effects()
+    list(stream(effects))
+    ((material, content_type, platform, guidance),) = effects.generated
+    assert (content_type, platform, guidance) == ("social", "linkedin", guidance_for("social", OUTLINE.register))
+    assert "<outline>" in material and "The moon moves the tides." in material
+    assert "<sections>" in material and TRANSCRIPT.full_text in material
+
+
+@pytest.mark.parametrize("register", ["technical", "general"])
+def test_drafting_is_guided_by_the_outlines_register(register: str) -> None:
+    """A general video's research must never be shown the maths instructions."""
+    effects = Effects()
+    draft(
+        {"content_type": "research", "outline": replace(OUTLINE, register=register), "sections": []},
+        run_config(effects.node_effects()),
+    )
+    ((_, _, _, guidance),) = effects.generated
+    assert guidance == guidance_for("research", register)
+    assert ("derivation" in guidance) is (register == "technical")
 
 
 def test_each_node_announces_its_start_before_it_does_any_work() -> None:
@@ -118,7 +184,15 @@ def test_each_node_announces_its_start_before_it_does_any_work() -> None:
     for mode, chunk in stream(effects):
         if mode == "tasks" and "input" in chunk:
             log.append(f"start {chunk['name']}")
-    assert log == ["start fetch", "obtain dQw4w9WgXcQ", "start draft", "generate"]
+    assert log == [
+        "start fetch",
+        "obtain dQw4w9WgXcQ",
+        "start segment",
+        "start analyse",
+        "analyse",
+        "start draft",
+        "generate",
+    ]
 
 
 def test_the_start_event_carries_what_the_node_will_read() -> None:
@@ -126,6 +200,7 @@ def test_the_start_event_carries_what_the_node_will_read() -> None:
     effects = Effects()
     starts = {chunk["name"]: chunk["input"] for mode, chunk in stream(effects) if mode == "tasks" and "input" in chunk}
     assert "transcript" not in starts["fetch"]
+    assert starts["segment"]["transcript"] is TRANSCRIPT
     assert starts["draft"]["transcript"] is TRANSCRIPT
 
 
@@ -133,10 +208,10 @@ def test_a_run_closed_at_a_nodes_start_never_runs_that_node() -> None:
     effects = Effects()
     run = stream(effects)
     for mode, chunk in run:
-        if mode == "tasks" and chunk.get("name") == "draft" and "input" in chunk:
+        if mode == "tasks" and chunk.get("name") == "analyse" and "input" in chunk:
             run.close()
             break
-    assert effects.generated == []
+    assert effects.analysed == [] and effects.generated == []
 
 
 def test_a_nodes_own_error_comes_out_with_its_code() -> None:
@@ -144,6 +219,14 @@ def test_a_nodes_own_error_comes_out_with_its_code() -> None:
     with pytest.raises(TranscriptUnavailableError) as caught:
         list(stream(effects))
     assert caught.value.code == "no-captions"
+    assert effects.analysed == [] and effects.generated == []
+
+
+def test_a_failed_analysis_stops_the_run_before_drafting() -> None:
+    effects = Effects(analyse_raises=GenerationError("analysis-failed", "Unusable."))
+    with pytest.raises(GenerationError) as caught:
+        list(stream(effects))
+    assert caught.value.code == "analysis-failed"
     assert effects.generated == []
 
 
@@ -161,7 +244,7 @@ def test_one_compiled_graph_serves_runs_on_many_threads() -> None:
             super().__init__()
             self.tag = tag
 
-        def generate(self, full_text: str, content_type: Any, platform: Any) -> dict[str, Any]:
+        def generate(self, material: str, content_type: Any, platform: Any, guidance: str) -> dict[str, Any]:
             return {"markdown": f"run {self.tag}"}
 
     def go(tag: int) -> None:

@@ -94,10 +94,26 @@ def stored_row(**changes: Any) -> dict[str, Any]:
     return {"id": "transcript-1", "segments": row_for(DATA)["segments"], "word_count": 7, **changes}
 
 
-def test_a_stored_row_reads_back_as_the_text_and_count() -> None:
+def test_a_stored_row_reads_back_as_the_text_count_and_timed_segments() -> None:
     assert stored_from_row(stored_row()) == StoredTranscript(
-        id="transcript-1", full_text=DATA.full_text, word_count=7
+        id="transcript-1", full_text=DATA.full_text, word_count=7, segments=tuple(DATA.segments)
     )
+
+
+@pytest.mark.parametrize(
+    "segment",
+    [
+        {"text": "x", "duration": 1.0},
+        {"text": "x", "start": "0", "duration": 1.0},
+        {"text": "x", "start": 0.0, "duration": None},
+        {"text": "x", "start": True, "duration": 1.0},
+        {"text": "x", "start": -1.0, "duration": 1.0},
+    ],
+)
+def test_a_segment_without_a_proper_time_is_refused(segment: dict[str, Any]) -> None:
+    """Sections are cut on these times, so a missing or garbled one is not guessed at."""
+    with pytest.raises(TranscriptServiceError):
+        stored_from_row(stored_row(segments=[segment]))
 
 
 @pytest.mark.parametrize(

@@ -264,6 +264,7 @@ export interface GenerationJob {
  * Recorded on a job that failed (its errorCode):
  *   no-captions, video-not-found, transcript-blocked, transcript-failed — the
  *   job could not read the video's transcript;
+ *   analysis-failed — the outline of the video could not be made;
  *   empty-transcript, transcript-too-long, provider-misconfigured,
  *   generation-failed, invalid-structured-output, draft-not-saved,
  *   unexpected, interrupted
@@ -283,6 +284,7 @@ export type GenerateFailReason =
   | "video-not-found"
   | "transcript-blocked"
   | "transcript-failed"
+  | "analysis-failed"
   | "empty-transcript"
   | "transcript-too-long"
   | "unknown-content-type"

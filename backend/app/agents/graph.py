@@ -5,9 +5,10 @@ A generation is a chain of nodes, each doing one real piece of work, and each
 belonging to one stage of the job: a node starting is what moves the job to
 its stage. `NODES` is the only place that pairing is written.
 
-Today the chain is the two steps that do real work: `fetch` the transcript,
-`draft` the content. Each further node arrives with the work that justifies
-it — none is added so a stage name has something to report.
+The chain: `fetch` the transcript, `segment` it into timed sections,
+`analyse` them into an outline, `draft` the content from the outline. Each
+node arrives with the work that justifies it — none is added so a stage name
+has something to report.
 
 The graph is compiled once (`GRAPH`) and shared by every run; a run's effects
 travel in its config (`app.agents.state.run_config`), so nothing about one run
@@ -20,8 +21,10 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from app.agents.nodes.analyse import analyse
 from app.agents.nodes.draft import draft
 from app.agents.nodes.fetch import fetch
+from app.agents.nodes.segment import segment
 from app.agents.state import GenerationState
 
 Node = Callable[[GenerationState, RunnableConfig], GenerationState]
@@ -33,6 +36,8 @@ STAGE_ORDER: tuple[str, ...] = ("fetching", "reading", "understanding", "draftin
 #: The nodes, in the order they run, each with the stage it belongs to.
 NODES: tuple[tuple[str, Node, str], ...] = (
     ("fetch", fetch, "fetching"),
+    ("segment", segment, "reading"),
+    ("analyse", analyse, "understanding"),
     ("draft", draft, "drafting"),
 )
 

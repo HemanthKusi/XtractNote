@@ -45,6 +45,7 @@ VIDEO = VideoSource(
 
 PROSE = {"markdown": "Tides follow the moon."}
 TRANSCRIPT = "transcript-1"
+OUTLINE = {"thesis": "Tides follow the moon.", "topics": [], "key_terms": []}
 
 
 # --- The code and its counterparts must agree ---------------------------------
@@ -216,23 +217,23 @@ ROW_COLUMNS = {
 
 
 def test_row_writes_exactly_the_expected_columns() -> None:
-    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT)
+    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT, outline=OUTLINE)
     assert set(row) == ROW_COLUMNS
 
 
 def test_row_records_the_transcript_it_was_made_from() -> None:
-    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT)
+    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT, outline=OUTLINE)
     assert row["transcript_id"] == TRANSCRIPT
 
 
 def test_row_is_a_draft_owned_by_the_given_user() -> None:
-    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT)
+    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT, outline=OUTLINE)
     assert row["status"] == "draft"
     assert row["user_id"] == "user-1"
 
 
 def test_row_carries_the_video() -> None:
-    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT)
+    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT, outline=OUTLINE)
     assert row["video_id"] == VIDEO.video_id
     assert row["video_url"] == VIDEO.url
     assert row["video_title"] == VIDEO.title
@@ -242,22 +243,22 @@ def test_row_carries_the_video() -> None:
 
 
 def test_row_carries_the_body_and_its_word_count() -> None:
-    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT)
+    row = build_draft_row("user-1", VIDEO, "summary", None, PROSE, transcript_id=TRANSCRIPT, outline=OUTLINE)
     assert row["content_body"] is PROSE
     assert row["word_count"] == 4
 
 
 @pytest.mark.parametrize("content_type", NON_SOCIAL)
-def test_non_social_row_has_no_metadata(content_type: ContentType) -> None:
-    row = build_draft_row("user-1", VIDEO, content_type, "linkedin", PROSE, transcript_id=TRANSCRIPT)
-    assert row["metadata"] is None
+def test_non_social_row_keeps_its_outline_and_no_platform(content_type: ContentType) -> None:
+    row = build_draft_row("user-1", VIDEO, content_type, "linkedin", PROSE, transcript_id=TRANSCRIPT, outline=OUTLINE)
+    assert row["metadata"] == {"outline": OUTLINE}
     assert row["content_type"] == content_type
 
 
 @pytest.mark.parametrize("platform", get_args(SocialPlatform))
 def test_social_row_records_its_platform(platform: SocialPlatform) -> None:
-    row = build_draft_row("user-1", VIDEO, "social", platform, PROSE, transcript_id=TRANSCRIPT)
-    assert row["metadata"] == {"platform": platform}
+    row = build_draft_row("user-1", VIDEO, "social", platform, PROSE, transcript_id=TRANSCRIPT, outline=OUTLINE)
+    assert row["metadata"] == {"outline": OUTLINE, "platform": platform}
     assert row["content_title"].startswith(SOCIAL_PLATFORM_LABELS[platform])
 
 
@@ -269,5 +270,5 @@ def test_unknown_duration_is_stored_as_null() -> None:
         channel=VIDEO.channel,
         thumbnail_url=VIDEO.thumbnail_url,
     )
-    row = build_draft_row("user-1", video, "summary", None, PROSE, transcript_id=TRANSCRIPT)
+    row = build_draft_row("user-1", video, "summary", None, PROSE, transcript_id=TRANSCRIPT, outline=OUTLINE)
     assert row["video_duration"] is None

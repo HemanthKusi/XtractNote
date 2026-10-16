@@ -148,14 +148,16 @@ def build_draft_row(
     body: dict[str, Any],
     *,
     transcript_id: str,
+    outline: dict[str, Any],
 ) -> dict[str, Any]:
     """
     The `generated_content` row for one finished generation.
 
-    `transcript_id` is the stored transcript it was generated from.
+    `transcript_id` is the stored transcript it was generated from, and
+    `outline` the analysis it was drafted from, kept in `metadata`.
 
-    `metadata` is `{"platform": ...}` for social and None otherwise — not `{}` —
-    so "social items with a platform" stays a plain `is not null` query.
+    `metadata` holds the outline, and `platform` for social only; social items
+    with a platform are `metadata->>'platform' is not null`.
     `folder_id` and `content_html` are left to their column defaults.
     """
     recorded = platform_for(content_type, platform)
@@ -170,7 +172,7 @@ def build_draft_row(
         "content_type": content_type,
         "content_title": content_title(content_type, platform, video.title),
         "content_body": body,
-        "metadata": {"platform": recorded} if recorded is not None else None,
+        "metadata": {"outline": outline, **({"platform": recorded} if recorded is not None else {})},
         "status": DRAFT_STATUS,
         "word_count": count_body_words(body),
         "transcript_id": transcript_id,

@@ -17,10 +17,12 @@ else.
 """
 
 from dataclasses import dataclass
-from typing import Any, Callable, TypedDict
+from typing import Any, Callable, Sequence, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.outline import Outline
+from app.agents.sections import Section
 from app.services.prompts import ContentType, SocialPlatform
 from app.services.transcript_store import StoredTranscript
 
@@ -38,6 +40,10 @@ class GenerationState(TypedDict, total=False):
     platform: SocialPlatform | None
     # Added by `fetch`.
     transcript: StoredTranscript
+    # Added by `segment`.
+    sections: list[Section]
+    # Added by `analyse`.
+    outline: Outline
     # Added by `draft`: the content body, in the shape the draft row stores.
     body: dict[str, Any]
 
@@ -47,7 +53,10 @@ class NodeEffects:
     """The effects the nodes perform, supplied per run."""
 
     obtain_transcript: Callable[[str], StoredTranscript]
-    generate: Callable[[str, ContentType, SocialPlatform | None], dict[str, Any]]
+    analyse: Callable[[Sequence[Section]], Outline]
+    # The format's generation: material, format, platform, and guidance added
+    # to the format's prompt.
+    generate: Callable[[str, ContentType, SocialPlatform | None, str], dict[str, Any]]
 
 
 def effects_of(config: RunnableConfig) -> NodeEffects:

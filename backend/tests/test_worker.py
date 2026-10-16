@@ -17,11 +17,15 @@ from typing import Any
 
 import pytest
 
+from app.agents.analysis import analyse_sections
 from app.agents.graph import NODES
 from app.services import jobs
 from app.services.drafts import VideoSource
 from app.services.generate import GenerationError
+from app.agents.outline import Outline, Topic
+from app.agents.prompts.draft import guidance_for
 from app.services.transcript import (
+    TranscriptSegment,
     TranscriptBlockedError,
     TranscriptServiceError,
     TranscriptUnavailableError,
@@ -40,7 +44,17 @@ JOB = "job-1"
 USER = "user-1"
 DRAFT = "draft-1"
 BODY = {"markdown": "Tides follow the moon."}
-TRANSCRIPT = StoredTranscript(id="transcript-1", full_text="A transcript about tides.", word_count=4)
+TRANSCRIPT = StoredTranscript(
+    id="transcript-1",
+    full_text="A transcript about tides.",
+    word_count=4,
+    segments=(TranscriptSegment(text="A transcript about tides.", start=0.0, duration=3.0),),
+)
+OUTLINE = Outline(
+    thesis="Tides follow the moon.",
+    topics=(Topic(heading="Tides", points=("The moon pulls the sea.",), sections=(0,)),),
+    key_terms=(),
+)
 
 REQUEST = GenerationInput(
     content_type="social",
@@ -114,8 +128,12 @@ class Recorder:
             self.ticks += 1
             return f"t{self.ticks}"
 
-        def generate(full_text: str, content_type: Any, platform: Any) -> dict[str, Any]:
-            self._call("generate", full_text, content_type, platform)
+        def analyse(sections: Any) -> Outline:
+            self._call("analyse", tuple(section.index for section in sections))
+            return OUTLINE
+
+        def generate(material: str, content_type: Any, platform: Any, guidance: str) -> dict[str, Any]:
+            self._call("generate", material, content_type, platform, guidance)
             time.sleep(self.generate_takes)
             return BODY
 
@@ -134,6 +152,7 @@ class Recorder:
             heartbeat=heartbeat,
             enter_stage=enter_stage,
             obtain_transcript=obtain_transcript,
+            analyse=analyse,
             generate=generate,
             is_unfinished=is_unfinished,
             insert_draft=insert_draft,
@@ -150,6 +169,9 @@ class Recorder:
     @property
     def beats(self) -> int:
         return sum(1 for name, _ in self.calls if name == "heartbeat")
+
+    def all_args(self, name: str) -> list[tuple[Any, ...]]:
+        return [args for call, args in self.calls if call == name]
 
     def args(self, name: str) -> tuple[Any, ...]:
         matches = [args for call, args in self.calls if call == name]
@@ -178,6 +200,7 @@ def test_default_steps_are_the_real_functions() -> None:
     assert steps.heartbeat is jobs.heartbeat
     assert steps.obtain_transcript is worker.obtain_transcript
     assert steps.enter_stage is jobs.enter_stage
+    assert steps.analyse is analyse_sections
     assert steps.is_unfinished is jobs.is_unfinished
     assert steps.now is jobs.utc_now_iso
     assert steps.generate is generate_content
@@ -192,7 +215,10 @@ def test_default_steps_are_the_real_functions() -> None:
 FULL_PATH = [
     "claim",
     "obtain_transcript",
-    "enter_stage",
+    "enter_stage",  # reading, as `segment` starts
+    "enter_stage",  # understanding, as `analyse` starts
+    "analyse",
+    "enter_stage",  # drafting, as `draft` starts
     "generate",
     "is_unfinished",
     "insert_draft",
@@ -205,7 +231,7 @@ def test_claiming_enters_the_graphs_first_stage() -> None:
     assert NODES[0][2] == jobs.CLAIM_STATUS
 
 
-def test_a_run_claims_then_reads_then_drafts_then_saves_then_completes() -> None:
+def test_a_run_claims_reads_sections_analyses_drafts_saves_and_completes() -> None:
     outcome, recorder = run()
     assert outcome == "completed"
     assert recorder.names == FULL_PATH
@@ -216,22 +242,30 @@ def test_the_transcript_is_obtained_for_the_requested_video() -> None:
     assert recorder.args("obtain_transcript") == (REQUEST.video.video_id,)
 
 
-def test_drafting_is_entered_with_its_time_and_the_transcript_before_generation() -> None:
+def test_each_stage_is_entered_in_order_with_its_time_and_the_transcript() -> None:
     _, recorder = run()
-    assert recorder.args("enter_stage") == (
-        JOB,
-        USER,
-        "drafting",
-        {"fetching": "t0", "drafting": "t1"},
-        TRANSCRIPT.id,
-    )
-    assert recorder.names.index("enter_stage") < recorder.names.index("generate")
+    assert recorder.all_args("enter_stage") == [
+        (JOB, USER, "reading", {"fetching": "t0", "reading": "t1"}, TRANSCRIPT.id),
+        (JOB, USER, "understanding", {"fetching": "t0", "reading": "t1", "understanding": "t2"}, TRANSCRIPT.id),
+        (
+            JOB,
+            USER,
+            "drafting",
+            {"fetching": "t0", "reading": "t1", "understanding": "t2", "drafting": "t3"},
+            TRANSCRIPT.id,
+        ),
+    ]
 
 
 @pytest.mark.parametrize("claimed", [{}, "not a row", {"stage_started_at": "nonsense"}])
 def test_a_claim_without_readable_stage_times_starts_the_record_empty(claimed: Any) -> None:
     _, recorder = run(claimed=claimed)
-    assert recorder.args("enter_stage")[3] == {"drafting": "t1"}
+    assert recorder.all_args("enter_stage")[0][3] == {"reading": "t1"}
+
+
+def test_analysis_reads_the_transcripts_sections() -> None:
+    _, recorder = run()
+    assert recorder.args("analyse") == ((0,),)
 
 
 def test_the_job_is_claimed_before_anything_is_spent() -> None:
@@ -239,9 +273,11 @@ def test_the_job_is_claimed_before_anything_is_spent() -> None:
     assert recorder.args("claim") == (JOB, USER)
 
 
-def test_generation_reads_the_transcript_it_obtained() -> None:
+def test_generation_reads_the_outline_and_sections_with_its_guidance() -> None:
     _, recorder = run()
-    assert recorder.args("generate") == (TRANSCRIPT.full_text, "social", "linkedin")
+    material, content_type, platform, guidance = recorder.args("generate")
+    assert (content_type, platform, guidance) == ("social", "linkedin", guidance_for("social", OUTLINE.register))
+    assert "Tides follow the moon." in material and TRANSCRIPT.full_text in material
 
 
 def test_the_draft_belongs_to_the_given_user_and_holds_the_result() -> None:
@@ -250,7 +286,9 @@ def test_the_draft_belongs_to_the_given_user_and_holds_the_result() -> None:
     assert row["user_id"] == USER
     assert row["status"] == "draft"
     assert row["content_body"] is BODY
-    assert row["metadata"] == {"platform": "linkedin"}
+    assert row["metadata"]["platform"] == "linkedin"
+    assert row["metadata"]["outline"]["thesis"] == "Tides follow the moon."
+    assert row["metadata"]["outline"]["topics"][0]["sections"] == [{"index": 0, "start": 0.0, "end": 3.0}]
     assert row["transcript_id"] == TRANSCRIPT.id
 
 
@@ -262,7 +300,7 @@ def test_the_job_is_completed_with_the_draft_it_produced() -> None:
 def test_every_job_write_uses_the_same_owner() -> None:
     _, recorder = run()
     for name in ("claim", "enter_stage", "is_unfinished", "complete"):
-        assert recorder.args(name)[1] == USER
+        assert all(args[1] == USER for args in recorder.all_args(name))
 
 
 # --- A job that cannot be claimed ---------------------------------------------
@@ -301,8 +339,8 @@ def test_any_other_transcript_exception_is_unexpected() -> None:
     assert recorder.args("fail") == (JOB, USER, UNEXPECTED_CODE, UNEXPECTED_MESSAGE)
 
 
-def test_a_job_failed_under_the_run_stops_it_before_drafting_spends_anything() -> None:
-    """The sweep failed it: entering drafting matches nothing, so nothing is generated or written."""
+def test_a_job_failed_under_the_run_stops_it_before_anything_is_spent() -> None:
+    """The sweep failed it: entering the next stage matches nothing, so nothing is analysed, generated or written."""
     swept = jobs.JobError("job-not-updated", "That job does not exist, or has already finished.")
     outcome, recorder = run({"enter_stage": swept})
     assert outcome == "stopped"
@@ -320,7 +358,15 @@ def test_a_job_failed_while_drafting_gets_no_draft() -> None:
     """Its draft would be linked to nothing."""
     outcome, recorder = run(unfinished_before_save=False)
     assert outcome == "stopped"
-    assert recorder.names == FULL_PATH[:5]
+    assert recorder.names == FULL_PATH[:8]
+
+
+def test_a_failed_analysis_is_recorded_with_its_code_and_nothing_is_drafted() -> None:
+    error = GenerationError("analysis-failed", "The analysis was unusable.")
+    outcome, recorder = run({"analyse": error})
+    assert outcome == "failed"
+    assert recorder.names == FULL_PATH[:5] + ["fail"]
+    assert recorder.args("fail")[2] == "analysis-failed"
 
 
 def test_a_check_before_saving_that_cannot_be_made_still_saves_the_result() -> None:
@@ -333,7 +379,7 @@ def test_a_check_before_saving_that_cannot_be_made_still_saves_the_result() -> N
 def test_a_generation_that_returns_no_body_is_unexpected() -> None:
     recorder = Recorder()
 
-    def nothing(full_text: str, content_type: Any, platform: Any) -> Any:
+    def nothing(material: str, content_type: Any, platform: Any, guidance: str) -> Any:
         return None
 
     outcome = run_job(JOB, USER, REQUEST, replace(recorder.steps(), generate=nothing))
@@ -346,7 +392,7 @@ def test_a_generation_error_is_recorded_with_its_own_code() -> None:
     error = GenerationError("transcript-too-long", "Too long.")
     outcome, recorder = run({"generate": error})
     assert outcome == "failed"
-    assert recorder.names == FULL_PATH[:4] + ["fail"]
+    assert recorder.names == FULL_PATH[:7] + ["fail"]
     assert recorder.args("fail") == (JOB, USER, "transcript-too-long", "Too long.")
 
 
@@ -365,7 +411,7 @@ def test_an_unexpected_failure_does_not_store_the_exception_text() -> None:
 def test_a_draft_that_cannot_be_saved_is_recorded_and_nothing_is_completed() -> None:
     outcome, recorder = run({"insert_draft": RuntimeError("insert returned nothing")})
     assert outcome == "failed"
-    assert recorder.names == FULL_PATH[:6] + ["fail"]
+    assert recorder.names == FULL_PATH[:9] + ["fail"]
     assert recorder.args("fail")[2] == "draft-not-saved"
 
 
@@ -381,7 +427,7 @@ def test_a_draft_that_cannot_be_linked_is_kept_and_the_job_fails() -> None:
 
 @pytest.mark.parametrize(
     "failing_step",
-    ["obtain_transcript", "enter_stage", "generate", "insert_draft", "complete"],
+    ["obtain_transcript", "enter_stage", "analyse", "generate", "insert_draft", "complete"],
 )
 def test_a_failure_that_cannot_be_recorded_still_does_not_raise(failing_step: str) -> None:
     outcome, recorder = run(

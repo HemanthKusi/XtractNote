@@ -1,7 +1,10 @@
 "use client";
 
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import type { Components } from "react-markdown";
 
 import { Card } from "@/components/ui/card";
@@ -27,7 +30,15 @@ import { QuizView } from "@/components/output/quiz-view";
 // built against.
 //
 // react-markdown renders NO raw HTML by default, so model output can't inject
-// scripts — safe without extra sanitization.
+// scripts — safe without extra sanitization. Maths is the one place HTML is
+// inserted: KaTeX builds it from the formula, escaping its text, with `trust`
+// off so commands such as \href are refused.
+//
+// ── Maths is written `$$…$$`, never `$…$` ──
+// On its own lines it is a displayed equation; inside a sentence, inline.
+// Single dollars stay text, because prose is full of prices: with them on,
+// "$5 and $6" renders as a formula and both prices vanish — in every saved
+// draft, not only new ones.
 //
 // Read-only by design. Copy / edit / regenerate / export live elsewhere.
 // ─────────────────────────────────────────────────────────────
@@ -105,7 +116,13 @@ const markdownComponents: Components = {
   hr() {
     return <hr className="my-6 border-xn-border" />;
   },
-  pre({ children }) {
+  pre({ node, children }) {
+    // A displayed equation arrives as <pre><code class="math-display">. The
+    // code renders it; the pre's code-block styling must not wrap it.
+    const first = node?.children[0];
+    if (first?.type === "element" && classesOf(first.properties?.className).includes("math-display")) {
+      return <>{children}</>;
+    }
     return (
       <pre className="my-4 overflow-x-auto rounded-xn-md border border-xn-border bg-xn-bg-deep p-4 font-mono text-[13px] leading-relaxed text-xn-ink">
         {children}
@@ -113,6 +130,9 @@ const markdownComponents: Components = {
     );
   },
   code({ className, children }) {
+    const classes = classesOf(className);
+    if (classes.includes("math-display")) return <Maths source={String(children)} display />;
+    if (classes.includes("math-inline")) return <Maths source={String(children)} display={false} />;
     const isBlock = Boolean(className);
     if (isBlock) {
       return <code className={`font-mono ${className ?? ""}`}>{children}</code>;
@@ -146,6 +166,29 @@ const markdownComponents: Components = {
   },
 };
 
+/** An element's class names, from a hast property or a JSX className. */
+function classesOf(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  return typeof value === "string" ? value.split(/\s+/) : [];
+}
+
+/**
+ * A formula, rendered by KaTeX. A formula KaTeX cannot read is shown with its
+ * error rather than failing the whole document.
+ */
+function Maths({ source, display }: { source: string; display: boolean }) {
+  const html = katex.renderToString(source.trim(), {
+    displayMode: display,
+    throwOnError: false,
+    trust: false,
+  });
+  return display ? (
+    <div className="my-4 overflow-x-auto py-1 text-xn-ink" dangerouslySetInnerHTML={{ __html: html }} />
+  ) : (
+    <span className="text-xn-ink" dangerouslySetInnerHTML={{ __html: html }} />
+  );
+}
+
 /**
  * The prose renderer. This is the markdown path OutputView used to BE, now
  * extracted so it can sit as a peer of the structured renderers rather than
@@ -159,7 +202,10 @@ function MarkdownView({ body }: { body: MarkdownBody }) {
   }
 
   return (
-    <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+    <Markdown
+      remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
+      components={markdownComponents}
+    >
       {markdown}
     </Markdown>
   );

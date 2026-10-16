@@ -122,16 +122,28 @@ def test_a_call_that_returns_no_job_id_is_not_created(monkeypatch, data) -> None
 
 
 class FakeTable:
-    """Records a chained PostgREST call and answers it with `rows`."""
+    """
+    Records a chained PostgREST call and answers it with `rows`.
+
+    A filter reached through `.not_` is recorded as `not_.<name>`, so a test
+    can tell `.not_.in_(...)` from `.in_(...)` — the negation is the guard.
+    """
 
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self.rows = rows
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
-        self.not_ = self
+        self._negated = False
+
+    @property
+    def not_(self) -> "FakeTable":
+        self._negated = True
+        return self
 
     def __getattr__(self, name: str) -> Any:
         def record(*args: Any) -> "FakeTable":
-            self.calls.append((name, args))
+            recorded = f"not_.{name}" if self._negated else name
+            self._negated = False
+            self.calls.append((recorded, args))
             return self
         return record
 
@@ -159,7 +171,7 @@ def test_entering_a_stage_matches_only_this_users_unfinished_job(monkeypatch) ->
     jobs.enter_stage("job-1", "user-1", "drafting", {"drafting": "t1"}, "transcript-1")
     assert ("eq", ("id", "job-1")) in table.calls
     assert ("eq", ("user_id", "user-1")) in table.calls
-    assert ("in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
+    assert ("not_.in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
 
 
 def test_entering_a_stage_of_a_finished_job_is_job_not_updated(monkeypatch) -> None:
@@ -174,5 +186,5 @@ def test_a_job_is_unfinished_only_while_this_users_unfinished_row_exists(monkeyp
     table = use_table(monkeypatch, rows)
     assert jobs.is_unfinished("job-1", "user-1") is expected
     assert ("eq", ("user_id", "user-1")) in table.calls
-    assert ("in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
+    assert ("not_.in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
 

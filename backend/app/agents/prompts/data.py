@@ -9,8 +9,8 @@ from inside: angle brackets in the material are replaced with look-alikes, so
 text such as `</sections>` in a caption cannot end its block early.
 
 This reduces the reach of instructions hidden in a transcript. It cannot rule
-them out; what limits the damage is that every output is validated against a
-fixed shape before it is used.
+them out. The outline, flashcards and quiz are checked against a fixed shape
+before use; prose drafts are not.
 """
 
 from typing import Iterable

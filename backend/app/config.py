@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     # How old a stored transcript may be and still be used instead of fetching
     # the video's captions again (migration 011).
     transcript_reuse_days: int = Field(default=30, ge=0)
+    # The credits an account holds after each monthly refill (migration 013).
+    # A refill resets the balance to this; unused credits do not roll over.
+    credits_per_month: int = Field(default=30, ge=1)
 
     @model_validator(mode="after")
     def _per_user_limit_fits_the_pool(self) -> "Settings":

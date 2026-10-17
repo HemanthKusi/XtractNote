@@ -23,6 +23,11 @@ reply was lost can be tried again without paying twice.
 **Each user has a limit of unfinished generations** (`generation_per_user`).
 A start is refused once the user has reached it. The database counts and
 creates the job together, taking one user's starts one at a time.
+
+**A start costs credits.** The price comes from the format and the video's
+length, which this route looks up from YouTube — the request carries no
+length. The database reserves the price when it creates the job and refuses a
+balance below it; the job's ending settles it (migration 014).
 """
 
 import logging
@@ -37,8 +42,11 @@ from app.config import settings
 from app.services import jobs
 from app.services.dispatch import GenerationPool, get_generation_pool
 from app.services.drafts import VideoSource
+from app.services.credits import CreditShortfall
 from app.services.generate import GenerationError, system_prompt_for
+from app.services.pricing import price_for
 from app.services.prompts import ContentType, SocialPlatform
+from app.services.video_length import LengthError, video_length
 from app.services.worker import GenerationInput, run_job
 
 logger = logging.getLogger(__name__)
@@ -64,12 +72,12 @@ class GenerateRequest(BaseModel):
 
     # The video the content comes from, for the draft row. The watch URL is not
     # among them: it is built from videoId, so no link from a request reaches a
-    # page.
+    # page. Nor is a length: the route looks it up, because the price depends
+    # on it.
     videoId: str = Field(pattern=VIDEO_ID_PATTERN)
     title: str = Field(min_length=1, max_length=300)
     channel: str = Field(default="", max_length=200)
     thumbnailUrl: str = Field(max_length=500)
-    durationSeconds: float | None = Field(default=None, ge=0, le=86_400, allow_inf_nan=False)
 
     # A key the client generates for this start. Repeating a start with the
     # same key returns the job it created instead of making — and paying for —
@@ -138,6 +146,15 @@ _REQUEST_ERROR_STATUS = {
     "unknown-content-type": 422,
 }
 
+# A video whose length cannot be known is refused before anything is reserved
+# or charged: the video itself is a 422, YouTube or this server's setup a 503.
+_LENGTH_REFUSALS: dict[str, tuple[int, str]] = {
+    "video-not-found": (422, "That video can't be found. It may be private or deleted."),
+    "video-has-no-length": (422, "This video is live or hasn't premiered, so it has no length to price."),
+    "length-unavailable": (503, "The video's length couldn't be checked just now. Try again in a moment."),
+    "youtube-misconfigured": (503, "The video's length can't be checked right now."),
+}
+
 
 def _refuse(status: int, code: str, message: str, headers: dict[str, str] | None = None) -> HTTPException:
     return HTTPException(status_code=status, detail={"code": code, "message": message}, headers=headers)
@@ -189,6 +206,28 @@ def _at_limit() -> HTTPException:
     )
 
 
+def _length_unknown(error: LengthError) -> HTTPException:
+    status, message = _LENGTH_REFUSALS.get(error.code, (503, "The video's length couldn't be checked."))
+    headers = {"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)} if status == 503 else None
+    return _refuse(status, error.code, message, headers=headers)
+
+
+def _credits_short(shortfall: CreditShortfall | None) -> HTTPException:
+    """
+    A 402 saying what the start costs, what the user has, and when more
+    arrive — or only the code, when the database's detail could not be read.
+    """
+    detail: dict[str, object] = {
+        "code": "credits-short",
+        "message": "You don't have enough credits for this generation.",
+    }
+    if shortfall is not None:
+        detail["cost"] = shortfall.cost
+        detail["balance"] = shortfall.balance
+        detail["nextRefillAt"] = shortfall.next_refill_at.isoformat()
+    return HTTPException(status_code=402, detail=detail)
+
+
 # ── Start a generation ───────────────────────────────────────
 @router.post("", status_code=202, response_model=StartedResponse)
 def start_generation(
@@ -202,13 +241,17 @@ def start_generation(
     In this order, so that a refusal at any step leaves nothing behind:
       1. the request's own checks — a failure is a 422, and no job exists
       2. the request key — a job already made for it is returned, not repeated
-      3. a place in the pool — none free is a 503, and no job exists
-      4. the job row, if the user is under their limit — at it is a 429; if
-         the row is not created for any reason, the place is given back
-      5. the work starts in that place
+         and not charged again
+      3. the price, from the video's length as YouTube reports it — a length
+         that cannot be known is a 422 or 503, before a place is taken
+      4. a place in the pool — none free is a 503, and no job exists
+      5. the job row and its reserved price, if the user is under their limit
+         and has the credits — a 429 or 402 otherwise; if the row is not
+         created for any reason, the place is given back
+      6. the work starts in that place
 
-    A plain `def`: creating the job is a blocking database call, so FastAPI
-    runs this on a request thread. The generation itself runs on the pool.
+    A plain `def`: the length lookup and creating the job are blocking calls,
+    so FastAPI runs this on a request thread. The generation runs on the pool.
     """
     try:
         system_prompt_for(req.contentType, req.platform)
@@ -219,6 +262,12 @@ def start_generation(
     existing = _job_already_made(user, req, request_id)
     if existing is not None:
         return StartedResponse(jobId=existing)
+
+    try:
+        length_seconds = video_length(req.videoId)
+    except LengthError as exc:
+        raise _length_unknown(exc)
+    cost = price_for(req.contentType, length_seconds)
 
     slot = pool.reserve()
     if slot is None:
@@ -232,11 +281,15 @@ def start_generation(
             request_id,
             req.platform,
             settings.generation_per_user,
+            cost,
+            settings.credits_per_month,
         )
     except jobs.JobError as exc:
         slot.release()
         if exc.code == "generation-limit":
             raise _at_limit()
+        if exc.code == "credits-short":
+            raise _credits_short(exc.shortfall)
         if exc.code != "duplicate-request":
             logger.warning("could not create a generation job: %s", exc.code)
             raise _not_started()
@@ -260,13 +313,14 @@ def start_generation(
             title=req.title,
             channel=req.channel,
             thumbnail_url=req.thumbnailUrl,
-            duration_seconds=req.durationSeconds,
+            duration_seconds=length_seconds,
         ),
     )
 
     if not slot.start(partial(run_job, job_id, user.id, request)):
         # The pool closed between reserving and starting — the server is
-        # stopping. End the job now rather than leave it for the sweep.
+        # stopping. End the job now rather than leave it for the sweep; its
+        # reserved credits are refunded as it fails.
         try:
             jobs.fail(job_id, user.id, "generation-busy", "The server was stopping.")
         except Exception:

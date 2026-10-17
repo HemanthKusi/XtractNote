@@ -54,6 +54,8 @@ def create(**changes: Any) -> str:
         "request_id": "key-1",
         "platform": None,
         "limit": 2,
+        "cost": 2,
+        "allowance": 30,
         **changes,
     }
     return create_job(**args)
@@ -92,7 +94,31 @@ def test_the_job_is_made_by_the_admission_function(monkeypatch) -> None:
         "p_request_id": "key-1",
         "p_platform": None,
         "p_limit": 2,
+        "p_cost": 2,
+        "p_allowance": 30,
     }
+
+
+def test_too_few_credits_is_credits_short_with_its_numbers(monkeypatch) -> None:
+    detail = '{"cost" : 2, "balance" : 1, "next_refill_at" : "2026-11-06T20:10:10.029421-07:00"}'
+    error = APIError({"code": "XN402", "message": "costs 2", "details": detail, "hint": None})
+    use(monkeypatch, raises=error)
+    with pytest.raises(JobError) as caught:
+        create()
+    assert caught.value.code == "credits-short"
+    shortfall = caught.value.shortfall
+    assert shortfall is not None
+    assert (shortfall.cost, shortfall.balance) == (2, 1)
+    assert shortfall.next_refill_at.isoformat() == "2026-11-06T20:10:10.029421-07:00"
+
+
+@pytest.mark.parametrize("detail", [None, "", "not json", "[1]", '{"cost": 2}', '{"cost": 0, "balance": 1, "next_refill_at": "2026-11-06T00:00:00+00:00"}'])
+def test_too_few_credits_with_an_unreadable_detail_is_still_credits_short(monkeypatch, detail) -> None:
+    error = APIError({"code": "XN402", "message": "short", "details": detail, "hint": None})
+    use(monkeypatch, raises=error)
+    with pytest.raises(JobError) as caught:
+        create()
+    assert caught.value.code == "credits-short" and caught.value.shortfall is None
 
 
 def test_a_social_job_carries_its_platform(monkeypatch) -> None:

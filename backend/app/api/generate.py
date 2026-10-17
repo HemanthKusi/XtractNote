@@ -25,8 +25,8 @@ A start is refused once the user has reached it. The database counts and
 creates the job together, taking one user's starts one at a time.
 
 **A start costs credits.** The price comes from the format and the video's
-length, which this route looks up from YouTube — the request carries no
-length. The database reserves the price when it creates the job and refuses a
+length, which this route looks up from YouTube — nothing in the request is
+read for it. The database reserves the price when it creates the job and refuses a
 balance below it; the job's ending settles it (migration 014).
 """
 
@@ -215,7 +215,8 @@ def _length_unknown(error: LengthError) -> HTTPException:
 def _credits_short(shortfall: CreditShortfall | None) -> HTTPException:
     """
     A 402 saying what the start costs, what the user has, and when more
-    arrive — or only the code, when the database's detail could not be read.
+    arrive — or without those numbers, when the database's detail could not
+    be read.
     """
     detail: dict[str, object] = {
         "code": "credits-short",
@@ -319,8 +320,7 @@ def start_generation(
 
     if not slot.start(partial(run_job, job_id, user.id, request)):
         # The pool closed between reserving and starting — the server is
-        # stopping. End the job now rather than leave it for the sweep; its
-        # reserved credits are refunded as it fails.
+        # stopping. End the job now rather than leave it for the sweep.
         try:
             jobs.fail(job_id, user.id, "generation-busy", "The server was stopping.")
         except Exception:

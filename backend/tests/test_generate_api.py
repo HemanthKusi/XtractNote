@@ -260,8 +260,8 @@ def test_a_non_finite_number_in_the_body_is_not_a_500(client, fake_jobs, value: 
         content=json.dumps({**VALID, "durationSeconds": value}),
         headers={"content-type": "application/json"},
     )
-    assert response.status_code != 500
-    assert fake_jobs.charges in ([], [(1, settings.credits_per_month)])
+    assert response.status_code == 202
+    assert fake_jobs.charges == [(1, settings.credits_per_month)]
 
 
 def test_a_repeated_request_key_is_not_priced_or_charged_again(client, fake_jobs, length) -> None:

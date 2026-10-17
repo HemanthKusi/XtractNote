@@ -34,6 +34,11 @@ const DETAIL = { code: "credits-short", message: "short", cost: 2, balance: 1, n
 // ── Reading the refusal ──
 check("a refusal with all three numbers is read", shortfallFrom(DETAIL), { cost: 2, balance: 1, nextRefillAt: REFILL });
 check("a zero balance is a balance", shortfallFrom({ ...DETAIL, balance: 0 })?.balance, 0);
+check(
+  "a refill time in Z form is read",
+  shortfallFrom({ ...DETAIL, nextRefillAt: "2026-10-30T23:30:49Z" })?.nextRefillAt,
+  "2026-10-30T23:30:49Z",
+);
 for (const [name, detail] of [
   ["no detail", null],
   ["not an object", "credits-short"],
@@ -44,6 +49,9 @@ for (const [name, detail] of [
   ["a negative balance", { ...DETAIL, balance: -1 }],
   ["no refill time", { ...DETAIL, nextRefillAt: undefined }],
   ["a refill time that is not a date", { ...DETAIL, nextRefillAt: "next month" }],
+  ["a refill date with no time", { ...DETAIL, nextRefillAt: "2026-10-30" }],
+  ["a refill time with no offset", { ...DETAIL, nextRefillAt: "2026-10-30T23:30:49" }],
+  ["a refill time that is not a real date", { ...DETAIL, nextRefillAt: "2026-13-40T00:00:00Z" }],
 ]) {
   check(`${name} is not read as a shortfall`, shortfallFrom(detail), null);
 }

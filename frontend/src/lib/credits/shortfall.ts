@@ -19,6 +19,15 @@ function isCount(value: unknown, minimum: number): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= minimum;
 }
 
+// A date and time with its offset. `Date.parse` also accepts a bare date
+// (read as UTC midnight) and a time with no offset (read as the viewer's own
+// clock); either can name the wrong day, so both are refused.
+const ZONED_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+function isZonedTime(value: unknown): value is string {
+  return typeof value === "string" && ZONED_TIME.test(value) && !Number.isNaN(Date.parse(value));
+}
+
 /**
  * The shortfall in a refusal's detail, or null when any part is missing or
  * out of shape — the refusal is then shown without numbers.
@@ -28,7 +37,7 @@ export function shortfallFrom(detail: unknown): CreditShortfall | null {
   const d = detail as Record<string, unknown>;
   const refill = d.nextRefillAt;
   if (!isCount(d.cost, 1) || !isCount(d.balance, 0)) return null;
-  if (typeof refill !== "string" || Number.isNaN(Date.parse(refill))) return null;
+  if (!isZonedTime(refill)) return null;
   return { cost: d.cost, balance: d.balance, nextRefillAt: refill };
 }
 

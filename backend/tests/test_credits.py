@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from postgrest.exceptions import APIError
 
 from app.config import settings
 from app.services import credits
@@ -26,8 +27,9 @@ ROW = {"balance": 30, "next_refill_at": "2026-11-16T20:01:54.123456+00:00"}
 
 
 class FakeCall:
-    def __init__(self, data: Any) -> None:
+    def __init__(self, data: Any, raises: Exception | None = None) -> None:
         self.data = data
+        self.raises = raises
         self.function: str | None = None
         self.params: dict[str, Any] | None = None
 
@@ -37,7 +39,13 @@ class FakeCall:
         return self
 
     def execute(self) -> Any:
+        if self.raises:
+            raise self.raises
         return type("Response", (), {"data": self.data})()
+
+
+def api_error(code: str) -> APIError:
+    return APIError({"code": code, "message": "from the database", "details": None, "hint": None})
 
 
 # --- Reading a balance --------------------------------------------------------
@@ -51,6 +59,22 @@ def test_the_balance_is_read_through_the_refilling_function(monkeypatch: pytest.
     )
     assert call.function == "credit_balance"
     assert call.params == {"p_user_id": "user-1", "p_allowance": settings.credits_per_month}
+
+
+def test_a_user_with_no_sign_up_time_is_no_sign_up(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(credits, "get_supabase_client", lambda: FakeCall(None, api_error("P0002")))
+    with pytest.raises(CreditError) as caught:
+        balance_for("user-1")
+    assert caught.value.code == "no-sign-up"
+
+
+@pytest.mark.parametrize("code", ["42501", "22023", "PGRST301", "57014"])
+def test_any_other_database_error_is_raised_as_it_came(monkeypatch: pytest.MonkeyPatch, code: str) -> None:
+    """A permission or configuration fault must not pass for an ordinary refusal."""
+    monkeypatch.setattr(credits, "get_supabase_client", lambda: FakeCall(None, api_error(code)))
+    with pytest.raises(APIError) as caught:
+        balance_for("user-1")
+    assert caught.value.code == code
 
 
 def test_the_allowance_is_thirty_by_default() -> None:
@@ -104,12 +128,25 @@ def test_users_can_neither_read_nor_write_the_credit_tables(table: str) -> None:
 
 @pytest.mark.parametrize(
     "function",
-    ["credit_period(timestamptz, timestamptz)", "apply_credit_refill(uuid, int)", "credit_balance(uuid, int)"],
+    [
+        "credit_sign_up_time(uuid)",
+        "credit_period(timestamptz, timestamptz)",
+        "apply_credit_refill(uuid, int)",
+        "credit_balance(uuid, int)",
+    ],
 )
 def test_only_the_backend_can_call_the_credit_functions(function: str) -> None:
     assert f"revoke all on function public.{function} from public, anon, authenticated" in STATEMENTS
     assert f"grant execute on function public.{function} to service_role" in STATEMENTS
-    assert "security definer" not in STATEMENTS
+
+
+def test_only_the_sign_up_lookup_runs_with_its_owners_rights() -> None:
+    """service_role cannot read auth.users live; one narrow function reads it, and nothing else does."""
+    assert STATEMENTS.count("security definer") == 1
+    definer = STATEMENTS[STATEMENTS.index("function public.credit_sign_up_time"):]
+    definer = definer[: definer.index("$$;")]
+    assert "security definer set search_path = ''" in definer
+    assert "select created_at from auth.users where id = p_user_id;" in definer
 
 
 def test_a_balance_can_never_go_below_zero() -> None:
@@ -123,6 +160,12 @@ def test_refill_dates_are_counted_from_the_sign_up_time_in_utc() -> None:
     assert "next_refill_at + " not in STATEMENTS and "period_start + " not in STATEMENTS
     assert "set timezone = 'UTC'" in STATEMENTS
     assert "from public.credit_period(v_anchor, v_now)" in STATEMENTS
+
+
+def test_the_sign_up_time_comes_from_auth_not_the_editable_profile() -> None:
+    """Users may update their own profile row, so its created_at would let them pick their refill date."""
+    assert "v_anchor := public.credit_sign_up_time(p_user_id);" in STATEMENTS
+    assert "public.profiles" not in STATEMENTS
 
 
 def test_a_refill_resets_the_balance_rather_than_adding_to_it() -> None:

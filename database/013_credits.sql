@@ -8,8 +8,12 @@
 --
 -- The allowance refills on the account's sign-up date each month and RESETS
 -- the balance to the allowance: unused credits never roll over. A refill is
--- applied when a balance is next read or spent, under the per-user lock that
--- admission takes, so there is no scheduler to miss a run.
+-- applied when a balance is next read, under the per-user lock that
+-- admission also takes, so there is no scheduler to miss a run.
+--
+-- The sign-up time is auth.users.created_at, which the auth service writes
+-- and users cannot. profiles.created_at is not used: users may update their
+-- own profile row, so they could choose their own refill date.
 --
 -- Refill dates are "sign-up + N months", counted from the sign-up time and
 -- never from the previous refill. Postgres clamps a month that lacks the day
@@ -27,7 +31,8 @@
 create table if not exists public.credit_accounts (
   user_id         uuid primary key references auth.users(id) on delete cascade,
   balance         int not null check (balance >= 0),
-  -- The sign-up time the monthly periods are counted from.
+  -- The sign-up time the monthly periods are counted from, copied from
+  -- auth.users when the account is created.
   anchor_at       timestamptz not null,
   period_start    timestamptz not null,
   next_refill_at  timestamptz not null check (next_refill_at > period_start),
@@ -108,14 +113,33 @@ comment on function public.credit_period(timestamptz, timestamptz) is
   'The monthly credit period anchored at p_anchor that contains p_at, counted '
   'as anchor + N months in UTC. Backend only.';
 
+-- ── A user's sign-up time ──
+-- service_role cannot read auth.users on the hosted database, so this one
+-- function runs as its owner, the role that applies this migration. It
+-- returns a single timestamp for the user it is given, or null, and nothing
+-- else; like the others, only service_role may call it.
+create or replace function public.credit_sign_up_time(p_user_id uuid)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select created_at from auth.users where id = p_user_id;
+$$;
+
+comment on function public.credit_sign_up_time(uuid) is
+  'The user''s auth.users.created_at, or null. Runs as its owner, because '
+  'service_role cannot read auth.users. Backend only.';
+
 -- ── The refill ──
 -- Creates the account on first use, or resets it when its refill date has
 -- passed, and writes the ledger row for either. Returns the account as it
 -- now stands.
 --
 -- It takes no lock: the caller must hold the per-user lock, as
--- credit_balance() and admission do. Two callers without it could both
--- create the account, and the second would fail on the primary key.
+-- credit_balance() does. Two callers without it could both create the
+-- account, and the second would fail on the primary key.
 create or replace function public.apply_credit_refill(
   p_user_id   uuid,
   p_allowance int
@@ -147,9 +171,9 @@ begin
   if v_exists then
     v_anchor := v_account.anchor_at;
   else
-    select created_at into v_anchor from public.profiles where id = p_user_id;
+    v_anchor := public.credit_sign_up_time(p_user_id);
     if v_anchor is null then
-      raise exception 'This user has no profile to count credit periods from.'
+      raise exception 'This user has no sign-up time to count credit periods from.'
         using errcode = 'P0002';  -- no_data_found
     end if;
   end if;
@@ -197,8 +221,8 @@ as $$
 declare
   v_account public.credit_accounts;
 begin
-  -- The lock admit_generation_job takes, so a balance is never read halfway
-  -- through an admission that spends from it.
+  -- The lock admit_generation_job takes, so one user's balance reads and
+  -- admissions run one at a time.
   perform pg_advisory_xact_lock(
     hashtextextended('generation_jobs:' || p_user_id::text, 0)
   );
@@ -216,12 +240,15 @@ comment on function public.credit_balance(uuid, int) is
 
 -- Postgres grants execute on a new function to PUBLIC, and the hosted
 -- database also grants it to anon and authenticated. Take all three away.
+revoke all on function public.credit_sign_up_time(uuid)
+  from public, anon, authenticated;
 revoke all on function public.credit_period(timestamptz, timestamptz)
   from public, anon, authenticated;
 revoke all on function public.apply_credit_refill(uuid, int)
   from public, anon, authenticated;
 revoke all on function public.credit_balance(uuid, int)
   from public, anon, authenticated;
+grant execute on function public.credit_sign_up_time(uuid) to service_role;
 grant execute on function public.credit_period(timestamptz, timestamptz) to service_role;
 grant execute on function public.apply_credit_refill(uuid, int) to service_role;
 grant execute on function public.credit_balance(uuid, int) to service_role;

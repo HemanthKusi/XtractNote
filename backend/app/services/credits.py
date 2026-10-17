@@ -11,10 +11,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from postgrest.exceptions import APIError
+
 from app.config import settings
 from app.db.supabase import get_supabase_client
 
 BALANCE_FUNCTION = "credit_balance"
+
+# The SQLSTATE credit_balance raises for a user with no record to count credit
+# periods from (no_data_found).
+NO_SIGN_UP = "P0002"
 
 
 class CreditError(Exception):
@@ -61,10 +67,20 @@ def balance_for(user_id: str) -> CreditBalance:
     This user's balance, after any refill that has come due.
 
     The first call for a user creates their account with the full allowance.
+
+    Raises CreditError("no-sign-up") for a user the database has no sign-up
+    time for. Any other database error is raised as it came, as in
+    `jobs.create_job`, so a permission or configuration fault is not taken
+    for an ordinary refusal.
     """
-    response = (
-        get_supabase_client()
-        .rpc(BALANCE_FUNCTION, {"p_user_id": user_id, "p_allowance": settings.credits_per_month})
-        .execute()
-    )
+    try:
+        response = (
+            get_supabase_client()
+            .rpc(BALANCE_FUNCTION, {"p_user_id": user_id, "p_allowance": settings.credits_per_month})
+            .execute()
+        )
+    except APIError as exc:
+        if exc.code == NO_SIGN_UP:
+            raise CreditError("no-sign-up", "There is no sign-up time to count this user's credits from.") from exc
+        raise
     return balance_from(response.data)

@@ -175,8 +175,15 @@ reviews:
 
     - path: "database/**/*.sql"
       instructions: |
-        - Every table needs row-level security enabled, with policies covering
-          select, insert, update and delete.
+        - Every table needs row-level security enabled. Each operation users
+          may perform needs a policy scoped to the owner. An operation users
+          must never perform gets NO policy — a policy would grant it — and
+          its table privilege revoked from anon and authenticated, with a
+          comment in the migration saying why. Backend-only by design:
+          writes to generation_jobs (migration 010; users keep their read
+          policy), and all access to credit_accounts and credit_ledger
+          (migration 013). Do not ask for user policies on those operations;
+          flag one if it appears.
         - Row-level security filtering is silent: an excluded row produces no
           error, only a smaller result set.
         - Any `security definer` function must pin its search path.

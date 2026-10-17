@@ -69,6 +69,7 @@ import {
   startKeyFor,
   type KeyStore,
 } from "@/lib/generation/start-key";
+import { shortfallMessage } from "@/lib/credits/shortfall";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
 import { GeneratingPanel } from "@/components/create/generating-panel";
@@ -116,8 +117,9 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   // From generation — the job could not read the video's transcript
   "no-captions":
     "This video doesn't have captions we can read. Try another video with captions or subtitles turned on.",
+  // Also refused at the start, when the video's length is looked up.
   "video-not-found":
-    "We couldn't load this video's transcript — it may be private, deleted, or unavailable.",
+    "We couldn't find this video — it may be private, deleted, or unavailable.",
   "transcript-blocked":
     "YouTube is temporarily blocking transcript requests. Please try again in a moment.",
   "transcript-failed":
@@ -143,6 +145,17 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
   "job-not-created": "We couldn't start the generation. Please try again.",
   // The key is settled when this arrives, so trying again sends a new one.
   "request-key-reused": "We couldn't start the generation. Please try again.",
+  // Shown only when the refusal's numbers could not be read; with them, the
+  // message says the price, the balance and the refill date.
+  "credits-short": "You don't have enough credits for this. Your credits refill each month.",
+  // The price depends on the video's length, so a length that can't be
+  // known refuses the start rather than guessing a price.
+  "video-has-no-length":
+    "This video is live or hasn't premiered yet. Try again once it's finished.",
+  "length-unavailable":
+    "We couldn't check this video's length just now. Please try again in a moment.",
+  "youtube-misconfigured":
+    "We can't reach YouTube from our end right now. Please try again shortly.",
   // From generation — recorded on a job that failed
   "analysis-failed":
     "We couldn't work out how this video is organised this time. Please try again.",
@@ -659,6 +672,10 @@ export default function CreatePage() {
       // one otherwise — which covers a reply that only looks like a refusal,
       // such as a proxy's 502 after the backend accepted.
       if (started.reason === "request-key-reused") settle();
+      if (started.reason === "credits-short" && started.shortfall) {
+        setStatus({ phase: "generate-error", meta, message: shortfallMessage(started.shortfall) });
+        return;
+      }
       fail(started.reason);
       return;
     }

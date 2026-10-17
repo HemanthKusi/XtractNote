@@ -113,6 +113,29 @@ def test_youtube_unreachable_is_length_unavailable_and_leaks_no_key(error: httpx
 
 
 def test_the_price_follows_the_looked_up_length() -> None:
-    """The lookup takes only the video id, and the price takes only that length."""
+    """Two lengths in different tiers, so a lookup that ignored YouTube's answer would fail."""
+    under_one_hour = client(lambda r: httpx.Response(200, content=answer(video("PT59M"))))
     two_and_a_half_hours = client(lambda r: httpx.Response(200, content=answer(video("PT2H30M"))))
+    assert price_for("research", video_length("wjZofJX0v4M", client=under_one_hour)) == 2
     assert price_for("research", video_length("wjZofJX0v4M", client=two_and_a_half_hours)) == 2 + 2
+
+
+@pytest.mark.parametrize(
+    "video_id",
+    ["wjZofJX0v4M,t0kACis_dJE", "wjZofJX0v4", "wjZofJX0v4MM", "wjZofJX0v4M\n", "wjZof JX0v4", "", None],
+)
+def test_anything_but_one_video_id_is_refused_without_a_call(video_id: object) -> None:
+    """The API takes a list of ids and the first answer is priced, so a list could price the wrong video."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no call should be made")
+
+    with pytest.raises(LengthError) as caught:
+        video_length(video_id, client=client(handler))  # type: ignore[arg-type]
+    assert caught.value.code == "video-not-found"
+
+
+def test_an_answer_with_more_than_one_video_is_not_priced() -> None:
+    with pytest.raises(LengthError) as caught:
+        length_from(200, answer({"items": [video("PT59M")["items"][0], video("PT9H")["items"][0]]}))
+    assert caught.value.code == "length-unavailable"

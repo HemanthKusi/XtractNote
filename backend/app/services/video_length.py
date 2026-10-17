@@ -6,11 +6,12 @@ than taken from the request: one `videos.list` call for `contentDetails`,
 which costs one unit of the API's daily quota.
 
 `length_from` reads the API's answer and is pure; `video_length` makes the
-call. Every way the length cannot be known has its own code, so a refusal
-can say whether trying again might help.
+call. A length that cannot be known is refused with one of the four codes
+listed on `LengthError`.
 """
 
 import json
+import re
 from typing import Any
 
 import httpx
@@ -21,14 +22,21 @@ from app.utils.youtube import YOUTUBE_VIDEOS_URL, parse_iso8601_duration
 #: How long the call may wait on YouTube, per phase of the request.
 LOOKUP_TIMEOUT_SECONDS = 10.0
 
+# One YouTube video id. The API also accepts a comma-separated list of ids,
+# and the answer's first video is the one priced, so anything else is refused
+# before the call.
+_VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+
 
 class LengthError(Exception):
     """
     The length could not be known. `code` is one of:
-      - "video-not-found"       : no such video, or private or blocked
+      - "video-not-found"       : no such video, private or blocked, or not
+                                  a single video id
       - "video-has-no-length"   : live or upcoming; YouTube reports no length
       - "length-unavailable"    : YouTube unreachable, refused, or answered
-                                  in a shape this module does not read
+                                  in a shape this module does not read,
+                                  including with more than one video
       - "youtube-misconfigured" : the server has no YouTube API key
     """
 
@@ -55,6 +63,8 @@ def length_from(status_code: int, body: bytes) -> int:
         raise _unavailable("YouTube's answer had no list of videos.")
     if not items:
         raise LengthError("video-not-found", "The video does not exist, or is private or blocked.")
+    if len(items) > 1:
+        raise _unavailable("YouTube answered with more than one video.")
     details = items[0].get("contentDetails") if isinstance(items[0], dict) else None
     raw = details.get("duration") if isinstance(details, dict) else None
     if raw is None:
@@ -72,8 +82,11 @@ def video_length(video_id: str, *, client: httpx.Client | None = None) -> int:
     The length of `video_id` in whole seconds, asked of YouTube.
 
     `client` is for tests; the default is a fresh client with this module's
-    timeout. Raises LengthError, with the codes listed on it.
+    timeout. Raises LengthError, with the codes listed on it; an id that is
+    not exactly one video id is "video-not-found", without a call.
     """
+    if not isinstance(video_id, str) or not _VIDEO_ID.fullmatch(video_id):
+        raise LengthError("video-not-found", "That is not a single YouTube video id.")
     api_key = settings.youtube_api_key
     if not api_key:
         raise LengthError("youtube-misconfigured", "The server has no YouTube API key.")

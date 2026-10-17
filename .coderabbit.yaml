@@ -180,10 +180,12 @@ reviews:
           must never perform gets NO policy — a policy would grant it — and
           its table privilege revoked from anon and authenticated, with a
           comment in the migration saying why. Backend-only by design:
-          writes to generation_jobs (migration 010; users keep their read
-          policy), and all access to credit_accounts and credit_ledger
-          (migration 013). Do not ask for user policies on those operations;
-          flag one if it appears.
+          insert, update and delete on generation_jobs (migration 010; users
+          keep their read policy), and all access to credit_accounts and
+          credit_ledger (migration 013). Judge the final state after all
+          migrations: an earlier migration may create a policy that a later
+          one drops. Do not ask for user policies on those operations; flag
+          one if it appears in the final state.
         - Row-level security filtering is silent: an excluded row produces no
           error, only a smaller result set.
         - Any `security definer` function must pin its search path.

@@ -39,6 +39,11 @@ check(
   shortfallFrom({ ...DETAIL, nextRefillAt: "2026-10-30T23:30:49Z" })?.nextRefillAt,
   "2026-10-30T23:30:49Z",
 );
+check(
+  "29 February in a leap year is read",
+  shortfallFrom({ ...DETAIL, nextRefillAt: "2028-02-29T00:00:00+05:30" })?.nextRefillAt,
+  "2028-02-29T00:00:00+05:30",
+);
 for (const [name, detail] of [
   ["no detail", null],
   ["not an object", "credits-short"],
@@ -52,6 +57,10 @@ for (const [name, detail] of [
   ["a refill date with no time", { ...DETAIL, nextRefillAt: "2026-10-30" }],
   ["a refill time with no offset", { ...DETAIL, nextRefillAt: "2026-10-30T23:30:49" }],
   ["a refill time that is not a real date", { ...DETAIL, nextRefillAt: "2026-13-40T00:00:00Z" }],
+  ["a day February does not have", { ...DETAIL, nextRefillAt: "2026-02-30T00:00:00Z" }],
+  ["29 February outside a leap year", { ...DETAIL, nextRefillAt: "2026-02-29T00:00:00Z" }],
+  ["a 31st in a 30-day month", { ...DETAIL, nextRefillAt: "2026-04-31T00:00:00Z" }],
+  ["the hour 24", { ...DETAIL, nextRefillAt: "2026-10-30T24:00:00Z" }],
 ]) {
   check(`${name} is not read as a shortfall`, shortfallFrom(detail), null);
 }

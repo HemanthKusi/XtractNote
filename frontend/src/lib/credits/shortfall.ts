@@ -19,13 +19,30 @@ function isCount(value: unknown, minimum: number): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= minimum;
 }
 
-// A date and time with its offset. `Date.parse` also accepts a bare date
-// (read as UTC midnight) and a time with no offset (read as the viewer's own
-// clock); either can name the wrong day, so both are refused.
-const ZONED_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+// A date and time with its offset, each field in range. `Date.parse` alone
+// would also take a bare date, a time with no offset, and a day the month does
+// not have — rolling 30 February into March — and any of those can name a day
+// the server did not send.
+const ZONED_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function daysIn(year: number, month: number): number {
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return month === 2 && leap ? 29 : DAYS_IN_MONTH[month - 1];
+}
 
 function isZonedTime(value: unknown): value is string {
-  return typeof value === "string" && ZONED_TIME.test(value) && !Number.isNaN(Date.parse(value));
+  if (typeof value !== "string") return false;
+  const match = ZONED_TIME.exec(value);
+  if (match === null) return false;
+  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  const [offsetHour, offsetMinute] = [match[8], match[9]].map((part) => Number(part ?? 0));
+  return (
+    month >= 1 && month <= 12 &&
+    day >= 1 && day <= daysIn(year, month) &&
+    hour <= 23 && minute <= 59 && second <= 59 &&
+    offsetHour <= 23 && offsetMinute <= 59
+  );
 }
 
 /**

@@ -89,8 +89,8 @@ check(
 check("the refill date alone is the viewer's date", refillDate(REFILL, { timeZone: "Asia/Tokyo" }), "31 October");
 
 // ── Reading the balance ──
-const BALANCE = { balance: 28, nextRefillAt: REFILL };
-check("a balance with its refill time is read", balanceFrom(BALANCE), BALANCE);
+const BALANCE = { balance: 28, allowance: 30, nextRefillAt: REFILL };
+check("a balance with its allowance and refill time is read", balanceFrom(BALANCE), BALANCE);
 check("a zero balance is read", balanceFrom({ ...BALANCE, balance: 0 })?.balance, 0);
 for (const [name, body] of [
   ["no body", null],
@@ -98,6 +98,8 @@ for (const [name, body] of [
   ["a negative balance", { ...BALANCE, balance: -1 }],
   ["a balance as text", { ...BALANCE, balance: "28" }],
   ["a refill time with no offset", { ...BALANCE, nextRefillAt: "2026-10-30T23:30:49" }],
+  ["no allowance", { ...BALANCE, allowance: undefined }],
+  ["an allowance of zero", { ...BALANCE, allowance: 0 }],
 ]) {
   check(`${name} is not read as a balance`, balanceFrom(body), null);
 }
@@ -136,7 +138,7 @@ check(
 );
 
 // ── Known to be short ──
-const HAS = (n) => ({ phase: "ready", balance: { balance: n, nextRefillAt: REFILL } });
+const HAS = (n) => ({ phase: "ready", balance: { balance: n, allowance: 30, nextRefillAt: REFILL } });
 const COSTS = (n) => ({ phase: "ready", credits: n });
 check("short by the difference", shortBy(COSTS(3), HAS(1)), 2);
 check("exactly enough is not short", shortBy(COSTS(3), HAS(3)), null);

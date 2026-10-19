@@ -70,9 +70,9 @@ import {
   type KeyStore,
 } from "@/lib/generation/start-key";
 import { shortfallMessage } from "@/lib/credits/shortfall";
-import { costFor, shortBy, type BalanceState, type QuoteState } from "@/lib/credits/cost";
-import { fetchBalance, fetchQuote } from "@/lib/api/credits";
-import { createClient } from "@/lib/supabase/client";
+import { costFor, shortBy, type QuoteState } from "@/lib/credits/cost";
+import { fetchQuote } from "@/lib/api/credits";
+import { useBalance } from "@/components/credits/balance-provider";
 import { StartCost } from "@/components/create/start-cost";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
@@ -455,63 +455,16 @@ export default function CreatePage() {
 
   // ── What a start costs, and what the user has ── (#454)
   //
-  // The balance is read each time the start line appears — on reaching the
-  // picker and on every return to it — so a charge, a refund or a refill
-  // shows without a reload. A balance already on screen stays while it is
-  // read again.
-  const [balance, setBalance] = useState<BalanceState>({ phase: "loading" });
-  const balanceRun = useRef(0);
-  const loadBalance = useCallback(async () => {
-    const run = ++balanceRun.current;
-    const result = await fetchBalance();
-    if (run !== balanceRun.current) return;
-    setBalance(result.ok ? { phase: "ready", balance: result.balance } : { phase: "failed" });
-  }, []);
+  // The balance is the app's shared one (BalanceProvider), which the menu
+  // shows too and which handles a change of signed-in user. It is read again
+  // each time the start line appears — on reaching the picker and on every
+  // return to it — and after a start is admitted, when its price is reserved.
+  const { balance, refresh: refreshBalance, observed: observedBalance } = useBalance();
 
   const atStartLine = status.phase === "picking" || status.phase === "generate-error";
-  // The same, for the auth listener below, which outlives the render it
-  // was set up in.
-  const atStartLineRef = useRef(atStartLine);
   useEffect(() => {
-    atStartLineRef.current = atStartLine;
-  }, [atStartLine]);
-  useEffect(() => {
-    if (!atStartLine) return;
-    void loadBalance();
-    const runs = balanceRun;
-    return () => {
-      runs.current += 1;
-    };
-  }, [atStartLine, loadBalance]);
-
-  // When the signed-in user changes — another tab signing in as someone else
-  // — the balance on screen is dropped, any read in flight is ignored, and
-  // the balance is read again if the start line is showing. The first report
-  // only records who is signed in. The read is deferred out of the callback:
-  // Supabase warns that calling its other methods from inside one can
-  // deadlock.
-  useEffect(() => {
-    let signedIn: string | null | undefined;
-    let reread: ReturnType<typeof setTimeout> | null = null;
-    const runs = balanceRun;
-    const { data } = createClient().auth.onAuthStateChange((_event, session) => {
-      const userId = session?.user.id ?? null;
-      if (signedIn !== undefined && userId !== signedIn) {
-        runs.current += 1;
-        setBalance({ phase: "loading" });
-        if (reread !== null) clearTimeout(reread);
-        reread = setTimeout(() => {
-          reread = null;
-          if (atStartLineRef.current) void loadBalance();
-        }, 0);
-      }
-      signedIn = userId;
-    });
-    return () => {
-      if (reread !== null) clearTimeout(reread);
-      data.subscription.unsubscribe();
-    };
-  }, [loadBalance]);
+    if (atStartLine) refreshBalance();
+  }, [atStartLine, refreshBalance]);
 
   // A quote prices every format on one video, so it is asked once per video
   // and kept while that video stays loaded: changing format, or coming back
@@ -770,17 +723,15 @@ export default function CreatePage() {
       // such as a proxy's 502 after the backend accepted.
       if (started.reason === "request-key-reused") settle();
       if (started.reason === "credits-short" && started.shortfall) {
-        // The refusal carries the balance and refill date. With them in place
-        // the cost line shows the shortfall and the button goes off, so the
-        // page returns to the picker rather than adding a second message —
-        // unless the line has no price to compare, when the message is kept.
-        const refused: BalanceState = {
-          phase: "ready",
-          balance: { balance: started.shortfall.balance, nextRefillAt: started.shortfall.nextRefillAt },
-        };
-        setBalance(refused);
+        // The refusal carries the balance and refill date, and the shared
+        // balance takes them at once, for the menu too. When the cost line
+        // can then show the shortfall — it has a price, and the shared
+        // balance had been read — the button goes off and the page returns
+        // to the picker rather than adding a second message. Otherwise the
+        // refusal's own message is kept.
+        observedBalance(started.shortfall.balance, started.shortfall.nextRefillAt);
         const cost = costFor(quoteRef.current, meta.videoId, contentType, platform ?? null);
-        if (cost && shortBy(cost, refused) !== null) {
+        if (balance.phase === "ready" && cost?.phase === "ready" && cost.credits > started.shortfall.balance) {
           setStatus({ phase: "picking", meta });
         } else {
           setStatus({ phase: "generate-error", meta, message: shortfallMessage(started.shortfall) });
@@ -792,6 +743,8 @@ export default function CreatePage() {
     }
     progress = "accepted";
     show();
+    // Admission reserved the price: the menu's balance moves now.
+    refreshBalance();
 
     // ── Watch the job until it finishes, fails, or the page stops waiting ──
     //

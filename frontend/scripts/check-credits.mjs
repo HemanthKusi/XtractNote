@@ -1,20 +1,24 @@
 /**
  * check-credits
  *
- * Fails when reading or saying a credits refusal stops doing what it says.
+ * Fails when reading the balance, a quote or a credits refusal, or saying a
+ * refusal, stops doing what it says.
  *
  * ── Why this exists ──
  * A wrong answer here renders cleanly: a price or balance from a malformed
  * reply shown as if it were real, "1 credits", or a refill date a day off
  * because it was shown in the wrong time zone. The user decides whether to
- * wait on what this says.
+ * start, or wait, on what this says.
  *
  * ── Why it imports rather than re-states ──
- * As with check-stage: it imports the real `shortfall.ts`, which imports
- * nothing, so plain node can load it.
+ * As with check-stage: it imports the real `read.ts`, `shortfall.ts` and
+ * `cost.ts`, which plain node can load — the first imports nothing, the
+ * others only types, which node drops.
  */
 
-import { shortfallFrom, shortfallMessage } from "../src/lib/credits/shortfall.ts";
+import { costFor, shortBy } from "../src/lib/credits/cost.ts";
+import { balanceFrom, quoteFrom, shortfallFrom } from "../src/lib/credits/read.ts";
+import { refillDate, shortfallMessage } from "../src/lib/credits/shortfall.ts";
 
 let failed = 0;
 let run = 0;
@@ -82,6 +86,62 @@ check(
   shortfallMessage(shortfall, { timeZone: "Asia/Tokyo" }),
   "This costs 2 credits and you have 1. Your credits refill on 31 October.",
 );
+check("the refill date alone is the viewer's date", refillDate(REFILL, { timeZone: "Asia/Tokyo" }), "31 October");
+
+// ── Reading the balance ──
+const BALANCE = { balance: 28, nextRefillAt: REFILL };
+check("a balance with its refill time is read", balanceFrom(BALANCE), BALANCE);
+check("a zero balance is read", balanceFrom({ ...BALANCE, balance: 0 })?.balance, 0);
+for (const [name, body] of [
+  ["no body", null],
+  ["a list", [BALANCE]],
+  ["a negative balance", { ...BALANCE, balance: -1 }],
+  ["a balance as text", { ...BALANCE, balance: "28" }],
+  ["a refill time with no offset", { ...BALANCE, nextRefillAt: "2026-10-30T23:30:49" }],
+]) {
+  check(`${name} is not read as a balance`, balanceFrom(body), null);
+}
+
+// ── Reading a quote ──
+const PRICES = { summary: 2, flashcards: 2, quiz: 2, social: 2, notes: 3, research: 3, blog: 3 };
+const QUOTE = { videoId: "dQw4w9WgXcQ", lengthSeconds: 4800, prices: PRICES };
+check("a quote with every price is read", quoteFrom(QUOTE), QUOTE);
+for (const [name, body] of [
+  ["no body", null],
+  ["no prices", { ...QUOTE, prices: undefined }],
+  ["empty prices", { ...QUOTE, prices: {} }],
+  ["a price of zero", { ...QUOTE, prices: { ...PRICES, quiz: 0 } }],
+  ["a fractional price", { ...QUOTE, prices: { ...PRICES, notes: 2.5 } }],
+  ["a price as text", { ...QUOTE, prices: { ...PRICES, blog: "3" } }],
+  ["a length of zero", { ...QUOTE, lengthSeconds: 0 }],
+  ["no video id", { ...QUOTE, videoId: undefined }],
+]) {
+  check(`${name} is not read as a quote`, quoteFrom(body), null);
+}
+
+// ── What a start costs ──
+const VIDEO = QUOTE.videoId;
+const READY = { videoId: VIDEO, state: { phase: "ready", quote: QUOTE } };
+check("the chosen format's price is the cost", costFor(READY, VIDEO, "notes", null), { phase: "ready", credits: 3 });
+check("no format chosen is no cost", costFor(READY, VIDEO, null, null), null);
+check("social with no platform is no cost", costFor(READY, VIDEO, "social", null), null);
+check("social with a platform is priced", costFor(READY, VIDEO, "social", "linkedin"), { phase: "ready", credits: 2 });
+check("no quote yet is loading", costFor(null, VIDEO, "quiz", null), { phase: "loading" });
+check("another video's quote is loading", costFor(READY, "aaaaaaaaaaa", "quiz", null), { phase: "loading" });
+check("a failed quote is a failed cost", costFor({ videoId: VIDEO, state: { phase: "failed" } }, VIDEO, "quiz", null), { phase: "failed" });
+check(
+  "a format missing from the quote is a failed cost",
+  costFor({ videoId: VIDEO, state: { phase: "ready", quote: { ...QUOTE, prices: { summary: 1 } } } }, VIDEO, "notes", null),
+  { phase: "failed" },
+);
+
+// ── Known to be short ──
+const HAS = (n) => ({ phase: "ready", balance: { balance: n, nextRefillAt: REFILL } });
+const COSTS = (n) => ({ phase: "ready", credits: n });
+check("short by the difference", shortBy(COSTS(3), HAS(1)), 2);
+check("exactly enough is not short", shortBy(COSTS(3), HAS(3)), null);
+check("a loading cost is not known to be short", shortBy({ phase: "loading" }, HAS(0)), null);
+check("a failed balance is not known to be short", shortBy(COSTS(3), { phase: "failed" }), null);
 
 if (failed > 0) {
   console.error(`\ncheck-credits: ${failed} of ${run} checks FAILED.`);

@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { createClient } from "@/lib/supabase/client";
+import { API_BASE_URL, REQUEST_TIMEOUT_MS, accessToken, codeOf, detailFrom } from "@/lib/api/backend";
 import {
   JOB_STATUSES,
   type GeneratableContentType,
@@ -24,16 +25,7 @@ import {
   type SocialPlatform,
 } from "@/lib/content/types";
 import type { VideoMeta } from "@/lib/youtube/types";
-import { shortfallFrom, type CreditShortfall } from "@/lib/credits/shortfall";
-
-// Same backend base URL the other clients use. NEXT_PUBLIC_ so it's
-// available in browser code; falls back to localhost in dev.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-// How long either request may take before it is given up as a network
-// failure. Without it a stalled connection would hold the caller inside the
-// await indefinitely, past any limit the poller sets on waiting.
-const REQUEST_TIMEOUT_MS = 15_000;
+import { shortfallFrom, type CreditShortfall } from "@/lib/credits/read";
 
 // Statuses a proxy or gateway can return without our error body, meaning
 // "not now" rather than "no": ask again.
@@ -74,14 +66,6 @@ const START_REASONS: readonly Exclude<GenerateFailReason, "credits-short">[] = [
   "youtube-misconfigured",
 ];
 
-/** The signed-in user's access token, or null when there is no session. */
-async function accessToken(): Promise<string | null> {
-  const {
-    data: { session },
-  } = await createClient().auth.getSession();
-  return session?.access_token ?? null;
-}
-
 /**
  * The signed-in user's id, or null when there is no session.
  *
@@ -97,29 +81,6 @@ export async function signedInUserId(): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-/**
- * The `detail` object from an error body, or null if the body is not one of
- * ours. A body can be read once, so the code and anything else the refusal
- * carries are taken from this.
- */
-async function detailFrom(response: Response): Promise<Record<string, unknown> | null> {
-  try {
-    const body: unknown = await response.json();
-    if (typeof body === "object" && body !== null) {
-      const detail = (body as { detail?: unknown }).detail;
-      if (typeof detail === "object" && detail !== null) return detail as Record<string, unknown>;
-    }
-  } catch {
-    // Not JSON — a proxy error page, say. Fall through.
-  }
-  return null;
-}
-
-/** detail.code, or null. */
-function codeOf(detail: Record<string, unknown> | null): string | null {
-  return typeof detail?.code === "string" ? detail.code : null;
 }
 
 /**

@@ -70,6 +70,10 @@ import {
   type KeyStore,
 } from "@/lib/generation/start-key";
 import { shortfallMessage } from "@/lib/credits/shortfall";
+import { costFor, shortBy, type BalanceState, type QuoteState } from "@/lib/credits/cost";
+import { fetchBalance, fetchQuote } from "@/lib/api/credits";
+import { createClient } from "@/lib/supabase/client";
+import { StartCost } from "@/components/create/start-cost";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
 import { GeneratingPanel } from "@/components/create/generating-panel";
@@ -449,6 +453,99 @@ export default function CreatePage() {
     };
   }, [showsDrafts, loadDrafts]);
 
+  // ── What a start costs, and what the user has ── (#454)
+  //
+  // The balance is read each time the start line appears — on reaching the
+  // picker and on every return to it — so a charge, a refund or a refill
+  // shows without a reload. A balance already on screen stays while it is
+  // read again.
+  const [balance, setBalance] = useState<BalanceState>({ phase: "loading" });
+  const balanceRun = useRef(0);
+  const loadBalance = useCallback(async () => {
+    const run = ++balanceRun.current;
+    const result = await fetchBalance();
+    if (run !== balanceRun.current) return;
+    setBalance(result.ok ? { phase: "ready", balance: result.balance } : { phase: "failed" });
+  }, []);
+
+  const atStartLine = status.phase === "picking" || status.phase === "generate-error";
+  // The same, for the auth listener below, which outlives the render it
+  // was set up in.
+  const atStartLineRef = useRef(atStartLine);
+  useEffect(() => {
+    atStartLineRef.current = atStartLine;
+  }, [atStartLine]);
+  useEffect(() => {
+    if (!atStartLine) return;
+    void loadBalance();
+    const runs = balanceRun;
+    return () => {
+      runs.current += 1;
+    };
+  }, [atStartLine, loadBalance]);
+
+  // When the signed-in user changes — another tab signing in as someone else
+  // — the balance on screen is dropped, any read in flight is ignored, and
+  // the balance is read again if the start line is showing. The first report
+  // only records who is signed in. The read is deferred out of the callback:
+  // Supabase warns that calling its other methods from inside one can
+  // deadlock.
+  useEffect(() => {
+    let signedIn: string | null | undefined;
+    let reread: ReturnType<typeof setTimeout> | null = null;
+    const runs = balanceRun;
+    const { data } = createClient().auth.onAuthStateChange((_event, session) => {
+      const userId = session?.user.id ?? null;
+      if (signedIn !== undefined && userId !== signedIn) {
+        runs.current += 1;
+        setBalance({ phase: "loading" });
+        if (reread !== null) clearTimeout(reread);
+        reread = setTimeout(() => {
+          reread = null;
+          if (atStartLineRef.current) void loadBalance();
+        }, 0);
+      }
+      signedIn = userId;
+    });
+    return () => {
+      if (reread !== null) clearTimeout(reread);
+      data.subscription.unsubscribe();
+    };
+  }, [loadBalance]);
+
+  // A quote prices every format on one video, so it is asked once per video
+  // and kept while that video stays loaded: changing format, or coming back
+  // from a run, asks nothing more. A failed quote is asked again the next
+  // time the start line appears.
+  const [quote, setQuote] = useState<QuoteState | null>(null);
+  // The same quote, for handleGenerate: after its awaits it must read the
+  // quote as it is now, not as it was in the render the click came from.
+  const quoteRef = useRef<QuoteState | null>(null);
+  const quoteRun = useRef(0);
+  const quotedVideo = useRef<string | null>(null);
+  const loadQuote = useCallback(async (videoId: string) => {
+    const run = ++quoteRun.current;
+    quotedVideo.current = videoId;
+    const loading: QuoteState = { videoId, state: { phase: "loading" } };
+    quoteRef.current = loading;
+    setQuote(loading);
+    const result = await fetchQuote(videoId);
+    if (run !== quoteRun.current) return;
+    if (!result.ok) quotedVideo.current = null;
+    const settled: QuoteState = {
+      videoId,
+      state: result.ok ? { phase: "ready", quote: result.quote } : { phase: "failed" },
+    };
+    quoteRef.current = settled;
+    setQuote(settled);
+  }, []);
+
+  const startLineVideoId =
+    status.phase === "picking" || status.phase === "generate-error" ? status.meta.videoId : null;
+  useEffect(() => {
+    if (startLineVideoId && quotedVideo.current !== startLineVideoId) void loadQuote(startLineVideoId);
+  }, [startLineVideoId, loadQuote]);
+
   // Leaving the page invalidates whatever is in flight, so a generation's
   // polling stops at its next check instead of running on behind a page
   // nobody is looking at. The run itself is not stopped; if it finishes, its
@@ -673,7 +770,21 @@ export default function CreatePage() {
       // such as a proxy's 502 after the backend accepted.
       if (started.reason === "request-key-reused") settle();
       if (started.reason === "credits-short" && started.shortfall) {
-        setStatus({ phase: "generate-error", meta, message: shortfallMessage(started.shortfall) });
+        // The refusal carries the balance and refill date. With them in place
+        // the cost line shows the shortfall and the button goes off, so the
+        // page returns to the picker rather than adding a second message —
+        // unless the line has no price to compare, when the message is kept.
+        const refused: BalanceState = {
+          phase: "ready",
+          balance: { balance: started.shortfall.balance, nextRefillAt: started.shortfall.nextRefillAt },
+        };
+        setBalance(refused);
+        const cost = costFor(quoteRef.current, meta.videoId, contentType, platform ?? null);
+        if (cost && shortBy(cost, refused) !== null) {
+          setStatus({ phase: "picking", meta });
+        } else {
+          setStatus({ phase: "generate-error", meta, message: shortfallMessage(started.shortfall) });
+        }
         return;
       }
       fail(started.reason);
@@ -832,6 +943,9 @@ export default function CreatePage() {
 
   // Social is picked but no platform chosen yet — Generate stays disabled.
   const needsPlatform = selectedType === "social" && !selectedPlatform;
+
+  const startCost = meta ? costFor(quote, meta.videoId, selectedType, selectedPlatform) : null;
+  const startShort = startCost !== null && shortBy(startCost, balance) !== null;
 
   return (
     // `output` rather than the `wide` column history and folders use: this
@@ -1026,28 +1140,27 @@ export default function CreatePage() {
 
                   {/* The generating screen is no longer rendered from inside
                       the picker — it replaces the whole page, above. This
-                      branch only ever shows the button now. */}
-                  {(
-                    <div className="mt-5 flex items-center gap-3">
-                      {/* "Make study notes", not "Generate" — the specimen's
-                          copy, and it names the thing rather than the act.
-                          Falls back to "Pick a format" while nothing is
-                          chosen, so the disabled button says WHY it is
-                          disabled instead of just being grey. */}
-                      <Button
-                        variant="primary"
-                        size="lg"
-                        onClick={handleGenerate}
-                        disabled={!selectedType || needsPlatform}
-                      >
-                        {status.phase === "generate-error"
-                          ? "Try again"
-                          : selectedType
-                            ? `Make ${contentTypeColors[selectedType].label.toLowerCase()}`
-                            : "Pick a format"}
-                      </Button>
-                    </div>
-                  )}
+                      branch shows the start button and its cost. */}
+                  <StartCost cost={startCost} balance={balance}>
+                    {/* "Make study notes", not "Generate" — the specimen's
+                        copy, and it names the thing rather than the act.
+                        Falls back to "Pick a format" while nothing is
+                        chosen, so the disabled button says WHY it is
+                        disabled instead of just being grey. Off, too, when
+                        the balance is known to be short of the price. */}
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      onClick={handleGenerate}
+                      disabled={!selectedType || needsPlatform || startShort}
+                    >
+                      {status.phase === "generate-error"
+                        ? "Try again"
+                        : selectedType
+                          ? `Make ${contentTypeColors[selectedType].label.toLowerCase()}`
+                          : "Pick a format"}
+                    </Button>
+                  </StartCost>
 
                   {status.phase === "generate-error" && (
                     <p className="mt-3 flex items-start gap-2 text-sm text-xn-danger">

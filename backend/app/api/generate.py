@@ -38,6 +38,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.dependencies import CurrentUser, get_current_user
+from app.api.video_checks import VIDEO_ID_PATTERN, length_refusal
 from app.config import settings
 from app.services import jobs
 from app.services.dispatch import GenerationPool, get_generation_pool
@@ -53,7 +54,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-VIDEO_ID_PATTERN = r"^[A-Za-z0-9_-]{11}$"
 THUMBNAIL_PREFIX = "https://i.ytimg.com/"
 BUSY_RETRY_AFTER_SECONDS = 30
 #: Roughly how long a generation takes, so a refused user asks again once one
@@ -146,15 +146,6 @@ _REQUEST_ERROR_STATUS = {
     "unknown-content-type": 422,
 }
 
-# A video whose length cannot be known is refused before anything is reserved
-# or charged: the video itself is a 422, YouTube or this server's setup a 503.
-_LENGTH_REFUSALS: dict[str, tuple[int, str]] = {
-    "video-not-found": (422, "That video can't be found. It may be private or deleted."),
-    "video-has-no-length": (422, "This video is live or hasn't premiered, so it has no length to price."),
-    "length-unavailable": (503, "The video's length couldn't be checked just now. Try again in a moment."),
-    "youtube-misconfigured": (503, "The video's length can't be checked right now."),
-}
-
 
 def _refuse(status: int, code: str, message: str, headers: dict[str, str] | None = None) -> HTTPException:
     return HTTPException(status_code=status, detail={"code": code, "message": message}, headers=headers)
@@ -204,12 +195,6 @@ def _at_limit() -> HTTPException:
         "You already have as many generations running as you can at once.",
         headers={"Retry-After": str(LIMIT_RETRY_AFTER_SECONDS)},
     )
-
-
-def _length_unknown(error: LengthError) -> HTTPException:
-    status, message = _LENGTH_REFUSALS.get(error.code, (503, "The video's length couldn't be checked."))
-    headers = {"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)} if status == 503 else None
-    return _refuse(status, error.code, message, headers=headers)
 
 
 def _credits_short(shortfall: CreditShortfall | None) -> HTTPException:
@@ -267,7 +252,8 @@ def start_generation(
     try:
         length_seconds = video_length(req.videoId)
     except LengthError as exc:
-        raise _length_unknown(exc)
+        # Refused before anything is reserved or charged.
+        raise length_refusal(exc)
     cost = price_for(req.contentType, length_seconds)
 
     slot = pool.reserve()

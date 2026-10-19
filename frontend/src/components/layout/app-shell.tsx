@@ -112,7 +112,7 @@ export function AppShell({ children }: AppShellProps) {
         </header>
 
         {/* ── The menu and the content it makes room for ── */}
-        <MenuShell foot={(mode) => <CreditsFoot mode={mode} />}>{children}</MenuShell>
+        <MenuShell foot={(mode, room) => <CreditsFoot mode={mode} room={room} />}>{children}</MenuShell>
       </div>
     </BalanceProvider>
   );

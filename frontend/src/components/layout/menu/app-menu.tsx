@@ -345,11 +345,13 @@ export interface AppMenuProps {
    */
   shellHeight?: number;
   /**
-   * What sits at the foot of the docked menu, in the space below the rows,
-   * given the menu's mode (#460). Hidden and inert while the menu is the
-   * floating button. Omitted, nothing is drawn.
+   * What sits at the foot of the docked menu, in the space below the rows
+   * (#460). Given the menu's mode and `room`: the height between the rows
+   * and the bottom of the body in that mode, padding included, so the foot
+   * can choose a form that fits rather than cover a row. Hidden and inert
+   * while the menu is the floating button. Omitted, nothing is drawn.
    */
-  foot?: (mode: MenuMode) => ReactNode;
+  foot?: (mode: MenuMode, room: number) => ReactNode;
 }
 
 export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeight, foot }: AppMenuProps) {
@@ -374,6 +376,18 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
   const openContent = useRef<HTMLButtonElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const didInit = useRef(false);
+
+  // The rows' height, so the foot can be told the room left beneath them in
+  // the body's settled size for this mode — not the size mid-morph.
+  const [rowsHeight, setRowsHeight] = useState(0);
+  useEffect(() => {
+    const rows = rowsRef.current;
+    if (!rows) return;
+    const observer = new ResizeObserver(() => setRowsHeight(rows.offsetHeight));
+    observer.observe(rows);
+    return () => observer.disconnect();
+  }, []);
+  const footRoom = Math.max(0, geometryFor(mode, height).height - rowsHeight);
 
   const collapsed = mode === "floating";
   const rail = mode === "rail";
@@ -584,12 +598,14 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
         {/* The foot: pinned to the bottom of the body, in this unfiltered
             layer like the rows. It arrives on the rows' beat, one step after
             the last of them, and leaves with them; `inert` while the menu is
-            the button, for the same reason the rows are. Clipped, because the
+            the button, for the same reason the rows are. It takes no pointer
+            events, so its box never swallows a click meant for a row it
+            overlaps. Clipped, because the
             body narrows to the dock under it mid-morph. */}
         {foot && (
           <div
             inert={collapsed}
-            className="absolute inset-x-0 bottom-0 overflow-hidden"
+            className="pointer-events-none absolute inset-x-0 bottom-0 overflow-hidden"
             style={{
               padding: PAD,
               opacity: collapsed ? 0 : 1,
@@ -602,7 +618,7 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
                     }ms`,
             }}
           >
-            {foot(mode)}
+            {foot(mode, footRoom)}
           </div>
         )}
 

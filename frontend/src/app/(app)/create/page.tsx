@@ -70,9 +70,10 @@ import {
   type KeyStore,
 } from "@/lib/generation/start-key";
 import { shortfallMessage } from "@/lib/credits/shortfall";
-import type { CreditQuote } from "@/lib/credits/read";
+import { costFor, shortBy, type BalanceState, type QuoteState } from "@/lib/credits/cost";
 import { fetchBalance, fetchQuote } from "@/lib/api/credits";
-import { StartCost, shortBy, type BalanceState, type CostState } from "@/components/create/start-cost";
+import { createClient } from "@/lib/supabase/client";
+import { StartCost } from "@/components/create/start-cost";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
 import { GeneratingPanel } from "@/components/create/generating-panel";
@@ -477,24 +478,46 @@ export default function CreatePage() {
     };
   }, [atStartLine, loadBalance]);
 
+  // When the signed-in user changes — another tab signing in as someone else
+  // — the balance is read again, so one account's balance never decides
+  // another's start button. The first report only records who is signed in.
+  // The read is deferred out of the callback: Supabase warns that calling
+  // its other methods from inside one can deadlock.
+  useEffect(() => {
+    let signedIn: string | null | undefined;
+    const { data } = createClient().auth.onAuthStateChange((_event, session) => {
+      const userId = session?.user.id ?? null;
+      if (signedIn !== undefined && userId !== signedIn) setTimeout(() => void loadBalance(), 0);
+      signedIn = userId;
+    });
+    return () => data.subscription.unsubscribe();
+  }, [loadBalance]);
+
   // A quote prices every format on one video, so it is asked once per video
   // and kept while that video stays loaded: changing format, or coming back
   // from a run, asks nothing more. A failed quote is asked again the next
   // time the start line appears.
-  const [quote, setQuote] = useState<{
-    videoId: string;
-    state: { phase: "loading" } | { phase: "failed" } | { phase: "ready"; quote: CreditQuote };
-  } | null>(null);
+  const [quote, setQuote] = useState<QuoteState | null>(null);
+  // The same quote, for handleGenerate: after its awaits it must read the
+  // quote as it is now, not as it was in the render the click came from.
+  const quoteRef = useRef<QuoteState | null>(null);
   const quoteRun = useRef(0);
   const quotedVideo = useRef<string | null>(null);
   const loadQuote = useCallback(async (videoId: string) => {
     const run = ++quoteRun.current;
     quotedVideo.current = videoId;
-    setQuote({ videoId, state: { phase: "loading" } });
+    const loading: QuoteState = { videoId, state: { phase: "loading" } };
+    quoteRef.current = loading;
+    setQuote(loading);
     const result = await fetchQuote(videoId);
     if (run !== quoteRun.current) return;
     if (!result.ok) quotedVideo.current = null;
-    setQuote({ videoId, state: result.ok ? { phase: "ready", quote: result.quote } : { phase: "failed" } });
+    const settled: QuoteState = {
+      videoId,
+      state: result.ok ? { phase: "ready", quote: result.quote } : { phase: "failed" },
+    };
+    quoteRef.current = settled;
+    setQuote(settled);
   }, []);
 
   const startLineVideoId =
@@ -502,15 +525,6 @@ export default function CreatePage() {
   useEffect(() => {
     if (startLineVideoId && quotedVideo.current !== startLineVideoId) void loadQuote(startLineVideoId);
   }, [startLineVideoId, loadQuote]);
-
-  /** What starting `type` on `videoId` costs, as far as the page knows; null with nothing chosen. */
-  function costFor(videoId: string, type: GeneratableContentType | null, platform: SocialPlatform | null): CostState | null {
-    if (!type || (type === "social" && !platform)) return null;
-    if (!quote || quote.videoId !== videoId || quote.state.phase === "loading") return { phase: "loading" };
-    if (quote.state.phase === "failed") return { phase: "failed" };
-    const price = quote.state.quote.prices[type];
-    return price === undefined ? { phase: "failed" } : { phase: "ready", credits: price };
-  }
 
   // Leaving the page invalidates whatever is in flight, so a generation's
   // polling stops at its next check instead of running on behind a page
@@ -745,7 +759,7 @@ export default function CreatePage() {
           balance: { balance: started.shortfall.balance, nextRefillAt: started.shortfall.nextRefillAt },
         };
         setBalance(refused);
-        const cost = costFor(meta.videoId, contentType, platform ?? null);
+        const cost = costFor(quoteRef.current, meta.videoId, contentType, platform ?? null);
         if (cost && shortBy(cost, refused) !== null) {
           setStatus({ phase: "picking", meta });
         } else {
@@ -910,7 +924,7 @@ export default function CreatePage() {
   // Social is picked but no platform chosen yet — Generate stays disabled.
   const needsPlatform = selectedType === "social" && !selectedPlatform;
 
-  const startCost = meta ? costFor(meta.videoId, selectedType, selectedPlatform) : null;
+  const startCost = meta ? costFor(quote, meta.videoId, selectedType, selectedPlatform) : null;
   const startShort = startCost !== null && shortBy(startCost, balance) !== null;
 
   return (

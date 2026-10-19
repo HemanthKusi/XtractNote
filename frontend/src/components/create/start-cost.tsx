@@ -8,26 +8,14 @@
 // provisionally, to be revisited once the side menu shows the balance, #460).
 //
 // The button is passed in as children; this lays out the line around it.
-// A price or balance that is loading or failed never turns the button off —
-// the start route prices and refuses on its own. Only a balance known to be
-// short does, and `shortBy` is how the page knows.
+// Whether the button is on is the page's to decide, from
+// lib/credits/cost.ts.
 // ─────────────────────────────────────────────────────────────
 
 import type { ReactNode } from "react";
 
-import type { CreditBalance } from "@/lib/credits/read";
+import { shortBy, type BalanceState, type CostState } from "@/lib/credits/cost";
 import { refillDate } from "@/lib/credits/shortfall";
-
-export type CostState = { phase: "loading" } | { phase: "failed" } | { phase: "ready"; credits: number };
-
-export type BalanceState = { phase: "loading" } | { phase: "failed" } | { phase: "ready"; balance: CreditBalance };
-
-/** How many credits the start is short by, or null when it is not known to be short. */
-export function shortBy(cost: CostState, balance: BalanceState): number | null {
-  if (cost.phase !== "ready" || balance.phase !== "ready") return null;
-  const gap = cost.credits - balance.balance.balance;
-  return gap > 0 ? gap : null;
-}
 
 interface StartCostProps {
   /** The start button. */
@@ -63,6 +51,7 @@ export function StartCost({ children, cost, balance }: StartCostProps) {
               </span>
             )}
             {balance.phase === "loading" && <Placeholder width="w-20" />}
+            {balance.phase === "failed" && <span className="text-xn-ink-soft">Balance unavailable</span>}
           </div>
         )}
       </div>

@@ -116,6 +116,7 @@ function Beside({ action, price, balance, onStart }: StartLineProps) {
               </span>
             )}
             {balance.phase === "loading" && <Placeholder width="w-20" />}
+            {balance.phase === "failed" && <span className="text-xn-ink-soft">Balance unavailable</span>}
           </div>
         )}
       </div>

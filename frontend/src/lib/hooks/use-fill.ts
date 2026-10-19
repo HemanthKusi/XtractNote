@@ -7,6 +7,8 @@ import { useReducedMotion } from "./use-reduced-motion";
 /** Lets what arrives with it land first — the menu's rows, for the credits foot. */
 const FILL_DELAY_MS = 220;
 const FILL_MS = 900;
+/** Past the menu's morph (560ms), by which time a hidden form has faded out. */
+const EMPTY_AFTER_MS = 600;
 
 function easeOutCubic(t: number): number {
   return 1 - (1 - t) ** 3;
@@ -17,9 +19,10 @@ function easeOutCubic(t: number): number {
  *
  * When `shown` turns true the value runs from zero to `target`, after a short
  * delay; when only `target` changes it runs from the value on screen to the
- * new one, at once. While `shown` is false nothing is repainted, and the next
- * showing starts from zero again. One animation-frame loop drives the value,
- * so a gauge and a count drawn from it always agree.
+ * new one, at once. When `shown` turns false the value is left alone while
+ * the form fades out, then emptied, so the next showing starts from zero
+ * without first flashing the old value. One animation-frame loop drives the
+ * value, so a gauge and a count drawn from it always agree.
  *
  * Reduced motion returns `target` straight away. Frames do not run in a
  * hidden tab, so a fill started there plays when the tab is next visible.
@@ -37,7 +40,8 @@ export function useFill(target: number, shown: boolean): number {
     }
     if (!shown) {
       drawn.current = 0;
-      return;
+      const empty = setTimeout(() => setValue(0), EMPTY_AFTER_MS);
+      return () => clearTimeout(empty);
     }
     const from = drawn.current;
     const delay = from === 0 ? FILL_DELAY_MS : 0;

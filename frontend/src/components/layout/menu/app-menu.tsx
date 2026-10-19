@@ -37,13 +37,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import gsap from "gsap";
 import { CustomEase } from "gsap/CustomEase";
 import { useGSAP } from "@gsap/react";
 
 import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 
+import { ON_INK, ON_INK_ACTIVE, ON_INK_DIM, ON_INK_HOVER } from "./menu-colors";
 import { MENU_ICONS, PanelArrowIcon } from "./menu-icons";
 import {
   BEAT,
@@ -106,11 +107,6 @@ function useShellHeight(): number {
   return h;
 }
 
-// SearchInput's own surface: ink ground, page-coloured glyphs, at every size.
-const ON_INK = "var(--xn-bg)";
-const ON_INK_DIM = "color-mix(in srgb, var(--xn-bg) 66%, transparent)";
-const ON_INK_ACTIVE = "color-mix(in srgb, var(--xn-bg) 15%, transparent)";
-const ON_INK_HOVER = "color-mix(in srgb, var(--xn-bg) 8%, transparent)";
 
 // ── The menu glyph ──────────────────────────────────────────
 //
@@ -348,9 +344,15 @@ export interface AppMenuProps {
    * it. Omitted everywhere except that box.
    */
   shellHeight?: number;
+  /**
+   * What sits at the foot of the docked menu, in the space below the rows,
+   * given the menu's mode (#460). Hidden and inert while the menu is the
+   * floating button. Omitted, nothing is drawn.
+   */
+  foot?: (mode: MenuMode) => ReactNode;
 }
 
-export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeight }: AppMenuProps) {
+export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeight, foot }: AppMenuProps) {
   const pathname = usePathname();
   const reduced = useReducedMotion();
   const viewportHeight = useShellHeight();
@@ -578,6 +580,31 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
             );
           })}
         </div>
+
+        {/* The foot: pinned to the bottom of the body, in this unfiltered
+            layer like the rows. It arrives on the rows' beat, one step after
+            the last of them, and leaves with them; `inert` while the menu is
+            the button, for the same reason the rows are. Clipped, because the
+            body narrows to the dock under it mid-morph. */}
+        {foot && (
+          <div
+            inert={collapsed}
+            className="absolute inset-x-0 bottom-0 overflow-hidden"
+            style={{
+              padding: PAD,
+              opacity: collapsed ? 0 : 1,
+              transition: reduced
+                ? undefined
+                : collapsed
+                  ? `opacity ${MORPH_MS * BEAT.rowsOut}ms ${MORPH_CSS_EASE}`
+                  : `opacity ${MORPH_MS * BEAT.rowDuration}ms ${MORPH_CSS_EASE} ${
+                      MORPH_MS * (BEAT.rowDelay + BEAT.rowStagger * (MENU_ENTRIES.length + 1))
+                    }ms`,
+            }}
+          >
+            {foot(mode)}
+          </div>
+        )}
 
         {/* The button's face, and the control that reopens it — the same
             element, because the collapsed menu IS the button.

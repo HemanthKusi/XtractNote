@@ -469,6 +469,12 @@ export default function CreatePage() {
   }, []);
 
   const atStartLine = status.phase === "picking" || status.phase === "generate-error";
+  // The same, for the auth listener below, which outlives the render it
+  // was set up in.
+  const atStartLineRef = useRef(atStartLine);
+  useEffect(() => {
+    atStartLineRef.current = atStartLine;
+  }, [atStartLine]);
   useEffect(() => {
     if (!atStartLine) return;
     void loadBalance();
@@ -479,18 +485,32 @@ export default function CreatePage() {
   }, [atStartLine, loadBalance]);
 
   // When the signed-in user changes — another tab signing in as someone else
-  // — the balance is read again, so one account's balance never decides
-  // another's start button. The first report only records who is signed in.
-  // The read is deferred out of the callback: Supabase warns that calling
-  // its other methods from inside one can deadlock.
+  // — the balance on screen is dropped, any read in flight is ignored, and
+  // the balance is read again if the start line is showing. The first report
+  // only records who is signed in. The read is deferred out of the callback:
+  // Supabase warns that calling its other methods from inside one can
+  // deadlock.
   useEffect(() => {
     let signedIn: string | null | undefined;
+    let reread: ReturnType<typeof setTimeout> | null = null;
+    const runs = balanceRun;
     const { data } = createClient().auth.onAuthStateChange((_event, session) => {
       const userId = session?.user.id ?? null;
-      if (signedIn !== undefined && userId !== signedIn) setTimeout(() => void loadBalance(), 0);
+      if (signedIn !== undefined && userId !== signedIn) {
+        runs.current += 1;
+        setBalance({ phase: "loading" });
+        if (reread !== null) clearTimeout(reread);
+        reread = setTimeout(() => {
+          reread = null;
+          if (atStartLineRef.current) void loadBalance();
+        }, 0);
+      }
       signedIn = userId;
     });
-    return () => data.subscription.unsubscribe();
+    return () => {
+      if (reread !== null) clearTimeout(reread);
+      data.subscription.unsubscribe();
+    };
   }, [loadBalance]);
 
   // A quote prices every format on one video, so it is asked once per video

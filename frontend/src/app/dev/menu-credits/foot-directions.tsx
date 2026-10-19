@@ -22,7 +22,18 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { MORPH_CSS_EASE, MORPH_MS, PAD, PANEL_W, type MenuMode } from "@/components/layout/menu/menu-geometry";
+import { ON_INK, ON_INK_ACTIVE, ON_INK_DIM, ON_INK_HOVER } from "@/components/layout/menu/menu-colors";
+import {
+  ICON,
+  MORPH_CSS_EASE,
+  MORPH_MS,
+  PAD,
+  PANEL_W,
+  ROW_H,
+  titleCentreShift,
+  type MenuMode,
+} from "@/components/layout/menu/menu-geometry";
+import { useFill } from "@/lib/hooks/use-fill";
 import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 import { refillDate } from "@/lib/credits/shortfall";
 
@@ -48,13 +59,12 @@ export type FootBalance =
 
 type Ready = Extract<FootBalance, { phase: "ready" }>;
 
-/** The monthly allowance a refill resets to. The balance route does not send it yet. */
+/** A fixed allowance for the previews; the app reads the real one from the balance route. */
 export const ALLOWANCE = 30;
 
-const ON_INK = "var(--xn-bg)";
-const ON_INK_DIM = "color-mix(in srgb, var(--xn-bg) 66%, transparent)";
-const ON_INK_FAINT = "color-mix(in srgb, var(--xn-bg) 15%, transparent)";
-const ON_INK_FILL = "color-mix(in srgb, var(--xn-bg) 8%, transparent)";
+// The menu's own steps, under the names these previews were drawn with.
+const ON_INK_FAINT = ON_INK_ACTIVE;
+const ON_INK_FILL = ON_INK_HOVER;
 
 const RADIUS = 14;
 const ICON_COLUMN = 10;
@@ -167,54 +177,6 @@ const BAR_H = 8;
 const RING_SIZE = { dial: 46, head: 40, cells: 46 } as const;
 const RING_TEXT_PX = { dial: 14, head: 12, cells: 14 } as const;
 const RING_STROKE = 5;
-/** The menu's labels finish arriving about here, so the fill starts as they land. */
-const FILL_DELAY_MS = 220;
-const FILL_MS = 900;
-
-function easeOutCubic(t: number): number {
-  return 1 - (1 - t) ** 3;
-}
-
-/**
- * The credits to draw: `target`, reached by filling. Starts from empty when
- * the form comes into view, and from the value on screen when only the
- * target changes. Driven by one animation frame loop, so the gauge and the
- * number it shows are always the same value.
- */
-function useFill(target: number, shown: boolean): number {
-  const reduced = useReducedMotion();
-  const [value, setValue] = useState(0);
-  const drawn = useRef(0);
-
-  useEffect(() => {
-    if (reduced) {
-      drawn.current = target;
-      setValue(target);
-      return;
-    }
-    if (!shown) {
-      // Not repainted: the form is fading out. The next showing starts empty.
-      drawn.current = 0;
-      return;
-    }
-    const from = drawn.current;
-    let frame = 0;
-    let start: number | null = null;
-    const step = (now: number) => {
-      start ??= now;
-      const t = Math.min(1, Math.max(0, (now - start - (from === 0 ? FILL_DELAY_MS : 0)) / FILL_MS));
-      const next = from + (target - from) * easeOutCubic(t);
-      drawn.current = next;
-      setValue(next);
-      if (t < 1) frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [target, shown, reduced]);
-
-  return value;
-}
-
 function GaugeTile({ balance, shown }: { balance: FootBalance; shown: boolean }) {
   const value = useFill(balance.phase === "ready" ? balance.credits : 0, shown);
   return (
@@ -327,6 +289,210 @@ function GaugeRing({ balance, shown, look }: { balance: FootBalance; shown: bool
         )}
       </span>
     </div>
+  );
+}
+
+// ── G2c that fits: a compact card when the full one would cover a row (round 5) ──
+//
+// The menu tells the foot how much room is left below its rows. The full
+// tile and ring are used when they fit; a compact card when only that fits;
+// nothing when neither does. Each form's height is measured, not assumed.
+
+export type CompactLook = "line" | "row" | "slim";
+
+type FitForm = "tile" | "compactPanel" | "ring" | "compactRail";
+
+export function FitFoot({
+  compact,
+  mode,
+  room,
+  balance,
+}: {
+  compact: CompactLook;
+  mode: MenuMode;
+  room: number;
+  balance: FootBalance;
+}) {
+  const reduced = useReducedMotion();
+  const refs = {
+    tile: useRef<HTMLDivElement>(null),
+    compactPanel: useRef<HTMLDivElement>(null),
+    ring: useRef<HTMLDivElement>(null),
+    compactRail: useRef<HTMLDivElement>(null),
+  };
+  const [heights, setHeights] = useState<Record<FitForm, number>>({ tile: 0, compactPanel: 0, ring: 0, compactRail: 0 });
+
+  useEffect(() => {
+    const observer = new ResizeObserver(() =>
+      setHeights({
+        tile: refs.tile.current?.offsetHeight ?? 0,
+        compactPanel: refs.compactPanel.current?.offsetHeight ?? 0,
+        ring: refs.ring.current?.offsetHeight ?? 0,
+        compactRail: refs.compactRail.current?.offsetHeight ?? 0,
+      }),
+    );
+    for (const ref of Object.values(refs)) if (ref.current) observer.observe(ref.current);
+    return () => observer.disconnect();
+    // The refs are stable; the forms they point at are always rendered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // `room` is measured from the bottom of the rows' own padding, which is
+  // the gap above the foot; the foot adds its bottom padding under the form.
+  const fits = (form: FitForm) => heights[form] > 0 && heights[form] + PAD <= room;
+  const active: FitForm | null =
+    mode === "expanded"
+      ? fits("tile")
+        ? "tile"
+        : fits("compactPanel")
+          ? "compactPanel"
+          : null
+      : mode === "rail"
+        ? fits("ring")
+          ? "ring"
+          : fits("compactRail")
+            ? "compactRail"
+            : null
+        : null;
+
+  const layer = (form: FitForm, node: ReactNode, wide: boolean) => (
+    <div
+      ref={refs[form]}
+      aria-hidden
+      className={`pointer-events-none [grid-area:1/1] ${wide ? "" : "w-full"}`}
+      style={{
+        width: wide ? PANEL_FORM_W : undefined,
+        opacity: active === form ? 1 : 0,
+        transition: reduced
+          ? undefined
+          : `opacity ${active === form && mode === "expanded" ? MORPH_MS : MORPH_MS * 0.3}ms ${MORPH_CSS_EASE}`,
+      }}
+    >
+      {node}
+    </div>
+  );
+
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] items-end">
+      <span className="sr-only">{active ? spoken(balance) : ""}</span>
+      {layer("tile", <GaugeTile balance={balance} shown={active === "tile"} />, true)}
+      {layer("compactPanel", <CompactPanel balance={balance} shown={active === "compactPanel"} look={compact} />, true)}
+      {layer("ring", <GaugeRing balance={balance} shown={active === "ring"} look="cells" />, false)}
+      {layer("compactRail", <CompactRail balance={balance} shown={active === "compactRail"} />, false)}
+    </div>
+  );
+}
+
+function CompactPanel({ balance, shown, look }: { balance: FootBalance; shown: boolean; look: CompactLook }) {
+  const value = useFill(balance.phase === "ready" ? balance.credits : 0, shown);
+  const share = Math.min(1, value / ALLOWANCE);
+  const count =
+    balance.phase === "ready" ? (
+      <span className="tabular-nums" style={{ color: ON_INK }}>
+        {Math.round(value)}
+        <span style={{ color: ON_INK_DIM }}> / {ALLOWANCE}</span>
+      </span>
+    ) : balance.phase === "loading" ? (
+      <Bar width={48} height={14} />
+    ) : (
+      <span style={{ color: ON_INK_DIM }}>Unavailable</span>
+    );
+  const bar = (height: number, className = "") => (
+    <span
+      className={`block overflow-hidden rounded-full ${balance.phase === "loading" ? "animate-pulse" : ""} ${className}`}
+      style={{ height, background: ON_INK_FAINT }}
+    >
+      <span className="block h-full rounded-full" style={{ width: `${share * 100}%`, background: ON_INK }} />
+    </span>
+  );
+
+  // K1 · Line: one card at row height, the count and a bar beside it.
+  if (look === "line") {
+    return (
+      <Card fill className="flex h-11 items-center gap-3 px-3.5 text-ui font-medium">
+        {count}
+        {bar(6, "flex-1")}
+      </Card>
+    );
+  }
+
+  // K2 · Row: drawn as one of the menu's own rows — a small cell ring in the
+  // icons' column, the count on the labels' axis.
+  if (look === "row") {
+    return (
+      <div
+        className="flex h-11 items-center gap-3 text-ui font-medium"
+        style={{ borderRadius: ROW_H / 2, background: ON_INK_FILL, paddingLeft: (ROW_H - ICON) / 2, paddingRight: (ROW_H - ICON) / 2 }}
+      >
+        <MiniCells balance={balance} value={value} />
+        <span className="flex-1 text-center" style={{ transform: `translateX(${titleCentreShift(ICON)}px)` }}>
+          {count}
+        </span>
+      </div>
+    );
+  }
+
+  // K3 · Slim: an outlined card, the eyebrow and count on one line, a thin
+  // bar — held to row height, like the other two.
+  return (
+    <Card className="flex h-11 flex-col justify-center px-3">
+      <div className="flex items-baseline justify-between text-sm leading-none">
+        <Eyebrow>Credits</Eyebrow>
+        {count}
+      </div>
+      {bar(4, "mt-2")}
+    </Card>
+  );
+}
+
+/** The rail's compact form, for every look: the count in a small card. */
+function CompactRail({ balance, shown }: { balance: FootBalance; shown: boolean }) {
+  const value = useFill(balance.phase === "ready" ? balance.credits : 0, shown);
+  return (
+    <Card fill className="flex h-8 items-center justify-center">
+      {balance.phase === "loading" ? (
+        <Bar width={18} height={12} />
+      ) : (
+        <span
+          className="text-sm font-semibold leading-none tabular-nums"
+          style={{ color: balance.phase === "ready" ? ON_INK : ON_INK_DIM }}
+        >
+          {balance.phase === "ready" ? Math.round(value) : "—"}
+        </span>
+      )}
+    </Card>
+  );
+}
+
+/** The rail's cell ring at icon size, for K2's icon column. */
+function MiniCells({ balance, value }: { balance: FootBalance; value: number }) {
+  const size = ICON;
+  const stroke = 3;
+  const c = size / 2;
+  const r = (size - stroke) / 2;
+  const length = 2 * Math.PI * r;
+  const segment = length / ALLOWANCE;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className={`shrink-0 -rotate-90 ${balance.phase === "loading" ? "animate-pulse" : ""}`}
+    >
+      {Array.from({ length: ALLOWANCE }, (_, i) => (
+        <circle
+          key={i}
+          cx={c}
+          cy={c}
+          r={r}
+          fill="none"
+          stroke={i < Math.round(value) ? ON_INK : ON_INK_FAINT}
+          strokeWidth={stroke}
+          strokeDasharray={`${segment * 0.55} ${length}`}
+          strokeDashoffset={-i * segment}
+        />
+      ))}
+    </svg>
   );
 }
 

@@ -5,7 +5,8 @@
 // The credit balance at the foot of the side menu (#460): the directions to
 // choose from, kept as the record. **G2c · Cells was chosen**: in the panel,
 // the tile with an 8px bar; in the rail, the ring as thirty cells, 46px with
-// a 14px number; both filling as they come into view. Round 4 (G2a–c)
+// a 14px number; both filling as they come into view. When the menu is too
+// short for those, K3 · Slim (round 5) takes over. Round 4 (G2a–c)
 // refined round 3's G2; round 3 (G1–G3) joined C's tile to round 1's ring;
 // round 2 (C–F) is cards, C being the reference Hemanth gave; round 1 (A, B)
 // is where it started. Built from the real shell's parts — the header, the logo, the
@@ -23,7 +24,17 @@ import { HEADER_H } from "@/components/layout/menu/menu-geometry";
 import { Topbar } from "@/components/layout/topbar";
 import { useTheme } from "@/components/shared/theme-provider";
 
-import { Foot, type FootBalance, type FootDirection } from "./foot-directions";
+import { FitFoot, Foot, type CompactLook, type FootBalance, type FootDirection } from "./foot-directions";
+
+/** Round 5: G2c with a compact card for when the full one would cover a row. */
+type FitDirection = "fitLine" | "fitRow" | "fitSlim";
+type Direction = FootDirection | FitDirection;
+
+const COMPACT: Record<FitDirection, CompactLook> = { fitLine: "line", fitRow: "row", fitSlim: "slim" };
+
+function isFit(direction: Direction): direction is FitDirection {
+  return direction in COMPACT;
+}
 
 type LoadPhase = "ready" | "loading" | "failed";
 
@@ -33,11 +44,26 @@ interface Choice<T extends string> {
   note: string;
 }
 
-const DIRECTIONS: Choice<FootDirection>[] = [
+const DIRECTIONS: Choice<Direction>[] = [
   {
     id: "today",
     label: "Today",
     note: "Nothing below the rows. For reference.",
+  },
+  {
+    id: "fitLine",
+    label: "K1 · Line",
+    note: "Round 5 — G2c, plus a compact card for short screens. Lower the menu height below: when the tile would cover a row, a 44px card takes over — \"28 / 30\" with a bar of what is left beside it. In the rail, the count in a small card. Hidden only when neither fits.",
+  },
+  {
+    id: "fitRow",
+    label: "K2 · Row",
+    note: "Round 5. The compact card drawn as one of the menu's own rows: a small cell ring in the icons' column, \"28 / 30\" on the labels' axis.",
+  },
+  {
+    id: "fitSlim",
+    label: "K3 · Slim",
+    note: "Chosen. Round 5. An outlined card at row height: \"CREDITS\" and \"28 / 30\" on one line, a thin bar beneath. In the rail, the count in a small card.",
   },
   {
     id: "dial",
@@ -82,7 +108,7 @@ const DIRECTIONS: Choice<FootDirection>[] = [
   {
     id: "units",
     label: "E · Units",
-    note: "An outlined card, not a filled one. \"28 / 30\" and the month's thirty credits as cells, lit for what is left. Rail: the number over a short bar. Needs the allowance from the balance route, which does not send it yet.",
+    note: "An outlined card, not a filled one. \"28 / 30\" and the month's thirty credits as cells, lit for what is left. Rail: the number over a short bar.",
   },
   {
     id: "date",
@@ -103,6 +129,14 @@ const DIRECTIONS: Choice<FootDirection>[] = [
 
 const BALANCES = [30, 28, 3, 0];
 
+/** The shell height the menu is laid out for — full is the window. */
+const MENU_HEIGHTS: { id: string; label: string; px: number | null }[] = [
+  { id: "full", label: "Full", px: null },
+  { id: "640", label: "640", px: 640 },
+  { id: "560", label: "560", px: 560 },
+  { id: "480", label: "480", px: 480 },
+];
+
 const PHASES: { id: LoadPhase; label: string }[] = [
   { id: "ready", label: "Loaded" },
   { id: "loading", label: "Loading" },
@@ -112,7 +146,8 @@ const PHASES: { id: LoadPhase; label: string }[] = [
 const REFILLS_AT = "2026-10-30T19:30:49+00:00";
 
 export default function MenuCreditsPage() {
-  const [direction, setDirection] = useState<FootDirection>("cells");
+  const [direction, setDirection] = useState<Direction>("fitSlim");
+  const [menuHeight, setMenuHeight] = useState("full");
   const [credits, setCredits] = useState(28);
   const [phase, setPhase] = useState<LoadPhase>("ready");
   const [folded, setFolded] = useState(false);
@@ -137,10 +172,13 @@ export default function MenuCreditsPage() {
         </header>
 
         <MenuShell
+          shellHeight={MENU_HEIGHTS.find((h) => h.id === menuHeight)?.px ?? undefined}
           foot={
             direction === "today"
               ? undefined
-              : (mode) => <Foot direction={direction} mode={mode} balance={balance} />
+              : isFit(direction)
+                ? (mode, room) => <FitFoot compact={COMPACT[direction]} mode={mode} room={room} balance={balance} />
+                : (mode) => <Foot direction={direction} mode={mode} balance={balance} />
           }
         >
           <div className="mx-auto max-w-output">
@@ -183,6 +221,7 @@ export default function MenuCreditsPage() {
             onChange={(id) => setCredits(Number(id))}
           />
           <Picker title="Balance load" options={PHASES} value={phase} onChange={setPhase} />
+          <Picker title="Menu height" options={MENU_HEIGHTS} value={menuHeight} onChange={setMenuHeight} />
 
           <p className="mt-3 text-xs leading-snug text-xn-ink-soft">
             The menu&apos;s mode is changed with the menu itself — its arrow for the rail, its button to

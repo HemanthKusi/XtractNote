@@ -460,6 +460,12 @@ export default function CreatePage() {
   // each time the start line appears — on reaching the picker and on every
   // return to it — and after a start is admitted, when its price is reserved.
   const { balance, refresh: refreshBalance, observed: observedBalance } = useBalance();
+  // The same balance, for handleGenerate: after its awaits it must read the
+  // balance as it is now, not as it was in the render the click came from.
+  const balanceRef = useRef(balance);
+  useEffect(() => {
+    balanceRef.current = balance;
+  }, [balance]);
 
   const atStartLine = status.phase === "picking" || status.phase === "generate-error";
   useEffect(() => {
@@ -729,9 +735,13 @@ export default function CreatePage() {
         // balance had been read — the button goes off and the page returns
         // to the picker rather than adding a second message. Otherwise the
         // refusal's own message is kept.
-        observedBalance(started.shortfall.balance, started.shortfall.nextRefillAt);
+        observedBalance(userId, started.shortfall.balance, started.shortfall.nextRefillAt);
         const cost = costFor(quoteRef.current, meta.videoId, contentType, platform ?? null);
-        if (balance.phase === "ready" && cost?.phase === "ready" && cost.credits > started.shortfall.balance) {
+        if (
+          balanceRef.current.phase === "ready" &&
+          cost?.phase === "ready" &&
+          cost.credits > started.shortfall.balance
+        ) {
           setStatus({ phase: "picking", meta });
         } else {
           setStatus({ phase: "generate-error", meta, message: shortfallMessage(started.shortfall) });

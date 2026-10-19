@@ -93,7 +93,8 @@ def test_the_balance_is_the_callers_with_its_refill_time(client, balance) -> Non
 
 
 def test_a_user_named_in_the_request_reads_the_callers_own_balance(client, balance) -> None:
-    client.get("/api/credits", params={"userId": OTHER, "user_id": OTHER}, headers={"X-User-Id": OTHER})
+    response = client.get("/api/credits", params={"userId": OTHER, "user_id": OTHER}, headers={"X-User-Id": OTHER})
+    assert response.status_code == 200
     assert balance.read == [USER]
 
 

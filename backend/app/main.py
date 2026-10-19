@@ -21,7 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import settings
-from app.api import youtube, generate, content, folders
+from app.api import youtube, generate, content, folders, credits
 from app.services import jobs
 from app.services.dispatch import get_generation_pool
 
@@ -127,6 +127,7 @@ app.include_router(youtube.router, prefix="/api/youtube", tags=["YouTube"])
 app.include_router(generate.router, prefix="/api/generate", tags=["Generate"])
 app.include_router(content.router, prefix="/api/content", tags=["Content"])
 app.include_router(folders.router, prefix="/api/folders", tags=["Folders"])
+app.include_router(credits.router, prefix="/api/credits", tags=["Credits"])
 
 
 # ── Health Check ──

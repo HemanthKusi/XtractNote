@@ -259,7 +259,11 @@ export interface GenerationJob {
  *
  * Refused when the job is started (the response's detail.code):
  *   unknown-content-type, not-authenticated, auth-unavailable,
- *   generation-busy, generation-limit, job-not-created, request-key-reused
+ *   generation-busy, generation-limit, job-not-created, request-key-reused;
+ *   credits-short — the balance is below the price;
+ *   video-not-found, video-has-no-length, length-unavailable,
+ *   youtube-misconfigured — the video's length, which sets the price, could
+ *   not be known
  *
  * Recorded on a job that failed (its errorCode):
  *   no-captions, video-not-found, transcript-blocked, transcript-failed — the
@@ -294,6 +298,10 @@ export type GenerateFailReason =
   | "generation-limit"
   | "job-not-created"
   | "request-key-reused"
+  | "credits-short"
+  | "video-has-no-length"
+  | "length-unavailable"
+  | "youtube-misconfigured"
   | "provider-misconfigured"
   | "generation-failed"
   | "invalid-structured-output"

@@ -30,6 +30,7 @@ from typing import Any
 from postgrest.exceptions import APIError
 
 from app.db.supabase import get_supabase_client
+from app.services.credits import CreditShortfall, shortfall_from
 
 TABLE = "generation_jobs"
 CONTENT_TABLE = "generated_content"
@@ -37,11 +38,16 @@ CONTENT_TABLE = "generated_content"
 #: Postgres's code for a unique-constraint violation.
 UNIQUE_VIOLATION = "23505"
 
-#: Raised by migration 010's `admit_generation_job` when the user is at their
-#: limit of unfinished jobs.
+#: Raised by `admit_generation_job` when the user is at their limit of
+#: unfinished jobs (migration 010).
 GENERATION_LIMIT = "XN429"
 
-#: The database function that creates a job (migration 010).
+#: Raised by `admit_generation_job` when the user's balance is below the
+#: price, with the price, balance and next refill as JSON in its detail
+#: (migration 014).
+CREDITS_SHORT = "XN402"
+
+#: The database function that creates a job and reserves its price.
 ADMIT_FUNCTION = "admit_generation_job"
 
 
@@ -52,11 +58,15 @@ class JobError(Exception):
     Raised when a job operation cannot be performed. `code` is a stable string
     the API layer maps to an HTTP status and the generating screen maps to its
     own copy — the same pattern as GenerationError.
+
+    `shortfall` is set on "credits-short" when the database's detail could be
+    read, and None otherwise.
     """
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, shortfall: CreditShortfall | None = None) -> None:
         self.code = code
         self.message = message
+        self.shortfall = shortfall
         super().__init__(message)
 
 
@@ -271,13 +281,17 @@ def create_job(
     request_id: str,
     platform: str | None,
     limit: int,
+    cost: int,
+    allowance: int,
 ) -> str:
     """
-    Create a `pending` job and return its id, if the user has fewer than
-    `limit` unfinished jobs.
+    Create a `pending` job, reserve `cost` credits for it, and return its id —
+    if the user has fewer than `limit` unfinished jobs and at least `cost`
+    credits.
 
-    Created by the database function from migration 010, which counts and
-    inserts under a lock per user.
+    Created by the database function, which counts, refills (to `allowance`,
+    if due), charges and inserts in one transaction under a lock per user
+    (migrations 010, 014).
 
     `platform` is the social platform, or None for any other type; migration
     009 constrains it to the platforms that can be run.
@@ -287,6 +301,8 @@ def create_job(
     database itself — including when two copies of the request race.
 
     Raises JobError("generation-limit") when the user is at `limit`.
+    Raises JobError("credits-short") when the balance is below `cost`, with
+    its `shortfall` when the database's detail can be read.
     Raises JobError("duplicate-request") when this user already has a job for
     `request_id`; the caller looks that job up instead. Raises
     JobError("job-not-created") when the call returns no id, rather than
@@ -304,6 +320,8 @@ def create_job(
                     "p_request_id": request_id,
                     "p_platform": platform,
                     "p_limit": limit,
+                    "p_cost": cost,
+                    "p_allowance": allowance,
                 },
             )
             .execute()
@@ -312,6 +330,12 @@ def create_job(
         if exc.code == GENERATION_LIMIT:
             raise JobError(
                 "generation-limit", "This user is at their limit of unfinished generations."
+            ) from exc
+        if exc.code == CREDITS_SHORT:
+            raise JobError(
+                "credits-short",
+                "This user does not have enough credits for this generation.",
+                shortfall_from(exc.details),
             ) from exc
         if exc.code == UNIQUE_VIOLATION:
             raise JobError(

@@ -24,6 +24,7 @@ import {
   type SocialPlatform,
 } from "@/lib/content/types";
 import type { VideoMeta } from "@/lib/youtube/types";
+import { shortfallFrom, type CreditShortfall } from "@/lib/credits/shortfall";
 
 // Same backend base URL the other clients use. NEXT_PUBLIC_ so it's
 // available in browser code; falls back to localhost in dev.
@@ -38,9 +39,14 @@ const REQUEST_TIMEOUT_MS = 15_000;
 // "not now" rather than "no": ask again.
 const RETRYABLE_STATUSES = new Set([408, 429]);
 
+/**
+ * A refusal for credits carries what the start would have cost, what the user
+ * has and when they refill — or null when the refusal's detail was unreadable.
+ */
 export type StartGenerationResult =
   | { ok: true; jobId: string }
-  | { ok: false; reason: GenerateFailReason };
+  | { ok: false; reason: "credits-short"; shortfall: CreditShortfall | null }
+  | { ok: false; reason: Exclude<GenerateFailReason, "credits-short"> };
 
 /**
  * `transient` says whether asking again might succeed: the network, or the
@@ -53,7 +59,8 @@ export type FetchJobResult =
 
 // The codes POST /api/generate refuses with, in detail.code. Checked against
 // this before being trusted, so an unexpected string cannot pass as a reason.
-const START_REASONS: readonly GenerateFailReason[] = [
+// "credits-short" is read separately, with the numbers it carries.
+const START_REASONS: readonly Exclude<GenerateFailReason, "credits-short">[] = [
   "unknown-content-type",
   "not-authenticated",
   "auth-unavailable",
@@ -61,6 +68,10 @@ const START_REASONS: readonly GenerateFailReason[] = [
   "generation-limit",
   "job-not-created",
   "request-key-reused",
+  "video-not-found",
+  "video-has-no-length",
+  "length-unavailable",
+  "youtube-misconfigured",
 ];
 
 /** The signed-in user's access token, or null when there is no session. */
@@ -88,21 +99,27 @@ export async function signedInUserId(): Promise<string | null> {
   }
 }
 
-/** detail.code from an error body, or null if the body is not one of ours. */
-async function codeFrom(response: Response): Promise<string | null> {
+/**
+ * The `detail` object from an error body, or null if the body is not one of
+ * ours. A body can be read once, so the code and anything else the refusal
+ * carries are taken from this.
+ */
+async function detailFrom(response: Response): Promise<Record<string, unknown> | null> {
   try {
     const body: unknown = await response.json();
     if (typeof body === "object" && body !== null) {
       const detail = (body as { detail?: unknown }).detail;
-      if (typeof detail === "object" && detail !== null) {
-        const code = (detail as { code?: unknown }).code;
-        if (typeof code === "string") return code;
-      }
+      if (typeof detail === "object" && detail !== null) return detail as Record<string, unknown>;
     }
   } catch {
     // Not JSON — a proxy error page, say. Fall through.
   }
   return null;
+}
+
+/** detail.code, or null. */
+function codeOf(detail: Record<string, unknown> | null): string | null {
+  return typeof detail?.code === "string" ? detail.code : null;
 }
 
 /**
@@ -137,7 +154,7 @@ export async function startGeneration(
         title: meta.title,
         channel: meta.channel,
         thumbnailUrl: meta.thumbnailUrl,
-        ...(meta.durationSeconds != null ? { durationSeconds: meta.durationSeconds } : {}),
+        // No length: the backend looks it up, because the price depends on it.
         requestId,
       }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -154,10 +171,13 @@ export async function startGeneration(
         : { ok: false, reason: "unknown" };
     }
 
-    const code = await codeFrom(response);
-    if (code !== null && (START_REASONS as readonly string[]).includes(code)) {
-      return { ok: false, reason: code as GenerateFailReason };
+    const detail = await detailFrom(response);
+    const code = codeOf(detail);
+    if (code === "credits-short") {
+      return { ok: false, reason: "credits-short", shortfall: shortfallFrom(detail) };
     }
+    const reason = START_REASONS.find((known) => known === code);
+    if (reason !== undefined) return { ok: false, reason };
     return { ok: false, reason: response.status === 401 ? "not-authenticated" : "unknown" };
   } catch {
     // No response at all, or none within the time limit: backend down, CORS,
@@ -218,7 +238,7 @@ export async function fetchJob(jobId: string): Promise<FetchJobResult> {
       return job ? { ok: true, job } : { ok: false, reason: "unknown", transient: false };
     }
 
-    const code = await codeFrom(response);
+    const code = codeOf(await detailFrom(response));
     switch (code) {
       case "not-authenticated":
         return { ok: false, reason: "not-authenticated", transient: false };

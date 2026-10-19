@@ -15,6 +15,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api import generate as generate_api
 from app.api.dependencies import CurrentUser, get_current_user
 from app.config import settings
 from app.main import app
@@ -68,6 +69,7 @@ class FakeJobs:
     def __init__(self) -> None:
         self.created: list[tuple[str, str, str, str, str | None]] = []
         self.limits: list[int] = []
+        self.charges: list[tuple[int, int]] = []
         self.failed: list[tuple[str, str, str, str]] = []
         self.read: list[tuple[str, str]] = []
         self.looked_up: list[tuple[str, str]] = []
@@ -86,9 +88,12 @@ class FakeJobs:
         request_id: str,
         platform: str | None,
         limit: int,
+        cost: int,
+        allowance: int,
     ) -> str:
         self.created.append((user_id, video_id, content_type, request_id, platform))
         self.limits.append(limit)
+        self.charges.append((cost, allowance))
         if self.create_raises:
             raise self.create_raises
         return JOB
@@ -118,13 +123,35 @@ def fake_jobs(monkeypatch: pytest.MonkeyPatch) -> FakeJobs:
     return fake
 
 
+class FakeLength:
+    """Stands in for the YouTube length lookup: answers `seconds`, or raises."""
+
+    def __init__(self) -> None:
+        self.seconds = 754
+        self.raises: Exception | None = None
+        self.asked: list[str] = []
+
+    def __call__(self, video_id: str) -> int:
+        self.asked.append(video_id)
+        if self.raises:
+            raise self.raises
+        return self.seconds
+
+
+@pytest.fixture
+def length(monkeypatch: pytest.MonkeyPatch) -> FakeLength:
+    fake = FakeLength()
+    monkeypatch.setattr(generate_api, "video_length", fake)
+    return fake
+
+
 @pytest.fixture
 def pool() -> FakePool:
     return FakePool()
 
 
 @pytest.fixture
-def client(pool: FakePool, fake_jobs: FakeJobs):
+def client(pool: FakePool, fake_jobs: FakeJobs, length: FakeLength):
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=USER)
     app.dependency_overrides[get_generation_pool] = lambda: pool
     yield TestClient(app)
@@ -192,9 +219,105 @@ def test_a_stray_platform_is_not_recorded_on_the_job(client, fake_jobs) -> None:
     assert fake_jobs.created[0][4] is None
 
 
-def test_duration_is_optional(client, pool) -> None:
-    assert post(client, durationSeconds=...).status_code == 202
-    assert started(pool).video.duration_seconds is None
+def test_the_draft_row_gets_the_length_youtube_reports(client, pool, length) -> None:
+    length.seconds = 1687
+    assert post(client, durationSeconds=754).status_code == 202
+    assert started(pool).video.duration_seconds == 1687
+
+
+# --- The price ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("content_type", "seconds", "cost"),
+    [("summary", 754, 1), ("research", 754, 2), ("research", 3_600, 2), ("research", 3_601, 3), ("blog", 9_000, 4)],
+)
+def test_the_job_is_charged_the_price_of_its_format_and_length(
+    client, fake_jobs, length, content_type, seconds, cost
+) -> None:
+    length.seconds = seconds
+    assert post(client, contentType=content_type).status_code == 202
+    assert fake_jobs.charges == [(cost, settings.credits_per_month)]
+
+
+@pytest.mark.parametrize("claimed", [1, 36_000, ...])
+def test_a_length_in_the_request_cannot_change_the_price(client, fake_jobs, length, claimed) -> None:
+    """The length is asked of YouTube by video id; nothing in the body is read for it."""
+    length.seconds = 9_000
+    assert post(client, contentType="research", durationSeconds=claimed).status_code == 202
+    assert fake_jobs.charges == [(4, settings.credits_per_month)]
+    assert length.asked == [VALID["videoId"]]
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+def test_a_non_finite_number_in_the_body_is_not_a_500(client, fake_jobs, value: float) -> None:
+    """
+    `json.dumps` writes these as `Infinity` / `NaN`, which Python's parser
+    accepts. FastAPI once echoed such a value back and could not serialise it.
+    """
+    response = client.post(
+        "/api/generate",
+        content=json.dumps({**VALID, "durationSeconds": value}),
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 202
+    assert fake_jobs.charges == [(1, settings.credits_per_month)]
+
+
+def test_a_repeated_request_key_is_not_priced_or_charged_again(client, fake_jobs, length) -> None:
+    fake_jobs.existing = [{"id": JOB, "video_id": VALID["videoId"], "content_type": "summary", "platform": None}]
+    assert post(client).json() == {"jobId": JOB}
+    assert length.asked == [] and fake_jobs.charges == []
+
+
+def test_too_few_credits_is_402_with_the_price_balance_and_refill(client, pool, fake_jobs) -> None:
+    from datetime import datetime, timezone
+
+    from app.services.credits import CreditShortfall
+
+    refill = datetime(2026, 10, 30, 19, 30, 49, tzinfo=timezone.utc)
+    fake_jobs.create_raises = jobs.JobError("credits-short", "short", CreditShortfall(2, 1, refill))
+    response = post(client, contentType="research")
+    assert response.status_code == 402
+    assert response.json()["detail"] == {
+        "code": "credits-short",
+        "message": "You don't have enough credits for this generation.",
+        "cost": 2,
+        "balance": 1,
+        "nextRefillAt": refill.isoformat(),
+    }
+    assert pool.slot.released and pool.slot.work is None
+
+
+def test_too_few_credits_without_a_readable_detail_is_still_402(client, pool, fake_jobs) -> None:
+    fake_jobs.create_raises = jobs.JobError("credits-short", "short", None)
+    response = post(client)
+    assert response.status_code == 402
+    assert set(response.json()["detail"]) == {"code", "message"}
+    assert pool.slot.released
+
+
+@pytest.mark.parametrize(
+    ("code", "status"),
+    [
+        ("video-not-found", 422),
+        ("video-has-no-length", 422),
+        ("length-unavailable", 503),
+        ("youtube-misconfigured", 503),
+    ],
+)
+def test_a_length_that_cannot_be_known_refuses_before_anything_is_taken(
+    client, pool, fake_jobs, length, code, status
+) -> None:
+    """Decided on #451: never a guessed price."""
+    from app.services.video_length import LengthError
+
+    length.raises = LengthError(code, "no length")
+    response = post(client)
+    assert response.status_code == status
+    assert response.json()["detail"]["code"] == code
+    assert pool.reserved == 0 and fake_jobs.created == []
+    assert ("Retry-After" in response.headers) is (status == 503)
 
 
 # --- Refused before any job exists --------------------------------------------
@@ -236,29 +359,11 @@ def test_a_format_with_no_prompt_is_a_coded_422(client, pool, fake_jobs, monkeyp
         {"thumbnailUrl": "https://evil.example/thumb.jpg"},
         {"thumbnailUrl": "http://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"},
         {"thumbnailUrl": "javascript:alert(1)"},
-        {"durationSeconds": -1},
-        {"durationSeconds": 86_401},
     ],
 )
 def test_a_malformed_request_is_422_and_creates_no_job(client, pool, fake_jobs, changes) -> None:
     assert post(client, **changes).status_code == 422
     assert pool.reserved == 0 and fake_jobs.created == []
-
-
-@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
-def test_a_non_finite_duration_is_422_not_500(client, fake_jobs, value: float) -> None:
-    """
-    `json.dumps` writes these as `Infinity` / `NaN`, which Python's parser
-    accepts. FastAPI's own validation handler echoed the value back and could
-    not serialise it, so this was once a 500.
-    """
-    response = client.post(
-        "/api/generate",
-        content=json.dumps({**VALID, "durationSeconds": value}),
-        headers={"content-type": "application/json"},
-    )
-    assert response.status_code == 422
-    assert fake_jobs.created == []
 
 
 def test_a_malformed_request_does_not_echo_what_it_sent(client) -> None:

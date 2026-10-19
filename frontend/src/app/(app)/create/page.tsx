@@ -70,6 +70,9 @@ import {
   type KeyStore,
 } from "@/lib/generation/start-key";
 import { shortfallMessage } from "@/lib/credits/shortfall";
+import type { CreditQuote } from "@/lib/credits/read";
+import { fetchBalance, fetchQuote } from "@/lib/api/credits";
+import { StartCost, shortBy, type BalanceState, type CostState } from "@/components/create/start-cost";
 import { ContentTypePicker } from "@/components/create/content-type-picker";
 import { CreateHero } from "@/components/create/create-hero";
 import { GeneratingPanel } from "@/components/create/generating-panel";
@@ -449,6 +452,66 @@ export default function CreatePage() {
     };
   }, [showsDrafts, loadDrafts]);
 
+  // ── What a start costs, and what the user has ── (#454)
+  //
+  // The balance is read each time the start line appears — on reaching the
+  // picker and on every return to it — so a charge, a refund or a refill
+  // shows without a reload. A balance already on screen stays while it is
+  // read again.
+  const [balance, setBalance] = useState<BalanceState>({ phase: "loading" });
+  const balanceRun = useRef(0);
+  const loadBalance = useCallback(async () => {
+    const run = ++balanceRun.current;
+    const result = await fetchBalance();
+    if (run !== balanceRun.current) return;
+    setBalance(result.ok ? { phase: "ready", balance: result.balance } : { phase: "failed" });
+  }, []);
+
+  const atStartLine = status.phase === "picking" || status.phase === "generate-error";
+  useEffect(() => {
+    if (!atStartLine) return;
+    void loadBalance();
+    const runs = balanceRun;
+    return () => {
+      runs.current += 1;
+    };
+  }, [atStartLine, loadBalance]);
+
+  // A quote prices every format on one video, so it is asked once per video
+  // and kept while that video stays loaded: changing format, or coming back
+  // from a run, asks nothing more. A failed quote is asked again the next
+  // time the start line appears.
+  const [quote, setQuote] = useState<{
+    videoId: string;
+    state: { phase: "loading" } | { phase: "failed" } | { phase: "ready"; quote: CreditQuote };
+  } | null>(null);
+  const quoteRun = useRef(0);
+  const quotedVideo = useRef<string | null>(null);
+  const loadQuote = useCallback(async (videoId: string) => {
+    const run = ++quoteRun.current;
+    quotedVideo.current = videoId;
+    setQuote({ videoId, state: { phase: "loading" } });
+    const result = await fetchQuote(videoId);
+    if (run !== quoteRun.current) return;
+    if (!result.ok) quotedVideo.current = null;
+    setQuote({ videoId, state: result.ok ? { phase: "ready", quote: result.quote } : { phase: "failed" } });
+  }, []);
+
+  const startLineVideoId =
+    status.phase === "picking" || status.phase === "generate-error" ? status.meta.videoId : null;
+  useEffect(() => {
+    if (startLineVideoId && quotedVideo.current !== startLineVideoId) void loadQuote(startLineVideoId);
+  }, [startLineVideoId, loadQuote]);
+
+  /** What starting `type` on `videoId` costs, as far as the page knows; null with nothing chosen. */
+  function costFor(videoId: string, type: GeneratableContentType | null, platform: SocialPlatform | null): CostState | null {
+    if (!type || (type === "social" && !platform)) return null;
+    if (!quote || quote.videoId !== videoId || quote.state.phase === "loading") return { phase: "loading" };
+    if (quote.state.phase === "failed") return { phase: "failed" };
+    const price = quote.state.quote.prices[type];
+    return price === undefined ? { phase: "failed" } : { phase: "ready", credits: price };
+  }
+
   // Leaving the page invalidates whatever is in flight, so a generation's
   // polling stops at its next check instead of running on behind a page
   // nobody is looking at. The run itself is not stopped; if it finishes, its
@@ -673,7 +736,21 @@ export default function CreatePage() {
       // such as a proxy's 502 after the backend accepted.
       if (started.reason === "request-key-reused") settle();
       if (started.reason === "credits-short" && started.shortfall) {
-        setStatus({ phase: "generate-error", meta, message: shortfallMessage(started.shortfall) });
+        // The refusal carries the balance and refill date. With them in place
+        // the cost line shows the shortfall and the button goes off, so the
+        // page returns to the picker rather than adding a second message —
+        // unless the line has no price to compare, when the message is kept.
+        const refused: BalanceState = {
+          phase: "ready",
+          balance: { balance: started.shortfall.balance, nextRefillAt: started.shortfall.nextRefillAt },
+        };
+        setBalance(refused);
+        const cost = costFor(meta.videoId, contentType, platform ?? null);
+        if (cost && shortBy(cost, refused) !== null) {
+          setStatus({ phase: "picking", meta });
+        } else {
+          setStatus({ phase: "generate-error", meta, message: shortfallMessage(started.shortfall) });
+        }
         return;
       }
       fail(started.reason);
@@ -832,6 +909,9 @@ export default function CreatePage() {
 
   // Social is picked but no platform chosen yet — Generate stays disabled.
   const needsPlatform = selectedType === "social" && !selectedPlatform;
+
+  const startCost = meta ? costFor(meta.videoId, selectedType, selectedPlatform) : null;
+  const startShort = startCost !== null && shortBy(startCost, balance) !== null;
 
   return (
     // `output` rather than the `wide` column history and folders use: this
@@ -1026,28 +1106,27 @@ export default function CreatePage() {
 
                   {/* The generating screen is no longer rendered from inside
                       the picker — it replaces the whole page, above. This
-                      branch only ever shows the button now. */}
-                  {(
-                    <div className="mt-5 flex items-center gap-3">
-                      {/* "Make study notes", not "Generate" — the specimen's
-                          copy, and it names the thing rather than the act.
-                          Falls back to "Pick a format" while nothing is
-                          chosen, so the disabled button says WHY it is
-                          disabled instead of just being grey. */}
-                      <Button
-                        variant="primary"
-                        size="lg"
-                        onClick={handleGenerate}
-                        disabled={!selectedType || needsPlatform}
-                      >
-                        {status.phase === "generate-error"
-                          ? "Try again"
-                          : selectedType
-                            ? `Make ${contentTypeColors[selectedType].label.toLowerCase()}`
-                            : "Pick a format"}
-                      </Button>
-                    </div>
-                  )}
+                      branch shows the start button and its cost. */}
+                  <StartCost cost={startCost} balance={balance}>
+                    {/* "Make study notes", not "Generate" — the specimen's
+                        copy, and it names the thing rather than the act.
+                        Falls back to "Pick a format" while nothing is
+                        chosen, so the disabled button says WHY it is
+                        disabled instead of just being grey. Off, too, when
+                        the balance is known to be short of the price. */}
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      onClick={handleGenerate}
+                      disabled={!selectedType || needsPlatform || startShort}
+                    >
+                      {status.phase === "generate-error"
+                        ? "Try again"
+                        : selectedType
+                          ? `Make ${contentTypeColors[selectedType].label.toLowerCase()}`
+                          : "Pick a format"}
+                    </Button>
+                  </StartCost>
 
                   {status.phase === "generate-error" && (
                     <p className="mt-3 flex items-start gap-2 text-sm text-xn-danger">

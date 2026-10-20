@@ -37,13 +37,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import gsap from "gsap";
 import { CustomEase } from "gsap/CustomEase";
 import { useGSAP } from "@gsap/react";
 
 import { useReducedMotion } from "@/lib/hooks/use-reduced-motion";
 
+import { ON_INK, ON_INK_ACTIVE, ON_INK_DIM, ON_INK_HOVER } from "./menu-colors";
 import { MENU_ICONS, PanelArrowIcon } from "./menu-icons";
 import {
   BEAT,
@@ -106,11 +107,6 @@ function useShellHeight(): number {
   return h;
 }
 
-// SearchInput's own surface: ink ground, page-coloured glyphs, at every size.
-const ON_INK = "var(--xn-bg)";
-const ON_INK_DIM = "color-mix(in srgb, var(--xn-bg) 66%, transparent)";
-const ON_INK_ACTIVE = "color-mix(in srgb, var(--xn-bg) 15%, transparent)";
-const ON_INK_HOVER = "color-mix(in srgb, var(--xn-bg) 8%, transparent)";
 
 // ── The menu glyph ──────────────────────────────────────────
 //
@@ -348,9 +344,17 @@ export interface AppMenuProps {
    * it. Omitted everywhere except that box.
    */
   shellHeight?: number;
+  /**
+   * What sits at the foot of the docked menu, in the space below the rows
+   * (#460). Given the menu's mode and `room`: the height between the rows
+   * and the bottom of the body in that mode, padding included, so the foot
+   * can choose a form that fits rather than cover a row. Hidden and inert
+   * while the menu is the floating button. Omitted, nothing is drawn.
+   */
+  foot?: (mode: MenuMode, room: number) => ReactNode;
 }
 
-export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeight }: AppMenuProps) {
+export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeight, foot }: AppMenuProps) {
   const pathname = usePathname();
   const reduced = useReducedMotion();
   const viewportHeight = useShellHeight();
@@ -372,6 +376,18 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
   const openContent = useRef<HTMLButtonElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const didInit = useRef(false);
+
+  // The rows' height, so the foot can be told the room left beneath them in
+  // the body's settled size for this mode — not the size mid-morph.
+  const [rowsHeight, setRowsHeight] = useState(0);
+  useEffect(() => {
+    const rows = rowsRef.current;
+    if (!rows) return;
+    const observer = new ResizeObserver(() => setRowsHeight(rows.offsetHeight));
+    observer.observe(rows);
+    return () => observer.disconnect();
+  }, []);
+  const footRoom = Math.max(0, geometryFor(mode, height).height - rowsHeight);
 
   const collapsed = mode === "floating";
   const rail = mode === "rail";
@@ -578,6 +594,33 @@ export function AppMenu({ mode, onModeChange, activePage, onNavigate, shellHeigh
             );
           })}
         </div>
+
+        {/* The foot: pinned to the bottom of the body, in this unfiltered
+            layer like the rows. It arrives on the rows' beat, one step after
+            the last of them, and leaves with them; `inert` while the menu is
+            the button, for the same reason the rows are. It takes no pointer
+            events, so its box never swallows a click meant for a row it
+            overlaps. Clipped, because the
+            body narrows to the dock under it mid-morph. */}
+        {foot && (
+          <div
+            inert={collapsed}
+            className="pointer-events-none absolute inset-x-0 bottom-0 overflow-hidden"
+            style={{
+              padding: PAD,
+              opacity: collapsed ? 0 : 1,
+              transition: reduced
+                ? undefined
+                : collapsed
+                  ? `opacity ${MORPH_MS * BEAT.rowsOut}ms ${MORPH_CSS_EASE}`
+                  : `opacity ${MORPH_MS * BEAT.rowDuration}ms ${MORPH_CSS_EASE} ${
+                      MORPH_MS * (BEAT.rowDelay + BEAT.rowStagger * (MENU_ENTRIES.length + 1))
+                    }ms`,
+            }}
+          >
+            {foot(mode, footRoom)}
+          </div>
+        )}
 
         {/* The button's face, and the control that reopens it — the same
             element, because the collapsed menu IS the button.

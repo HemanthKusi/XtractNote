@@ -17,6 +17,8 @@ export interface CreditShortfall {
 
 export interface CreditBalance {
   balance: number;
+  /** What each refill resets the balance to. */
+  allowance: number;
   /** ISO 8601 with an offset, as the backend sends it. */
   nextRefillAt: string;
 }
@@ -80,8 +82,8 @@ export function shortfallFrom(detail: unknown): CreditShortfall | null {
 /** The balance in GET /api/credits's body, or null. */
 export function balanceFrom(body: unknown): CreditBalance | null {
   const b = asRecord(body);
-  if (b === null || !isCount(b.balance, 0) || !isZonedTime(b.nextRefillAt)) return null;
-  return { balance: b.balance, nextRefillAt: b.nextRefillAt };
+  if (b === null || !isCount(b.balance, 0) || !isCount(b.allowance, 1) || !isZonedTime(b.nextRefillAt)) return null;
+  return { balance: b.balance, allowance: b.allowance, nextRefillAt: b.nextRefillAt };
 }
 
 /**

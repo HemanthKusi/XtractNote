@@ -1,11 +1,12 @@
 """
 XtractNote — Credits routes
 
-  GET  /api/credits                 → the caller's balance and next refill
+  GET  /api/credits                 → the caller's balance, the monthly
+                                      allowance, and the next refill
   GET  /api/credits/quote?videoId=  → what each format costs on that video
 
 So the create page can say what a start costs, and what the user has, before
-they start one.
+they start one, and the menu can show the balance against the allowance.
 
 Both routes require a signed-in user, and the user is whoever the access token
 belongs to — nothing in a request names one. `balance_for` runs with the
@@ -25,6 +26,7 @@ from pydantic import BaseModel
 
 from app.api.dependencies import CurrentUser, get_current_user
 from app.api.video_checks import VIDEO_ID_PATTERN, length_refusal
+from app.config import settings
 from app.services.credits import balance_for
 from app.services.pricing import BASE_PRICE, price_for
 from app.services.prompts import ContentType
@@ -37,6 +39,8 @@ router = APIRouter()
 
 class BalanceResponse(BaseModel):
     balance: int
+    #: What each refill resets the balance to.
+    allowance: int
     #: ISO 8601 with its offset.
     nextRefillAt: str
 
@@ -51,8 +55,9 @@ class QuoteResponse(BaseModel):
 @router.get("", response_model=BalanceResponse)
 def get_balance(user: CurrentUser = Depends(get_current_user)) -> BalanceResponse:
     """
-    The caller's balance, after any refill that has come due, and when the
-    next one comes. The first read for a user creates their account.
+    The caller's balance, after any refill that has come due, the allowance
+    a refill resets it to, and when the next one comes. The first read for a
+    user creates their account.
 
     A plain `def`: reading the balance is a blocking database call.
     """
@@ -64,7 +69,12 @@ def get_balance(user: CurrentUser = Depends(get_current_user)) -> BalanceRespons
             status_code=503,
             detail={"code": "balance-unavailable", "message": "Your credits couldn't be checked just now."},
         )
-    return BalanceResponse(balance=current.balance, nextRefillAt=current.next_refill_at.isoformat())
+    return BalanceResponse(
+        balance=current.balance,
+        # The setting balance_for refills from, so the two cannot disagree.
+        allowance=settings.credits_per_month,
+        nextRefillAt=current.next_refill_at.isoformat(),
+    )
 
 
 # ── What each format costs on a video ────────────────────────

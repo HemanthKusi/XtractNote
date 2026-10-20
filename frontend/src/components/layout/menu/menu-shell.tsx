@@ -28,7 +28,7 @@
 
 import { useState, type ReactNode } from "react";
 
-import { AppMenu } from "./app-menu";
+import { AppMenu, type AppMenuProps } from "./app-menu";
 import { MORPH_CSS_EASE, MORPH_MS, reservedFor, type MenuMode, type PageId } from "./menu-geometry";
 
 /**
@@ -46,12 +46,15 @@ export function MenuShell({
   activePage,
   onNavigate,
   shellHeight,
+  foot,
 }: {
   children: ReactNode;
   /** Preview surfaces only — see AppMenu. */
   activePage?: PageId;
   onNavigate?: (page: PageId) => void;
   shellHeight?: number;
+  /** What sits at the foot of the docked menu — see AppMenu. */
+  foot?: AppMenuProps["foot"];
 }) {
   // The menu does not remember its mode: it opens as a panel on every load.
   const [mode, setMode] = useState<MenuMode>("expanded");
@@ -71,6 +74,7 @@ export function MenuShell({
         activePage={activePage}
         onNavigate={onNavigate}
         shellHeight={shellHeight}
+        foot={foot}
       />
 
       <div

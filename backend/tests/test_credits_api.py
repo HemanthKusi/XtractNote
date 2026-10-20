@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from app.api import credits as credits_api
 from app.api.dependencies import CurrentUser, get_current_user
+from app.config import settings
 from app.main import app
 from app.services.credits import CreditBalance, CreditError
 from app.services.pricing import BASE_PRICE
@@ -85,11 +86,20 @@ def signed_out(balance: FakeBalance, length: FakeLength):
 # --- The balance --------------------------------------------------------------
 
 
-def test_the_balance_is_the_callers_with_its_refill_time(client, balance) -> None:
+def test_the_balance_is_the_callers_with_its_allowance_and_refill_time(client, balance) -> None:
     response = client.get("/api/credits")
     assert response.status_code == 200
-    assert response.json() == {"balance": 28, "nextRefillAt": "2026-10-30T19:30:49+00:00"}
+    assert response.json() == {
+        "balance": 28,
+        "allowance": settings.credits_per_month,
+        "nextRefillAt": "2026-10-30T19:30:49+00:00",
+    }
     assert balance.read == [USER]
+
+
+def test_the_allowance_is_the_setting_refills_reset_to(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "credits_per_month", 12)
+    assert client.get("/api/credits").json()["allowance"] == 12
 
 
 def test_a_user_named_in_the_request_reads_the_callers_own_balance(client, balance) -> None:

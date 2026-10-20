@@ -28,6 +28,8 @@ export type QuoteFailReason =
   | "video-has-no-length"
   | "length-unavailable"
   | "youtube-misconfigured"
+  | "rate-limited"
+  | "rate-limit-unavailable"
   | "network"
   | "unknown";
 
@@ -45,6 +47,8 @@ const QUOTE_REASONS: readonly QuoteFailReason[] = [
   "video-has-no-length",
   "length-unavailable",
   "youtube-misconfigured",
+  "rate-limited",
+  "rate-limit-unavailable",
 ];
 
 async function refusal<R extends string>(response: Response, known: readonly R[]): Promise<R | "not-authenticated" | "unknown"> {

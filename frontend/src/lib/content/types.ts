@@ -263,7 +263,9 @@ export interface GenerationJob {
  *   credits-short — the balance is below the price;
  *   video-not-found, video-has-no-length, length-unavailable,
  *   youtube-misconfigured — the video's length, which sets the price, could
- *   not be known
+ *   not be known;
+ *   rate-limited, rate-limit-unavailable — the user's hourly limit on length
+ *   lookups is used up, or could not be checked
  *
  * Recorded on a job that failed (its errorCode):
  *   no-captions, video-not-found, transcript-blocked, transcript-failed — the
@@ -302,6 +304,8 @@ export type GenerateFailReason =
   | "video-has-no-length"
   | "length-unavailable"
   | "youtube-misconfigured"
+  | "rate-limited"
+  | "rate-limit-unavailable"
   | "provider-misconfigured"
   | "generation-failed"
   | "invalid-structured-output"

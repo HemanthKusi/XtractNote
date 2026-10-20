@@ -114,6 +114,16 @@ export function BalanceProvider({ children }: { children: ReactNode }) {
 }
 
 /**
+ * Preview surfaces only: supplies `balance` to everything inside it in place
+ * of the account's, so a showcase can show the menu and a page agreeing on a
+ * balance it chooses. Nothing is read, and refresh and observed do nothing.
+ */
+export function BalancePreview({ balance, children }: { balance: BalanceState; children: ReactNode }) {
+  const value = useMemo<BalanceContextValue>(() => ({ balance, refresh: () => {}, observed: () => {} }), [balance]);
+  return <BalanceContext.Provider value={value}>{children}</BalanceContext.Provider>;
+}
+
+/**
  * The shared balance. Outside a BalanceProvider — a page rendered without the
  * app shell — it reads as failed and refresh does nothing, so such a page
  * shows "no balance" rather than breaking.

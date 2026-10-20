@@ -51,69 +51,79 @@
 
 import { type ReactNode } from "react";
 
-import { BalanceProvider } from "@/components/credits/balance-provider";
+import { BalancePreview, BalanceProvider } from "@/components/credits/balance-provider";
 import { Logo } from "@/components/layout/logo";
 import { MAIN_CONTENT_ID, MenuShell } from "@/components/layout/menu";
 import { CreditsFoot } from "@/components/layout/menu/credits-foot";
 import { HEADER_H } from "@/components/layout/menu/menu-geometry";
 import { Topbar } from "@/components/layout/topbar";
+import type { BalanceState } from "@/lib/credits/cost";
 
 // ── Props ───────────────────────────────────────────────────
 
 interface AppShellProps {
   /** The page content — rendered in the scrollable content area */
   children: ReactNode;
+  /**
+   * Preview surfaces only: the balance the menu and the page show, in place
+   * of the account's. Omitted everywhere in the app.
+   */
+  previewBalance?: BalanceState;
 }
 
 // ── Component ───────────────────────────────────────────────
 
-export function AppShell({ children }: AppShellProps) {
-  return (
-    // The balance is read once here and shared: the menu's foot shows it and
-    // a page can use it (useBalance), so the two never disagree.
-    <BalanceProvider>
-      {/* Full viewport height, and the positioning context the menu anchors to. */}
-      <div className="relative flex h-screen flex-col overflow-hidden">
-        {/* ── Skip to content ──
-            First in the DOM because DOM order is tab order, and that is the
-            whole mechanism: this has to be reachable before the nine controls
-            it exists to bypass — three in the topbar, six in the menu.
+export function AppShell({ children, previewBalance }: AppShellProps) {
+  // Full viewport height, and the positioning context the menu anchors to.
+  const shell = (
+    <div className="relative flex h-screen flex-col overflow-hidden">
+      {/* ── Skip to content ──
+          First in the DOM because DOM order is tab order, and that is the
+          whole mechanism: this has to be reachable before the nine controls
+          it exists to bypass — three in the topbar, six in the menu.
 
-            `sr-only` already positions absolutely, so `focus:not-sr-only` alone
-            would return it to static and push the header down. `focus:absolute`
-            puts it back over the header, which is why both appear. */}
-        <a
-          href={`#${MAIN_CONTENT_ID}`}
-          className={[
-            "sr-only",
-            "focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50",
-            "focus:rounded-xn-md focus:border focus:border-xn-border-strong",
-            "focus:bg-xn-surface focus:px-3 focus:py-2",
-            "focus:text-ui focus:text-xn-ink focus:no-underline",
-            "focus:shadow-xn-ring",
-          ].join(" ")}
-        >
-          Skip to content
-        </a>
+          `sr-only` already positions absolutely, so `focus:not-sr-only` alone
+          would return it to static and push the header down. `focus:absolute`
+          puts it back over the header, which is why both appear. */}
+      <a
+        href={`#${MAIN_CONTENT_ID}`}
+        className={[
+          "sr-only",
+          "focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50",
+          "focus:rounded-xn-md focus:border focus:border-xn-border-strong",
+          "focus:bg-xn-surface focus:px-3 focus:py-2",
+          "focus:text-ui focus:text-xn-ink focus:no-underline",
+          "focus:shadow-xn-ring",
+        ].join(" ")}
+      >
+        Skip to content
+      </a>
 
-        {/* ── Header band ──
-            The logo keeps the corner; the topbar fills the rest. Both carry the
-            same bottom border so the line reads as one continuous rule rather
-            than two segments meeting. */}
-        <header className="flex shrink-0" style={{ height: HEADER_H }}>
-          <div className="flex w-[188px] shrink-0 items-center border-b border-xn-border bg-xn-bg pl-4">
-            <Logo size={22} showWordmark />
-          </div>
-          <div className="min-w-0 flex-1">
-            {/* The search trigger has no handler yet — the ⌘K modal is not
-                built, so the button is present but does nothing. */}
-            <Topbar />
-          </div>
-        </header>
+      {/* ── Header band ──
+          The logo keeps the corner; the topbar fills the rest. Both carry the
+          same bottom border so the line reads as one continuous rule rather
+          than two segments meeting. */}
+      <header className="flex shrink-0" style={{ height: HEADER_H }}>
+        <div className="flex w-[188px] shrink-0 items-center border-b border-xn-border bg-xn-bg pl-4">
+          <Logo size={22} showWordmark />
+        </div>
+        <div className="min-w-0 flex-1">
+          {/* The search trigger has no handler yet — the ⌘K modal is not
+              built, so the button is present but does nothing. */}
+          <Topbar />
+        </div>
+      </header>
 
-        {/* ── The menu and the content it makes room for ── */}
-        <MenuShell foot={(mode, room) => <CreditsFoot mode={mode} room={room} />}>{children}</MenuShell>
-      </div>
-    </BalanceProvider>
+      {/* ── The menu and the content it makes room for ── */}
+      <MenuShell foot={(mode, room) => <CreditsFoot mode={mode} room={room} />}>{children}</MenuShell>
+    </div>
+  );
+
+  // The balance is read once here and shared: the menu's foot shows it and a
+  // page can use it (useBalance), so the two never disagree.
+  return previewBalance ? (
+    <BalancePreview balance={previewBalance}>{shell}</BalancePreview>
+  ) : (
+    <BalanceProvider>{shell}</BalanceProvider>
   );
 }

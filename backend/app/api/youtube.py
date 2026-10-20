@@ -8,6 +8,10 @@ YouTube endpoints:
 There is no transcript endpoint: a generation fetches its own transcript from
 the video id (app/services/transcript_store.py), so none is handed to clients.
 
+Both routes require a signed-in user and take one use of that user's hourly
+limit before calling YouTube (app/api/rate_limits.py), because every call
+spends the project's shared quota.
+
 The route prefix "/api/youtube" is added in main.py via include_router,
 so here we only declare paths relative to that ("/metadata", etc.).
 
@@ -19,9 +23,12 @@ import (this module imports the search service to wire its route).
 import re
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
+from app.api.dependencies import CurrentUser, get_current_user
+from app.api.rate_limits import take_use
 from app.config import settings
 from app.services.search import SearchServiceError, search_videos
 from app.utils.youtube import (
@@ -97,7 +104,9 @@ _SEARCH_ERROR_STATUS = {
 
 # ── Metadata endpoint ────────────────────────────────────────
 @router.post("/metadata", response_model=VideoMeta)
-async def get_metadata(req: MetadataRequest) -> VideoMeta:
+async def get_metadata(
+    req: MetadataRequest, user: CurrentUser = Depends(get_current_user)
+) -> VideoMeta:
     video_id = req.videoId.strip()
 
     # 1. Re-validate. The frontend already checked, but anyone can call
@@ -114,7 +123,10 @@ async def get_metadata(req: MetadataRequest) -> VideoMeta:
             detail="Server is missing YOUTUBE_API_KEY.",
         )
 
-    # 3. Call the YouTube Data API (videos.list).
+    # 3. One use of the user's limit, before any quota is spent.
+    await run_in_threadpool(take_use, user.id, "youtube-metadata")
+
+    # 4. Call the YouTube Data API (videos.list).
     params = {
         "part": "snippet,contentDetails",
         "id": video_id,
@@ -152,7 +164,7 @@ async def get_metadata(req: MetadataRequest) -> VideoMeta:
         f"https://www.youtube.com/channel/{channel_id}" if channel_id else None
     )
 
-    # 4. Reshape into our contract and return.
+    # 5. Reshape into our contract and return.
     return VideoMeta(
         videoId=video_id,
         title=snippet.get("title", "Untitled video"),
@@ -166,7 +178,9 @@ async def get_metadata(req: MetadataRequest) -> VideoMeta:
 
 # ── Search endpoint ──────────────────────────────────────────
 @router.post("/search", response_model=SearchResponse)
-async def search(req: SearchRequest) -> SearchResponse:
+async def search(
+    req: SearchRequest, user: CurrentUser = Depends(get_current_user)
+) -> SearchResponse:
     query = req.query.strip()
 
     # 1. A blank query never reaches a paid API call. The frontend only
@@ -183,7 +197,10 @@ async def search(req: SearchRequest) -> SearchResponse:
             detail="Server is missing YOUTUBE_API_KEY.",
         )
 
-    # 3. Run the search service. It's async (httpx), so it is awaited directly.
+    # 3. One use of the user's limit, before any quota is spent.
+    await run_in_threadpool(take_use, user.id, "youtube-search")
+
+    # 4. Run the search service. It's async (httpx), so it is awaited directly.
     try:
         results = await search_videos(query, api_key, max_results=req.maxResults)
     except SearchServiceError as exc:
@@ -195,7 +212,7 @@ async def search(req: SearchRequest) -> SearchResponse:
             detail={"code": exc.code, "message": str(exc)},
         )
 
-    # 4. Reshape each snake_case dataclass into the camelCase response model.
+    # 5. Reshape each snake_case dataclass into the camelCase response model.
     #    An empty `results` list is a valid success — the frontend shows its
     #    "No videos matched…" empty state, no error involved.
     return SearchResponse(

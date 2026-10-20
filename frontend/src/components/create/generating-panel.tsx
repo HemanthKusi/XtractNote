@@ -61,13 +61,17 @@ const LEAVE_COPY: Record<GenerationRunState, string> = {
   accepted: "Closing this tab won't stop it. If it finishes, you'll find it in your drafts.",
 };
 
-/** What the stop-waiting confirmation says, for each state of the run. */
+/**
+ * What the stop-waiting confirmation says, for each state of the run.
+ * Admission sets the price aside; the run's end decides whether it is kept.
+ * Stopping waiting changes neither, so the copy says what keeps them.
+ */
 const STOP_COPY: Record<GenerationRunState, string> = {
   "not-sent":
     "Nothing has started yet, so nothing has been spent. You can pick a format and start again.",
-  sent: "It may already have started in the background — it can't be stopped yet. If it did, it will appear in your drafts.",
+  sent: "It may already have started in the background. If it did, its credits are set aside, and they're only kept if it finishes — then you'll find it in your drafts.",
   accepted:
-    "It keeps going in the background — it can't be stopped yet, and stopping waiting won't save its credits. If it finishes, you'll find it in your drafts.",
+    "It keeps going in the background. Its credits are already set aside, and they're only kept if it finishes — then you'll find it in your drafts.",
 };
 
 /** How often the clocks on the screen move. */

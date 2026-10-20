@@ -70,7 +70,7 @@ import {
   type KeyStore,
 } from "@/lib/generation/start-key";
 import { shortfallMessage } from "@/lib/credits/shortfall";
-import { costFor, shortBy, type QuoteState } from "@/lib/credits/cost";
+import { costFor, type QuoteState } from "@/lib/credits/cost";
 import { fetchQuote } from "@/lib/api/credits";
 import { useBalance } from "@/components/credits/balance-provider";
 import { StartCost } from "@/components/create/start-cost";
@@ -908,7 +908,6 @@ export default function CreatePage() {
   const needsPlatform = selectedType === "social" && !selectedPlatform;
 
   const startCost = meta ? costFor(quote, meta.videoId, selectedType, selectedPlatform) : null;
-  const startShort = startCost !== null && shortBy(startCost, balance) !== null;
 
   return (
     // `output` rather than the `wide` column history and folders use: this
@@ -1104,26 +1103,25 @@ export default function CreatePage() {
                   {/* The generating screen is no longer rendered from inside
                       the picker — it replaces the whole page, above. This
                       branch shows the start button and its cost. */}
-                  <StartCost cost={startCost} balance={balance}>
-                    {/* "Make study notes", not "Generate" — the specimen's
-                        copy, and it names the thing rather than the act.
-                        Falls back to "Pick a format" while nothing is
-                        chosen, so the disabled button says WHY it is
-                        disabled instead of just being grey. Off, too, when
-                        the balance is known to be short of the price. */}
-                    <Button
-                      variant="primary"
-                      size="lg"
-                      onClick={handleGenerate}
-                      disabled={!selectedType || needsPlatform || startShort}
-                    >
-                      {status.phase === "generate-error"
+                  {/* "Make study notes", not "Generate" — the specimen's
+                      copy, and it names the thing rather than the act.
+                      Falls back to "Pick a format" while nothing is chosen,
+                      so the disabled button says WHY it is disabled instead
+                      of just being grey. StartCost also turns it off when the
+                      balance is known to be short of the price. */}
+                  <StartCost
+                    label={
+                      status.phase === "generate-error"
                         ? "Try again"
                         : selectedType
                           ? `Make ${contentTypeColors[selectedType].label.toLowerCase()}`
-                          : "Pick a format"}
-                    </Button>
-                  </StartCost>
+                          : "Pick a format"
+                    }
+                    cost={startCost}
+                    balance={balance}
+                    disabled={!selectedType || needsPlatform}
+                    onStart={handleGenerate}
+                  />
 
                   {status.phase === "generate-error" && (
                     <p className="mt-3 flex items-start gap-2 text-sm text-xn-danger">

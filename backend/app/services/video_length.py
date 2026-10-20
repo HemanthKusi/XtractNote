@@ -2,8 +2,12 @@
 XtractNote — A video's length, from YouTube
 
 The length a generation is priced by, asked of the YouTube Data API rather
-than taken from the request: one `videos.list` call for `contentDetails`,
-which costs one unit of the API's daily quota.
+than taken from the request: one `videos.list` call, which costs one unit of
+the API's daily quota.
+
+A video that is live or upcoming is refused by its broadcast state, read
+before its duration. A stream that has ended is priced by its recorded
+length, however long that is.
 
 `length_from` reads the API's answer and is pure; `video_length` makes the
 call. A length that cannot be known is refused with one of the four codes
@@ -33,10 +37,12 @@ class LengthError(Exception):
     The length could not be known. `code` is one of:
       - "video-not-found"       : no such video, private or blocked, or not
                                   a single video id
-      - "video-has-no-length"   : live or upcoming; YouTube reports no length
+      - "video-has-no-length"   : YouTube says the video is live or upcoming,
+                                  or reports no length for it
       - "length-unavailable"    : YouTube unreachable, refused, or answered
                                   in a shape this module does not read,
-                                  including with more than one video
+                                  including with more than one video or a
+                                  broadcast state it does not know
       - "youtube-misconfigured" : the server has no YouTube API key
     """
 
@@ -48,6 +54,12 @@ class LengthError(Exception):
 
 def _unavailable(message: str) -> LengthError:
     return LengthError("length-unavailable", message)
+
+
+#: `snippet.liveBroadcastContent`, by the API's documented values: whether
+#: the video is a broadcast still to come or under way, which has no length
+#: to price yet.
+_BROADCAST_HAS_NO_LENGTH = {"live": True, "upcoming": True, "none": False}
 
 
 def length_from(status_code: int, body: bytes) -> int:
@@ -65,7 +77,14 @@ def length_from(status_code: int, body: bytes) -> int:
         raise LengthError("video-not-found", "The video does not exist, or is private or blocked.")
     if len(items) > 1:
         raise _unavailable("YouTube answered with more than one video.")
-    details = items[0].get("contentDetails") if isinstance(items[0], dict) else None
+    item = items[0] if isinstance(items[0], dict) else {}
+    snippet = item.get("snippet")
+    broadcast = snippet.get("liveBroadcastContent") if isinstance(snippet, dict) else None
+    if not isinstance(broadcast, str) or broadcast not in _BROADCAST_HAS_NO_LENGTH:
+        raise _unavailable(f"YouTube reported a broadcast state this module does not read: {broadcast!r}.")
+    if _BROADCAST_HAS_NO_LENGTH[broadcast]:
+        raise LengthError("video-has-no-length", "This video is live or upcoming, so it has no length yet.")
+    details = item.get("contentDetails")
     raw = details.get("duration") if isinstance(details, dict) else None
     if raw is None:
         raise LengthError("video-has-no-length", "YouTube reports no length for this video.")
@@ -90,7 +109,7 @@ def video_length(video_id: str, *, client: httpx.Client | None = None) -> int:
     api_key = settings.youtube_api_key
     if not api_key:
         raise LengthError("youtube-misconfigured", "The server has no YouTube API key.")
-    params = {"part": "contentDetails", "id": video_id, "key": api_key}
+    params = {"part": "snippet,contentDetails", "id": video_id, "key": api_key}
     try:
         if client is not None:
             response = client.get(YOUTUBE_VIDEOS_URL, params=params)

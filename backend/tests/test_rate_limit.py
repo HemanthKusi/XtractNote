@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from postgrest.exceptions import APIError
 
-from app.config import settings
+from app.config import Settings, settings
 from app.services import rate_limit
 from app.services.rate_limit import WINDOW_SECONDS, RateLimited, consume, limit_for, retry_after_from
 
@@ -105,8 +105,11 @@ def test_each_bucket_is_limited_by_its_own_setting(
 
 
 def test_the_limits_default_to_the_decided_numbers() -> None:
-    assert (settings.youtube_search_per_hour, settings.youtube_metadata_per_hour) == (20, 120)
-    assert settings.video_length_lookups_per_hour == 30
+    """The declared defaults, which an override in the environment or .env cannot change."""
+    fields = Settings.model_fields
+    assert fields["youtube_search_per_hour"].default == 20
+    assert fields["youtube_metadata_per_hour"].default == 120
+    assert fields["video_length_lookups_per_hour"].default == 30
 
 
 def test_a_refusal_carries_the_wait_the_database_gave(monkeypatch: pytest.MonkeyPatch) -> None:

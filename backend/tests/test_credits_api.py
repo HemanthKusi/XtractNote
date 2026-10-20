@@ -18,6 +18,7 @@ from app.config import settings
 from app.main import app
 from app.services.credits import CreditBalance, CreditError
 from app.services.pricing import BASE_PRICE
+from app.services.rate_limit import RateLimited
 from app.services.video_length import LengthError
 
 USER = "e6a969d8-0000-0000-0000-000000000001"
@@ -174,3 +175,40 @@ def test_a_length_that_cannot_be_known_is_refused_as_a_start_refuses_it(client, 
 def test_a_quote_needs_sign_in(signed_out, length) -> None:
     assert signed_out.get("/api/credits/quote", params={"videoId": VIDEO}).status_code == 401
     assert length.asked == []
+
+
+# --- The quote's rate limit ---------------------------------------------------
+
+
+def test_a_quote_takes_one_length_lookup_use_for_the_caller(client, rate_limit) -> None:
+    client.get("/api/credits/quote", params={"videoId": VIDEO})
+    assert rate_limit.taken == [(USER, "video-length")]
+
+
+def test_a_quote_at_the_limit_is_429_and_asks_youtube_nothing(client, length, rate_limit) -> None:
+    rate_limit.raises = RateLimited("video-length", 1187)
+    response = client.get("/api/credits/quote", params={"videoId": VIDEO})
+    assert response.status_code == 429
+    assert response.json()["detail"]["code"] == "rate-limited"
+    assert response.json()["detail"]["retryAfterSeconds"] == 1187
+    assert response.headers["Retry-After"] == "1187"
+    assert length.asked == []
+
+
+def test_a_quote_whose_limit_cannot_be_checked_is_503_and_asks_youtube_nothing(client, length, rate_limit) -> None:
+    rate_limit.raises = RuntimeError("database down")
+    response = client.get("/api/credits/quote", params={"videoId": VIDEO})
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "rate-limit-unavailable"
+    assert "database down" not in response.text
+    assert length.asked == []
+
+
+def test_a_malformed_quote_takes_no_use(client, rate_limit) -> None:
+    client.get("/api/credits/quote", params={"videoId": "short"})
+    assert rate_limit.taken == []
+
+
+def test_a_signed_out_quote_takes_no_use(signed_out, rate_limit) -> None:
+    signed_out.get("/api/credits/quote", params={"videoId": VIDEO})
+    assert rate_limit.taken == []

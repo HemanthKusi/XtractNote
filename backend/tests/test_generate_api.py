@@ -21,6 +21,7 @@ from app.config import settings
 from app.main import app
 from app.services import jobs
 from app.services.dispatch import get_generation_pool
+from app.services.rate_limit import RateLimited
 from app.services.worker import GenerationInput, run_job
 
 USER = "e6a969d8-0000-0000-0000-000000000001"
@@ -611,3 +612,73 @@ def test_both_routes_refuse_an_unauthenticated_caller(pool: FakePool, fake_jobs:
     finally:
         app.dependency_overrides.clear()
     assert pool.reserved == 0 and fake_jobs.created == [] and fake_jobs.read == []
+
+
+# --- The length lookup's rate limit -------------------------------------------
+
+
+def test_a_start_takes_one_length_lookup_use_for_the_caller(client, rate_limit) -> None:
+    assert post(client).status_code == 202
+    assert rate_limit.taken == [(USER, "video-length")]
+
+
+def test_a_start_at_the_limit_is_429_and_reaches_neither_youtube_nor_admission(
+    client, pool, fake_jobs, length, rate_limit
+) -> None:
+    rate_limit.raises = RateLimited("video-length", 1187)
+    response = post(client)
+    assert response.status_code == 429
+    assert response.json()["detail"]["code"] == "rate-limited"
+    assert response.json()["detail"]["retryAfterSeconds"] == 1187
+    assert response.headers["Retry-After"] == "1187"
+    assert length.asked == [] and pool.reserved == 0 and fake_jobs.created == []
+
+
+def test_the_rate_limit_is_distinct_from_the_generation_limit(client, pool, fake_jobs, rate_limit) -> None:
+    """Both are 429s; the page tells them apart by code."""
+    rate_limit.raises = RateLimited("video-length", 60)
+    assert post(client).json()["detail"]["code"] == "rate-limited"
+    rate_limit.raises = None
+    fake_jobs.create_raises = jobs.JobError("generation-limit", "at limit")
+    assert post(client).json()["detail"]["code"] == "generation-limit"
+
+
+def test_a_start_whose_limit_cannot_be_checked_is_503_and_asks_youtube_nothing(
+    client, pool, length, rate_limit
+) -> None:
+    rate_limit.raises = RuntimeError("database down")
+    response = post(client)
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "rate-limit-unavailable"
+    assert "database down" not in response.text
+    assert length.asked == [] and pool.reserved == 0
+
+
+def test_a_repeated_key_that_made_a_job_takes_no_use(client, fake_jobs, rate_limit) -> None:
+    fake_jobs.existing = [{"id": JOB, "video_id": VALID["videoId"], "content_type": "summary", "platform": None}]
+    assert post(client).json() == {"jobId": JOB}
+    assert rate_limit.taken == []
+
+
+def test_repeating_a_refused_starts_key_takes_a_use_each_time(client, fake_jobs, rate_limit) -> None:
+    """A start refused for credits made no job, so its key is looked up, and priced, again."""
+    fake_jobs.create_raises = jobs.JobError("credits-short", "short", None)
+    assert post(client).status_code == 402
+    assert post(client).status_code == 402
+    assert rate_limit.taken == [(USER, "video-length"), (USER, "video-length")]
+
+
+def test_repeating_a_refused_starts_key_at_the_limit_asks_youtube_nothing(
+    client, fake_jobs, length, rate_limit
+) -> None:
+    fake_jobs.create_raises = jobs.JobError("credits-short", "short", None)
+    assert post(client).status_code == 402
+    assert length.asked == [VALID["videoId"]]
+    rate_limit.raises = RateLimited("video-length", 300)
+    assert post(client).status_code == 429
+    assert length.asked == [VALID["videoId"]]
+
+
+def test_a_malformed_start_takes_no_use(client, rate_limit) -> None:
+    assert post(client, videoId="short").status_code == 422
+    assert rate_limit.taken == []

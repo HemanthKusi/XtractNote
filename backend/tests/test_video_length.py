@@ -24,8 +24,8 @@ def answer(payload: Any) -> bytes:
     return json.dumps(payload).encode()
 
 
-def video(duration: Any) -> dict[str, Any]:
-    return {"items": [{"contentDetails": {"duration": duration}}]}
+def video(duration: Any, broadcast: Any = "none") -> dict[str, Any]:
+    return {"items": [{"snippet": {"liveBroadcastContent": broadcast}, "contentDetails": {"duration": duration}}]}
 
 
 def client(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.Client:
@@ -51,11 +51,52 @@ def test_no_such_video_is_video_not_found() -> None:
     assert caught.value.code == "video-not-found"
 
 
-@pytest.mark.parametrize("payload", [video("P0D"), video("PT0S"), video(None), {"items": [{"contentDetails": {}}]}, {"items": [{}]}])
-def test_a_live_or_upcoming_video_has_no_length(payload: Any) -> None:
+@pytest.mark.parametrize(
+    "payload",
+    [
+        video("P0D"),
+        video("PT0S"),
+        video(None),
+        {"items": [{"snippet": {"liveBroadcastContent": "none"}, "contentDetails": {}}]},
+        {"items": [{"snippet": {"liveBroadcastContent": "none"}}]},
+    ],
+)
+def test_a_video_with_no_length_reported_has_no_length(payload: Any) -> None:
     with pytest.raises(LengthError) as caught:
         length_from(200, answer(payload))
     assert caught.value.code == "video-has-no-length"
+
+
+@pytest.mark.parametrize("broadcast", ["live", "upcoming"])
+@pytest.mark.parametrize("duration", ["P0D", "PT3H", "P1407DT10H11M52S"])
+def test_a_live_or_upcoming_video_has_no_length_whatever_duration_it_reports(broadcast: str, duration: str) -> None:
+    """Refused by its broadcast state, so a duration YouTube reports for it is never priced."""
+    with pytest.raises(LengthError) as caught:
+        length_from(200, answer(video(duration, broadcast)))
+    assert caught.value.code == "video-has-no-length"
+
+
+def test_an_ended_stream_is_priced_by_its_recorded_length() -> None:
+    """A broadcast that ran 2022-07-12 to 2026-05-20, as YouTube reported it once it had ended."""
+    assert length_from(200, answer(video("P1407DT10H11M52S", "none"))) == 121_601_512
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        video("PT28M7S", "completed"),
+        video("PT28M7S", None),
+        video("PT28M7S", 0),
+        {"items": [{"snippet": {}, "contentDetails": {"duration": "PT28M7S"}}]},
+        {"items": [{"contentDetails": {"duration": "PT28M7S"}}]},
+        {"items": [{"snippet": "not an object", "contentDetails": {"duration": "PT28M7S"}}]},
+    ],
+)
+def test_a_broadcast_state_that_cannot_be_read_is_length_unavailable(payload: Any) -> None:
+    """Without a state it knows, the module cannot tell a live video from one with a length."""
+    with pytest.raises(LengthError) as caught:
+        length_from(200, answer(payload))
+    assert caught.value.code == "length-unavailable"
 
 
 @pytest.mark.parametrize(
@@ -80,7 +121,7 @@ def test_an_answer_that_gives_no_readable_length_is_length_unavailable(status: i
 # --- The call -----------------------------------------------------------------
 
 
-def test_the_call_asks_only_for_this_video_s_content_details() -> None:
+def test_the_call_asks_only_for_this_video_s_snippet_and_content_details() -> None:
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -90,7 +131,7 @@ def test_the_call_asks_only_for_this_video_s_content_details() -> None:
     assert video_length("wjZofJX0v4M", client=client(handler)) == 1687
     (request,) = seen
     assert str(request.url).startswith("https://www.googleapis.com/youtube/v3/videos?")
-    assert dict(request.url.params) == {"part": "contentDetails", "id": "wjZofJX0v4M", "key": KEY}
+    assert dict(request.url.params) == {"part": "snippet,contentDetails", "id": "wjZofJX0v4M", "key": KEY}
 
 
 def test_no_api_key_is_youtube_misconfigured(monkeypatch: pytest.MonkeyPatch) -> None:

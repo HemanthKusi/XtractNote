@@ -4,10 +4,12 @@
 //
 // What a start costs and what the user has, on the create page before they
 // commit (#454): the directions it was chosen from, kept as the record.
-// **A · Beside was chosen, provisionally**: once the side menu shows the
-// balance, this line is revisited — whether it stays, and in what form.
-// Rendered inside the real
-// AppShell, in create's own column, with the real SourcePanel,
+// A · Beside was chosen first, provisionally, until the side menu showed the
+// balance (#460). Once it did, the line was revisited: **B2 · Final is what
+// ships** — the price inside the button, joining it with the menu's stretch,
+// and the balance only when it is short. Rendered inside the real AppShell
+// (fed the page's balance, so the menu agrees with the line), in create's own
+// column, with the real SourcePanel,
 // ContentTypePicker and SocialPlatformPicker; only the start line changes.
 //
 // The price here is worked out on the page from the same rules the backend
@@ -23,6 +25,7 @@ import { SourcePanel } from "@/components/create/source-panel";
 import { useTheme } from "@/components/shared/theme-provider";
 import { contentTypeColors } from "@/lib/constants/theme";
 import type { GeneratableContentType, SocialPlatform } from "@/lib/content/types";
+import type { BalanceState } from "@/lib/credits/cost";
 import type { VideoMeta } from "@/lib/youtube/types";
 
 import { StartLine, type Balance, type CostDirection, type Load, type Price } from "./start-line";
@@ -36,6 +39,41 @@ interface Choice<T extends string> {
 }
 
 const DIRECTIONS: Choice<CostDirection>[] = [
+  {
+    id: "inButtonMotion",
+    label: "B2 · Final",
+    note: "Chosen — what ships. Round 4 — B2 without the ring. The button first says only what it makes; a beat later it stretches a little past its new size and settles back — the menu's own spring — as the price slides in behind a divider. Short: the button goes off, and one line beneath says what you have and when credits refill. \"replay\" plays it again.",
+  },
+  {
+    id: "joinedB1",
+    label: "B1 · Joined",
+    note: "Round 3 — B, attached. The price in an outlined pill the button's height, against it, with a small version of the menu's cell ring. Short: the pill adds \"You have 1\" in red; the refill date beneath.",
+  },
+  {
+    id: "inButtonB2",
+    label: "B2 · In the button",
+    note: "Round 3. The price as the button's trailing segment, behind a thin divider, with the cell ring. Short: the button goes off, and one line beneath says what you have and when credits refill.",
+  },
+  {
+    id: "captionB3",
+    label: "B3 · Caption",
+    note: "Round 3. One line under the button, on its left edge: the cell ring, \"Costs 2 credits\". Short: it continues \"· you have 1 · refills 30 October\".",
+  },
+  {
+    id: "builtA",
+    label: "Revisit A · Keep",
+    note: "Round 2 — the menu shows the balance now (#460). A is what ships: the real StartCost, with the price and \"You have N\" beside the button, so the balance shows twice — here and in the menu.",
+  },
+  {
+    id: "shortOnlyB",
+    label: "Revisit B · Short only",
+    note: "Round 2. The price alone, until the balance is short: then \"You have 1\" in red, the button off, and the refill date beneath. The menu carries the balance the rest of the time.",
+  },
+  {
+    id: "priceOnlyC",
+    label: "Revisit C · Price only",
+    note: "Round 2. The price alone, always. Short: the button off and the refill date beneath; what you have is in the menu.",
+  },
   {
     id: "today",
     label: "Today",
@@ -94,7 +132,7 @@ function loaded<T>(phase: LoadPhase, value: T): Load<T> {
 }
 
 export default function CostDirectionsPage() {
-  const [direction, setDirection] = useState<CostDirection>("beside");
+  const [direction, setDirection] = useState<CostDirection>("inButtonMotion");
   const [type, setType] = useState<GeneratableContentType | null>("notes");
   const [platform, setPlatform] = useState<SocialPlatform | null>(null);
   const [credits, setCredits] = useState(28);
@@ -102,6 +140,8 @@ export default function CostDirectionsPage() {
   const [pricePhase, setPricePhase] = useState<LoadPhase>("ready");
   const [balancePhase, setBalancePhase] = useState<LoadPhase>("ready");
   const [refused, setRefused] = useState(false);
+  // Bumped by "replay", which mounts the start line afresh so its motion plays again.
+  const [replay, setReplay] = useState(0);
   const [folded, setFolded] = useState(false);
   const { theme, setTheme } = useTheme();
 
@@ -128,6 +168,11 @@ export default function CostDirectionsPage() {
     ? loaded(pricePhase, priceFor(type, length.seconds, length.shown))
     : { phase: "loading" };
   const balance = loaded<Balance>(balancePhase, { credits, refillsAt: REFILLS_AT });
+  // The menu's foot shows the same balance the line does.
+  const menuBalance: BalanceState =
+    balance.phase === "ready"
+      ? { phase: "ready", balance: { balance: credits, allowance: 30, nextRefillAt: REFILLS_AT } }
+      : balance;
 
   function start() {
     if (direction !== "today") return;
@@ -139,7 +184,7 @@ export default function CostDirectionsPage() {
 
   return (
     <>
-      <AppShell>
+      <AppShell previewBalance={menuBalance}>
         <div className="mx-auto max-w-output px-6 py-10">
           <h2 className="mb-4 text-h5 text-xn-ink">Using this video</h2>
           <SourcePanel meta={meta} onChange={() => {}} />
@@ -155,6 +200,7 @@ export default function CostDirectionsPage() {
             />
 
             <StartLine
+              key={replay}
               direction={direction}
               action={ready && label ? `Make ${label.toLowerCase()}` : null}
               formatLabel={label}
@@ -180,6 +226,9 @@ export default function CostDirectionsPage() {
           <div className="flex items-center justify-between">
             <p className="font-mono text-micro uppercase tracking-wide text-xn-ink-soft">Cost on create</p>
             <span className="flex items-center gap-1">
+              <button type="button" onClick={() => setReplay((n) => n + 1)} className={small}>
+                replay
+              </button>
               <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className={small}>
                 {theme === "dark" ? "→ light" : "→ dark"}
               </button>

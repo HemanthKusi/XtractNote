@@ -45,6 +45,15 @@ class Settings(BaseSettings):
 
     # ── YouTube ──
     youtube_api_key: str = ""
+    # How many calls of each kind one user may make in an hour, each spending
+    # the project's shared YouTube quota. Enforced by the database (migration
+    # 015), so they hold across processes. A search spends over a hundred
+    # times the quota a metadata or length lookup does. The length lookup is
+    # the one a start or a quote makes to price a video, and both count
+    # against it.
+    youtube_search_per_hour: int = Field(default=20, ge=1)
+    youtube_metadata_per_hour: int = Field(default=120, ge=1)
+    video_length_lookups_per_hour: int = Field(default=30, ge=1)
 
     # ── Server ──
     backend_port: int = 8000

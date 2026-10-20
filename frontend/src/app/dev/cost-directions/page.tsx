@@ -62,7 +62,7 @@ const DIRECTIONS: Choice<CostDirection>[] = [
   {
     id: "builtA",
     label: "Revisit A · Keep",
-    note: "Round 2 — the menu shows the balance now (#460). A is what ships: the real StartCost, with the price and \"You have N\" beside the button, so the balance shows twice — here and in the menu.",
+    note: "Round 2 — the menu shows the balance now (#460). A as it shipped until round 4: the price and \"You have N\" beside the button, so the balance shows twice — here and in the menu.",
   },
   {
     id: "shortOnlyB",

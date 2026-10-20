@@ -119,8 +119,9 @@ export function AppShell({ children, previewBalance }: AppShellProps) {
     </div>
   );
 
-  // The balance is read once here and shared: the menu's foot shows it and a
-  // page can use it (useBalance), so the two never disagree.
+  // One balance is provided here and shared: the menu's foot shows it and a
+  // page can use it (useBalance), so both show the same one. A preview
+  // surface supplies its own instead of the account's.
   return previewBalance ? (
     <BalancePreview balance={previewBalance}>{shell}</BalancePreview>
   ) : (

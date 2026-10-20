@@ -3,13 +3,13 @@
 // ─────────────────────────────────────────────────────────────
 // components/credits/balance-provider.tsx
 //
-// The signed-in user's credit balance, read once for the whole app and
+// The signed-in user's credit balance, held once for the whole app and
 // shared: the side menu shows it and the create page decides its start
-// button from it, so the two can never disagree.
+// button from it, so both work from the same one.
 //
 // It is read once the session is known, again when the signed-in user
-// changes, and again when the tab comes back into view. Anything that knows the balance
-// has just moved — the create page, after a start is admitted and its price
+// changes, and again when the tab comes back into view. Anything that knows
+// the balance has just moved — the create page, after a start is admitted and its price
 // reserved — calls `refresh()`, or `observed()` when a reply stated the new
 // balance outright. A balance already on screen stays while it is read again.
 // ─────────────────────────────────────────────────────────────

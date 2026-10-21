@@ -1,0 +1,65 @@
+# Automated pull-request review.
+#
+# Reviews each pull request when it opens, and answers the repository owner's
+# /review, /improve and /ask comments. Its settings, including reviewing new
+# pushes, are in .pr_agent.toml at the repository root.
+#
+# Advisory only: it is not a required check, so a failed or skipped run never
+# blocks a merge. The model runs on free tiers, which can run out.
+#
+# Safety on a public repository:
+#   - `pull_request`, never `pull_request_target`, and the pull request's code is
+#     never checked out or run: the review reads the change through the GitHub API.
+#   - Pull requests from forks are skipped, since they get no secrets.
+#   - Comment commands run only for the repository owner, so nobody else can
+#     spend the free quota.
+#   - The image is pinned by digest, so an upstream change cannot alter what
+#     runs here until the pin is moved on purpose.
+
+name: PR review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  # A newer push supersedes a review still running; a comment command is never cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  review:
+    if: >-
+      (github.event_name == 'pull_request'
+        && github.event.sender.type != 'Bot'
+        && github.event.pull_request.head.repo.full_name == github.repository)
+      || (github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && github.event.comment.author_association == 'OWNER')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Review the pull request
+        # pragent/pr-agent:0.48.0-github_action
+        uses: docker://pragent/pr-agent@sha256:80edef71baa3df28c129d858d4b53784abfc14704c235efb32b6c461d5399a6d
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MISTRAL.KEY: ${{ secrets.MISTRAL_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          # Also in .pr_agent.toml. That file is read from the default branch, so
+          # a pull request cannot change the reviewer's settings; the model is set
+          # here too so a review runs before the file reaches that branch.
+          config.model: "gemini/gemini-3.8-flash"
+          config.fallback_models: '["gemini/gemini-2.5-flash", "mistral/mistral-medium-latest"]'
+          config.max_model_tokens: "100000"
+          github_action_config.auto_review: "true"
+          github_action_config.auto_improve: "true"
+          github_action_config.auto_describe: "false"

@@ -1,0 +1,53 @@
+# Settings for the automated pull-request review (.github/workflows/pr-review.yml).
+# Anything not set here keeps the reviewer's own default.
+
+[config]
+# Free-tier models. A fallback is tried only when the one before it fails.
+model = "gemini/gemini-3.8-flash"
+fallback_models = ["gemini/gemini-2.5-flash", "mistral/mistral-medium-latest"]
+# The default budget of 32k tokens cuts larger pull requests short.
+max_model_tokens = 100000
+# Names the model that answered, so a fallback is visible on the review.
+output_run_details = true
+# More of the surrounding code with each change, since the review sees only the
+# diff and not the rest of the repository. Defaults: 5 before, 1 after, and up
+# to 10 more lines back to the enclosing function or class.
+patch_extra_lines_before = 15
+patch_extra_lines_after = 10
+max_extra_lines_before_dynamic_context = 30
+
+[pr_reviewer]
+require_score_review = true
+require_security_review = true
+require_tests_review = true
+require_estimate_effort_to_review = true
+require_risk_assessment = true
+require_merge_recommendation = true
+require_failure_modes = true
+# Each finding also posts on its own line, where it can be anchored to one.
+inline_key_issues = true
+num_max_findings = 10
+# Large pull requests are reviewed in up to three parts.
+enable_large_pr_chunking = true
+max_number_of_calls = 3
+# Findings stay in the review; no labels are added to the pull request.
+enable_review_labels_security = false
+enable_review_labels_effort = false
+extra_instructions = """
+This repository has a Next.js and TypeScript frontend, a FastAPI backend on Python 3.13, and SQL migrations for a Supabase Postgres database. Review against these rules:
+- The backend uses the service key, so row-level security does not apply to it. Every update or delete must carry the owner in its own filter; checking affected rows afterwards is too late.
+- A comment or message must not claim behaviour the code does not have. Flag any comment that overstates what the code guarantees.
+- Errors cross boundaries as typed result unions, not thrown exceptions. No `any`, no non-null assertions, no ts-ignore.
+- Async work a user can interrupt takes a token before its first await and checks it after every await.
+- Every paid or quota-spending call is preceded by input validation and any rate limit.
+- Loading, empty and error states exist on every async surface.
+Report concrete bugs with the line and the input that triggers them. Do not report style preferences.
+"""
+
+[pr_code_suggestions]
+num_code_suggestions_per_chunk = 4
+
+[github_action_config]
+# New pushes are reviewed too, not only a newly opened pull request.
+handle_push_trigger = true
+push_commands = ["/review", "/improve"]

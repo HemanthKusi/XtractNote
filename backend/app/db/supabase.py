@@ -10,11 +10,16 @@ The service role key bypasses RLS — the backend applies its own
 authorization checks via the get_current_user dependency.
 """
 
-from supabase import create_client, Client
+from supabase import ClientOptions, create_client, Client
 from app.config import settings
+
+#: How long a heartbeat's request may wait on the database, for each phase
+#: of the request — connecting, sending, waiting for the reply.
+HEARTBEAT_TIMEOUT_SECONDS = 10.0
 
 # Singleton pattern — one client shared across the app
 _supabase_client: Client | None = None
+_heartbeat_client: Client | None = None
 
 
 def get_supabase_client() -> Client:
@@ -31,3 +36,26 @@ def get_supabase_client() -> Client:
         )
 
     return _supabase_client
+
+
+def get_heartbeat_client() -> Client:
+    """
+    A second client, for job heartbeats only, whose timeout is
+    HEARTBEAT_TIMEOUT_SECONDS for each phase of a request instead of the
+    library's default 120. Each phase is limited, not the request as a whole.
+
+    A heartbeat is only useful if it lands before the sweep's threshold, and
+    the next beat waits for the last one to return. A beat held for two
+    minutes by a stalled request delays the next by as long — which can be
+    enough on its own for the sweep to fail a run that is still going.
+    """
+    global _heartbeat_client
+
+    if _heartbeat_client is None:
+        _heartbeat_client = create_client(
+            settings.supabase_url,
+            settings.supabase_service_role_key,
+            options=ClientOptions(postgrest_client_timeout=HEARTBEAT_TIMEOUT_SECONDS),
+        )
+
+    return _heartbeat_client

@@ -207,10 +207,52 @@ def test_entering_a_stage_of_a_finished_job_is_job_not_updated(monkeypatch) -> N
     assert caught.value.code == "job-not-updated"
 
 
-@pytest.mark.parametrize(("rows", "expected"), [([{"id": "job-1"}], True), ([], False)])
-def test_a_job_is_unfinished_only_while_this_users_unfinished_row_exists(monkeypatch, rows, expected) -> None:
-    table = use_table(monkeypatch, rows)
-    assert jobs.is_unfinished("job-1", "user-1") is expected
+def test_a_heartbeat_is_sent_on_the_heartbeat_client(monkeypatch) -> None:
+    """Its shorter timeout limits how long one stalled beat can hold back the next."""
+    table = FakeTable([{"id": "job-1"}])
+    monkeypatch.setattr(jobs, "get_heartbeat_client", lambda: table)
+    monkeypatch.setattr(jobs, "get_supabase_client", lambda: pytest.fail("sent on the shared client"))
+    assert jobs.heartbeat("job-1", "user-1") is True
+    assert any(name == "update" and "heartbeat_at" in args[0] for name, args in table.calls)
     assert ("eq", ("user_id", "user-1")) in table.calls
     assert ("not_.in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
+
+
+def test_the_heartbeat_client_has_a_shorter_timeout_than_the_shared_one(monkeypatch) -> None:
+    """
+    Built for real, without a request, and read from the client's HTTP
+    session on purpose: checking only the option passed in would stay green
+    if a library upgrade stopped applying it. The client refuses a key that is
+    not shaped like a JWT, so the test brings its own placeholder rather than
+    relying on the environment's.
+    """
+    from app.db import supabase as db
+
+    monkeypatch.setattr(db, "_heartbeat_client", None)
+    monkeypatch.setattr(db.settings, "supabase_url", "https://placeholder.supabase.co")
+    monkeypatch.setattr(db.settings, "supabase_service_role_key", "placeholder.not-a.key")
+    timeout = db.get_heartbeat_client().postgrest.session.timeout
+    assert timeout.read == db.HEARTBEAT_TIMEOUT_SECONDS
+    assert timeout.connect == db.HEARTBEAT_TIMEOUT_SECONDS
+    assert db.HEARTBEAT_TIMEOUT_SECONDS < jobs.HEARTBEAT_EVERY.total_seconds()
+
+
+# --- Finishing ----------------------------------------------------------------
+
+
+def test_finishing_sends_the_job_its_owner_and_the_draft(monkeypatch) -> None:
+    call = use(monkeypatch, data=[{"result_id": "draft-1"}])
+    row = {"content_type": "summary"}
+    assert jobs.finish("job-1", "user-1", row) == "draft-1"
+    assert call.function == "finish_generation_job"
+    assert call.params == {"p_job_id": "job-1", "p_user_id": "user-1", "p_draft": row}
+
+
+@pytest.mark.parametrize("data", [[], [{}], [{"result_id": None}], [{"result_id": ""}], ["draft-1"]])
+def test_finishing_a_job_that_matched_nothing_is_job_not_updated(monkeypatch, data) -> None:
+    """No row back means nothing was written: no such job, not this user's, or already finished."""
+    use(monkeypatch, data=data)
+    with pytest.raises(JobError) as caught:
+        jobs.finish("job-1", "user-1", {})
+    assert caught.value.code == "job-not-updated"
 

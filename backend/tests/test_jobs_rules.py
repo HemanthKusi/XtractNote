@@ -24,6 +24,7 @@ from app.services.jobs import (
     ADMIT_FUNCTION,
     CLAIM_STATUS,
     CREATION_STATUS,
+    FINISH_FUNCTION,
     GENERATION_LIMIT,
     HEARTBEAT_EVERY,
     INTERRUPTED_CODE,
@@ -246,7 +247,7 @@ def test_advance_refuses_terminal_statuses(status: str) -> None:
     """The job would finish with none of the fields a finished job needs."""
     reason = advance_target_error(status)
     assert reason is not None
-    assert "complete()" in reason and "fail()" in reason
+    assert "finish()" in reason and "fail()" in reason
 
 
 @pytest.mark.parametrize("status", ["cancelled", "", "COMPLETED", "nonsense"])
@@ -536,3 +537,62 @@ def test_the_stage_times_column_holds_an_object_and_defaults_to_empty() -> None:
     sql = " ".join(STAGE_MIGRATION.read_text().split())
     assert "add column if not exists stage_started_at jsonb not null default '{}'::jsonb" in sql
     assert "check (jsonb_typeof(stage_started_at) = 'object')" in sql
+
+
+# --- Finishing ----------------------------------------------------------------
+
+FINISH_MIGRATION = (
+    Path(__file__).resolve().parents[2] / "database" / "016_finish_generation_job.sql"
+)
+
+
+def finish_sql() -> str:
+    return " ".join(FINISH_MIGRATION.read_text().split())
+
+
+def test_the_finish_function_is_the_one_the_backend_calls() -> None:
+    assert f"create or replace function public.{FINISH_FUNCTION}(" in finish_sql()
+
+
+def test_the_finish_function_completes_the_job_as_the_backend_would() -> None:
+    """
+    The job's ending is written in SQL, so its status and progress are pinned
+    to patch_for_status, and the link and the time are checked alongside them.
+    """
+    expected = patch_for_status("completed")
+    assert (
+        f"set status = '{expected['status']}', progress = {expected['progress']}, "
+        "result_id = finish_generation_job.result_id, completed_at = clock_timestamp() "
+        "where id = p_job_id;"
+    ) in finish_sql()
+
+
+def test_the_finish_function_matches_only_this_users_unfinished_job() -> None:
+    sql = finish_sql()
+    match = re.search(r"where id = p_job_id and user_id = p_user_id and status not in \((.*?)\) for update", sql)
+    assert match, "could not find the job's locking select in migration 016"
+    assert set(re.findall(r"'([a-z]+)'", match.group(1))) == TERMINAL_STATUSES
+
+
+def test_the_job_is_locked_before_the_draft_is_written() -> None:
+    """Otherwise the sweep can fail the job between the draft and the completion."""
+    sql = finish_sql()
+    assert sql.index("for update") < sql.index("insert into public.generated_content")
+
+
+def test_the_draft_is_owned_by_the_given_user_and_saved_as_a_draft() -> None:
+    """Whatever the JSON says: the owner and the status are not taken from it."""
+    match = re.search(r"insert into public\.generated_content \((.*?)\) values \((.*?)\) returning", finish_sql())
+    assert match, "could not find the draft's insert in migration 016"
+    columns = [column.strip() for column in match.group(1).split(",")]
+    values = [value.strip() for value in match.group(2).split(",")]
+    by_column = dict(zip(columns, values))
+    assert by_column["user_id"] == "p_user_id"
+    assert by_column["status"] == "'draft'"
+
+
+def test_only_the_backend_may_call_the_finish_function() -> None:
+    """A client that could call it would name its own user."""
+    sql = finish_sql()
+    assert f"revoke all on function public.{FINISH_FUNCTION}(uuid, uuid, jsonb) from public, anon, authenticated;" in sql
+    assert f"grant execute on function public.{FINISH_FUNCTION}(uuid, uuid, jsonb) to service_role;" in sql

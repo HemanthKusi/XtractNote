@@ -100,8 +100,8 @@ export async function fetchVideoMetadata(
     const reason = CODED_REASONS.find((known) => known === code);
     return { ok: false, reason: reason ?? statusToReason(response.status) };
   } catch {
-    // We land here only if the request never got a response at all
-    // (server down, blocked by CORS, no internet, or no answer in time).
+    // No response at all (server down, blocked by CORS, no internet, or no
+    // answer in time), or a successful response whose body was not JSON.
     return { ok: false, reason: "network" };
   }
 }

@@ -108,8 +108,8 @@ import type {
       const reason = BACKEND_REASONS.find((known) => known === code);
       return { ok: false, reason: reason ?? statusToReason(response.status) };
     } catch {
-      // No response at all: backend down, CORS, DNS, no internet, or no answer
-      // in time.
+      // No response at all (backend down, CORS, DNS, no internet, or no answer
+      // in time), or a successful response whose body was not JSON.
       return { ok: false, reason: "request-failed" };
     }
   }

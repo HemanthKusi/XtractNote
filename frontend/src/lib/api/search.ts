@@ -8,6 +8,9 @@
 // (URL, method, status codes, envelope parsing) live here so components
 // stay clean.
 //
+// Sends the signed-in user's access token: the route requires sign-in, and
+// each search takes one use of that user's hourly limit.
+//
 // A detail.code-then-status fallback for failures, and two search-specific
 // behaviours, both noted inline below:
 //   1. Success unwraps the { results } ENVELOPE the backend returns.
@@ -19,64 +22,47 @@ import type {
     SearchResultVideo,
     SearchFailReason,
   } from "@/lib/youtube/search-types";
-  
-  // Same backend base URL the other clients use. NEXT_PUBLIC_ so it's
-  // available in browser code; falls back to localhost in dev.
-  const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-  
+  import { API_BASE_URL, REQUEST_TIMEOUT_MS, accessToken, codeOf, detailFrom } from "@/lib/api/backend";
+  import { retryAfterFrom } from "@/lib/rate-limit/message";
+
+  /** A refusal for the hourly limit carries how long until the next search is allowed, when known. */
   export type SearchVideosResult =
     | { ok: true; data: SearchResultVideo[] }
-    | { ok: false; reason: SearchFailReason };
-  
+    | { ok: false; reason: "rate-limited"; retryAfterSeconds: number | null }
+    | { ok: false; reason: Exclude<SearchFailReason, "rate-limited"> };
+
   // Shape of the backend's success envelope (SearchResponse in api/youtube.py).
   // Kept local — it's an implementation detail; callers only ever see the
   // unwrapped SearchResultVideo[] via `data`.
   interface SearchResponseEnvelope {
     results: SearchResultVideo[];
   }
-  
+
   // The codes the backend is allowed to send in detail.code. We check against
   // this before trusting the body, so a malformed/unexpected code can't slip
   // through as a fake reason. (No "no-results" here — empty is a success.)
-  const BACKEND_REASONS: readonly SearchFailReason[] = [
+  // "rate-limited" is read separately, with the wait it carries.
+  const BACKEND_REASONS: readonly Exclude<SearchFailReason, "rate-limited">[] = [
     "quota-exceeded",
     "search-failed",
+    "rate-limit-unavailable",
+    "not-authenticated",
+    "auth-unavailable",
   ];
-  
+
   // Fallback when we can't read a code from the body: map the status alone.
-  // Mirrors the backend's _SEARCH_ERROR_STATUS (429 quota, 502 upstream).
-  function statusToReason(status: number): SearchFailReason {
+  // A bare 429 — from a proxy, say — is read as the shared quota, as before.
+  function statusToReason(status: number): Exclude<SearchFailReason, "rate-limited"> {
     switch (status) {
+      case 401:
+        return "not-authenticated";
       case 429:
         return "quota-exceeded";
-      case 502:
-        return "search-failed";
       default:
         return "search-failed";
     }
   }
-  
-  // Prefer the backend's machine code (detail.code); fall back to status.
-  async function reasonFromResponse(
-    response: Response
-  ): Promise<SearchFailReason> {
-    try {
-      const body = await response.json();
-      const code = body?.detail?.code;
-      if (
-        typeof code === "string" &&
-        (BACKEND_REASONS as readonly string[]).includes(code)
-      ) {
-        return code as SearchFailReason;
-      }
-    } catch {
-      // Body wasn't JSON (e.g. the 400 "Search query is required" path, or a
-      // proxy error page). Fall through to status-based mapping.
-    }
-    return statusToReason(response.status);
-  }
-  
+
   /**
    * Search YouTube for videos matching a topic query.
    *
@@ -92,12 +78,16 @@ import type {
     query: string
   ): Promise<SearchVideosResult> {
     try {
+      const token = await accessToken();
+      if (!token) return { ok: false, reason: "not-authenticated" };
+
       const response = await fetch(`${API_BASE_URL}/api/youtube/search`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-  
+
       // fetch only throws on network-level failures — a 400/429/502 still
       // resolves, so we check response.ok ourselves (same as the other clients).
       if (response.ok) {
@@ -106,10 +96,20 @@ import type {
         const body = (await response.json()) as SearchResponseEnvelope;
         return { ok: true, data: body.results };
       }
-  
-      return { ok: false, reason: await reasonFromResponse(response) };
+
+      // Prefer the backend's machine code (detail.code); fall back to status.
+      // Some refusals carry no code: the 400 for a blank query, whose detail
+      // is a plain string, or a proxy's error page.
+      const detail = await detailFrom(response);
+      const code = codeOf(detail);
+      if (code === "rate-limited") {
+        return { ok: false, reason: "rate-limited", retryAfterSeconds: retryAfterFrom(detail) };
+      }
+      const reason = BACKEND_REASONS.find((known) => known === code);
+      return { ok: false, reason: reason ?? statusToReason(response.status) };
     } catch {
-      // No response at all: backend down, CORS, DNS, no internet.
+      // No response at all (backend down, CORS, DNS, no internet, or no answer
+      // in time), or a successful response whose body was not JSON.
       return { ok: false, reason: "request-failed" };
     }
   }

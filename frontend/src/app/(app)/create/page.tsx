@@ -70,6 +70,7 @@ import {
   type KeyStore,
 } from "@/lib/generation/start-key";
 import { shortfallMessage } from "@/lib/credits/shortfall";
+import { rateLimitedMessage, type LimitedActivity } from "@/lib/rate-limit/message";
 import { costFor, type QuoteState } from "@/lib/credits/cost";
 import { fetchQuote } from "@/lib/api/credits";
 import { useBalance } from "@/components/credits/balance-provider";
@@ -160,6 +161,11 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
     "We couldn't check this video's length just now. Please try again in a moment.",
   "youtube-misconfigured":
     "We can't reach YouTube from our end right now. Please try again shortly.",
+  // The user's hourly limit on the calls that spend the YouTube quota. The
+  // page says these refusals with rateLimitedMessage, which names what was
+  // limited and the wait; this is the wording with neither.
+  "rate-limited": "You've done this a lot in the last hour. Please try again later.",
+  "rate-limit-unavailable": "We couldn't check that just now. Please try again in a moment.",
   // From generation — recorded on a job that failed
   "analysis-failed":
     "We couldn't work out how this video is organised this time. Please try again.",
@@ -182,13 +188,29 @@ const ERROR_MESSAGES: Record<FailReason, string> = {
     "The generation was interrupted before it finished. Please try again.",
   // From generation — while checking on a job
   "job-not-found": "We couldn't find this generation. Please try again.",
-  // Shared by generation and saving: either can be refused for a lapsed session.
+  // Shared by every signed-in call — looking a video up, searching, generating
+  // and saving: each can be refused for a lapsed session.
   "not-authenticated": "Please sign in again — your session may have expired.",
   // From saveDraft
   "not-a-draft": "This is already saved, or no longer exists.",
   "save-failed": "We couldn't save this just now. Please try again.",
   // Note: "network" is already defined above (shared with metadata) — not repeated.
 };
+
+/**
+ * The copy for a failed lookup or search: a refusal for the hourly limit
+ * names what was limited and the wait it carries; anything else is the map's.
+ */
+function failureMessage(
+  failure:
+    | { reason: "rate-limited"; retryAfterSeconds: number | null }
+    | { reason: Exclude<FailReason, "rate-limited"> },
+  activity: LimitedActivity,
+): string {
+  return failure.reason === "rate-limited"
+    ? rateLimitedMessage(activity, failure.retryAfterSeconds)
+    : ERROR_MESSAGES[failure.reason];
+}
 
 // The page could not read the job's state, so the run may still finish.
 const LOST_SIGHT_MESSAGE =
@@ -382,7 +404,7 @@ export default function CreatePage() {
       const result = await fetchVideoMetadata(extracted.videoId);
       if (isStale(run)) return;
       if (!result.ok) {
-        setStatus({ phase: "error", message: ERROR_MESSAGES[result.reason] });
+        setStatus({ phase: "error", message: failureMessage(result, "lookup") });
         return;
       }
       setStatus({ phase: "picking", meta: result.data });
@@ -407,7 +429,7 @@ export default function CreatePage() {
       setStatus({
         phase: "search-error",
         query,
-        message: ERROR_MESSAGES[result.reason],
+        message: failureMessage(result, "search"),
       });
       return;
     }
@@ -586,7 +608,7 @@ export default function CreatePage() {
     // Clicking a second result, or typing something new, invalidates this one.
     if (isStale(run)) return;
     if (!result.ok) {
-      setStatus({ phase: "error", message: ERROR_MESSAGES[result.reason] });
+      setStatus({ phase: "error", message: failureMessage(result, "lookup") });
       return;
     }
     // Straight to the picker. No confirmation, and no transcript wait.
@@ -746,6 +768,14 @@ export default function CreatePage() {
         } else {
           setStatus({ phase: "generate-error", meta, message: shortfallMessage(started.shortfall) });
         }
+        return;
+      }
+      if (started.reason === "rate-limited") {
+        setStatus({
+          phase: "generate-error",
+          meta,
+          message: rateLimitedMessage("pricing", started.retryAfterSeconds),
+        });
         return;
       }
       fail(started.reason);

@@ -57,10 +57,10 @@ export interface SearchResultVideo {
   /**
    * Every reason a topic search can fail, as a closed union.
    *
-   * The first two come straight from the backend
-   * (sent as detail.code); request-failed is client-side only — used whenever the
-   * request never reaches a coded response (network down, server unreachable,
-   * unparseable body).
+   * All but request-failed come from the backend (sent as detail.code), or from
+   * its status when the body carries no code; request-failed is client-side
+   * only — no response arrived (network down, server unreachable, no answer in
+   * time), or a successful response's body could not be read.
    *
    * NOTE: there is deliberately NO "no-results" member. A search that succeeds
    * with zero matches is NOT a failure — the backend returns an empty results
@@ -71,6 +71,10 @@ export interface SearchResultVideo {
    * TypeScript will flag it if one is ever missing.
    */
   export type SearchFailReason =
-    | "quota-exceeded" // daily YouTube quota / rate limit hit — try again later
+    | "quota-exceeded" // YouTube's daily quota or one of its rate limits was hit — try again later
+    | "rate-limited" // this user's hourly limit on searches is used up
+    | "rate-limit-unavailable" // the backend could not check that limit
+    | "not-authenticated" // no session, or the backend refused the token
+    | "auth-unavailable" // the backend could not check the sign-in
     | "search-failed" // bad key, upstream 5xx, unreadable body — generic upstream failure
-    | "request-failed"; // client-side: the request never reached a coded response
+    | "request-failed"; // client-side: no response, or a success body that could not be read

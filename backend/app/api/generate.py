@@ -24,6 +24,10 @@ reply was lost can be tried again without paying twice.
 A start is refused once the user has reached it. The database counts and
 creates the job together, taking one user's starts one at a time.
 
+**Each user has an hourly limit on length lookups** (`video_length_lookups_per_hour`),
+shared with the quote route. A start that would look a length up takes one
+use first, so a refused start spends none of the project's YouTube quota.
+
 **A start costs credits.** The price comes from the format and the video's
 length, which this route looks up from YouTube — nothing in the request is
 read for it. The database reserves the price when it creates the job and refuses a
@@ -38,7 +42,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.dependencies import CurrentUser, get_current_user
-from app.api.video_checks import VIDEO_ID_PATTERN, length_refusal
+from app.api.rate_limits import take_use
+from app.api.video_checks import VIDEO_ID_PATTERN, length_refusal, require_youtube_key
 from app.config import settings
 from app.services import jobs
 from app.services.dispatch import GenerationPool, get_generation_pool
@@ -228,13 +233,16 @@ def start_generation(
       1. the request's own checks — a failure is a 422, and no job exists
       2. the request key — a job already made for it is returned, not repeated
          and not charged again
-      3. the price, from the video's length as YouTube reports it — a length
+      3. one use of the user's hourly limit on length lookups — at the limit
+         a 429 `rate-limited`, and YouTube is not called; a server with no
+         YouTube key is refused first, as a 503, without taking a use
+      4. the price, from the video's length as YouTube reports it — a length
          that cannot be known is a 422 or 503, before a place is taken
-      4. a place in the pool — none free is a 503, and no job exists
-      5. the job row and its reserved price, if the user is under their limit
+      5. a place in the pool — none free is a 503, and no job exists
+      6. the job row and its reserved price, if the user is under their limit
          and has the credits — a 429 or 402 otherwise; if the row is not
          created for any reason, the place is given back
-      6. the work starts in that place
+      7. the work starts in that place
 
     A plain `def`: the length lookup and creating the job are blocking calls,
     so FastAPI runs this on a request thread. The generation runs on the pool.
@@ -248,6 +256,11 @@ def start_generation(
     existing = _job_already_made(user, req, request_id)
     if existing is not None:
         return StartedResponse(jobId=existing)
+
+    # A start refused later — for credits, the user's limit, a busy pool —
+    # made no job, so repeating its key comes back here and takes another use.
+    require_youtube_key()
+    take_use(user.id, "video-length")
 
     try:
         length_seconds = video_length(req.videoId)

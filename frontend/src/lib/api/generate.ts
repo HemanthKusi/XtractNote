@@ -26,6 +26,7 @@ import {
 } from "@/lib/content/types";
 import type { VideoMeta } from "@/lib/youtube/types";
 import { shortfallFrom, type CreditShortfall } from "@/lib/credits/read";
+import { retryAfterFrom } from "@/lib/rate-limit/message";
 
 // Statuses a proxy or gateway can return without our error body, meaning
 // "not now" rather than "no": ask again.
@@ -34,11 +35,14 @@ const RETRYABLE_STATUSES = new Set([408, 429]);
 /**
  * A refusal for credits carries what the start would have cost, what the user
  * has and when they refill — or null when the refusal's detail was unreadable.
+ * A refusal for the hourly limit carries how long until the next start is
+ * allowed, when known.
  */
 export type StartGenerationResult =
   | { ok: true; jobId: string }
   | { ok: false; reason: "credits-short"; shortfall: CreditShortfall | null }
-  | { ok: false; reason: Exclude<GenerateFailReason, "credits-short"> };
+  | { ok: false; reason: "rate-limited"; retryAfterSeconds: number | null }
+  | { ok: false; reason: Exclude<GenerateFailReason, "credits-short" | "rate-limited"> };
 
 /**
  * `transient` says whether asking again might succeed: the network, or the
@@ -51,8 +55,9 @@ export type FetchJobResult =
 
 // The codes POST /api/generate refuses with, in detail.code. Checked against
 // this before being trusted, so an unexpected string cannot pass as a reason.
-// "credits-short" is read separately, with the numbers it carries.
-const START_REASONS: readonly Exclude<GenerateFailReason, "credits-short">[] = [
+// "credits-short" and "rate-limited" are read separately, with the numbers
+// they carry.
+const START_REASONS: readonly Exclude<GenerateFailReason, "credits-short" | "rate-limited">[] = [
   "unknown-content-type",
   "not-authenticated",
   "auth-unavailable",
@@ -64,6 +69,7 @@ const START_REASONS: readonly Exclude<GenerateFailReason, "credits-short">[] = [
   "video-has-no-length",
   "length-unavailable",
   "youtube-misconfigured",
+  "rate-limit-unavailable",
 ];
 
 /**
@@ -136,6 +142,9 @@ export async function startGeneration(
     const code = codeOf(detail);
     if (code === "credits-short") {
       return { ok: false, reason: "credits-short", shortfall: shortfallFrom(detail) };
+    }
+    if (code === "rate-limited") {
+      return { ok: false, reason: "rate-limited", retryAfterSeconds: retryAfterFrom(detail) };
     }
     const reason = START_REASONS.find((known) => known === code);
     if (reason !== undefined) return { ok: false, reason };

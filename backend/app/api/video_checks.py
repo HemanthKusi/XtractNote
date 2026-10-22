@@ -8,6 +8,7 @@ same way, so a quote never answers differently from the start it previews.
 
 from fastapi import HTTPException
 
+from app.config import settings
 from app.services.video_length import LengthError
 
 VIDEO_ID_PATTERN = r"^[A-Za-z0-9_-]{11}$"
@@ -29,3 +30,15 @@ def length_refusal(error: LengthError) -> HTTPException:
     status, message = LENGTH_REFUSALS.get(error.code, (503, "The video's length couldn't be checked."))
     headers = {"Retry-After": str(LENGTH_RETRY_AFTER_SECONDS)} if status == 503 else None
     return HTTPException(status_code=status, detail={"code": error.code, "message": message}, headers=headers)
+
+
+def require_youtube_key() -> None:
+    """
+    Refuse as `youtube-misconfigured` when the server has no YouTube API key.
+
+    Called before a use of the user's hourly limit is taken: without a key the
+    lookup cannot run, and taking a use for it would spend the user's
+    allowance on a refusal that no retry can change.
+    """
+    if not settings.youtube_api_key:
+        raise length_refusal(LengthError("youtube-misconfigured", "The server has no YouTube API key."))

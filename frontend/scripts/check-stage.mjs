@@ -37,6 +37,8 @@ function same(a, b) {
   }
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return a === b;
   if (Array.isArray(a) !== Array.isArray(b)) return false;
+  // A hole in an array has no key, so comparing keys alone would miss it.
+  if (Array.isArray(a) && a.length !== b.length) return false;
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && same(a[key], b[key]));
 }

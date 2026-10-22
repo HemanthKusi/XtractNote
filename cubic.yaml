@@ -1,0 +1,193 @@
+# yaml-language-server: $schema=https://cubic.dev/schema/cubic-repository-config.schema.json
+# ─────────────────────────────────────────────────────────────────────────────
+# Automated review configuration.
+#
+# The review rules below are the same as the other automated review's path
+# instructions. Change both together, so the two review against one standard.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: 1
+
+reviews:
+  enabled: true
+  # The most thorough setting: more findings, some of them minor. A finding not
+  # worth acting on costs one dismissal; a missed one costs a bug.
+  sensitivity: high
+  # Review each new push, not only the pull request's first state.
+  incremental_commits: true
+  check_drafts: false
+  # A merge-confidence summary on each full review. Off by default.
+  merge_confidence_summary: true
+  # On a public repository, a pull request from outside waits for the owner to
+  # ask for a review, so nobody else's pull request draws on this plan.
+  external_contributors_require_manual_review: true
+  resolve_threads_when_addressed: true
+  # Auto-approval is off: whether a pull request merges is decided by a person.
+  auto_approve_behavior: disabled
+  auto_approve: disabled
+  # The heavier review runs only when asked for.
+  ultrareview: manual
+
+  custom_instructions: |
+    Be concise, direct and constructive. For each finding, state the input or
+    sequence of steps that produces the wrong result. When a finding is
+    uncertain, say so rather than presenting it as fact. Report bugs, not style
+    preferences.
+
+    Comment accuracy is treated as a correctness issue here, not style.
+    - A comment must not assert a property the code does not have. If a comment
+      says something is handled, guarded, dropped, cancelled, or always true,
+      check that the code actually does it and flag it if not. A wrong comment
+      is worse than no comment, because it tells the next reader the case is
+      covered and removes their reason to look.
+    - Comments go stale when the surrounding code is REPLACED, not only when it
+      is edited. Flag comments describing code, files or controls that are no
+      longer there.
+    - Flag absolute claims — "always", "never", "nothing else" — unless the code
+      supports them. Describe the branch that runs, not the case that is common.
+    - Comments should explain why, not what.
+    - Flag dead code, commented-out blocks, and TODOs with no tracking issue.
+
+  # Generated and vendored files a review has nothing to say about.
+  ignore:
+    files:
+      - "frontend/package-lock.json"
+      - "frontend/src/fonts/**"
+
+  custom_rules:
+    - name: Backend ownership, cost and process safety
+      include:
+        - "backend/app/**/*.py"
+      description: |
+        - This service authenticates to the database with a service-role key,
+          which BYPASSES row-level security entirely. Policies never fire for
+          these queries, so ownership has to be enforced in application code.
+          Flag any handler that assumes the database will filter for it.
+        - Put the owner predicate in the statement itself. An update or delete
+          filtered only by record id WILL modify another user's row; inspecting
+          the affected-row count afterwards reports the mismatch only once the
+          write has already happened. Filtering by owner means a row that is not
+          yours is never matched.
+        - Use the affected-row count to tell "no such row, or not yours" apart
+          for the response — not as the ownership check itself.
+        - Validate that any foreign-key target belongs to the same user before
+          linking to it.
+        - Errors should carry a stable `code` that the route layer maps to an
+          HTTP status, following the existing typed-error pattern, rather than
+          raising bare exceptions across a boundary.
+        - Validate input before any paid API call.
+        - Keep the pure part separate from the effectful part, so the pure part
+          is testable without a database or network.
+        - Never log or return secrets. The service-role key must never appear in
+          a response or a log line.
+        - Python 3.13 is required. Flag syntax or dependencies that assume
+          otherwise.
+
+        Architecture and design — weigh these as well as line-level defects:
+        - Whether a guarantee survives more than one server process. Pools,
+          caches and locks held in memory are per process; flag anything that
+          relies on them for correctness across processes.
+        - Whether it holds as generation grows into a multi-step pipeline: a new
+          step should be an addition, not a rewrite of the steps around it.
+        - Cost and abuse: anything one user can repeat to spend model calls,
+          hold capacity, or grow a table without bound.
+        - Races between the request, the background run and the periodic sweep,
+          and what each sees when another has already moved the row.
+
+    - name: Database policies and migrations
+      include:
+        - "database/**/*.sql"
+      description: |
+        - Every table needs row-level security enabled. Each operation users may
+          perform needs a policy scoped to the owner. An operation users must
+          never perform gets NO policy — a policy would grant it — and its table
+          privilege revoked from anon and authenticated, with a comment in the
+          migration saying why. Backend-only by design: insert, update and
+          delete on generation_jobs (migration 010; users keep their read
+          policy), and all access to credit_accounts and credit_ledger
+          (migration 013). Judge the final state after all migrations: an
+          earlier migration may create a policy that a later one drops. Do not
+          ask for user policies on those operations; flag one if it appears in
+          the final state.
+        - Row-level security filtering is silent: an excluded row produces no
+          error, only a smaller result set.
+        - Any `security definer` function must pin its search path.
+        - Migrations are applied by hand and never re-run. Flag anything that is
+          not safe to apply exactly once.
+
+    - name: Frontend correctness and structure
+      include:
+        - "frontend/src/**/*.ts"
+        - "frontend/src/**/*.tsx"
+      description: |
+        - Flag every `any`, every non-null assertion used to silence the
+          compiler, and every `@ts-ignore`.
+        - Errors crossing a boundary should be discriminated result unions, not
+          thrown exceptions.
+        - Every async surface needs loading, empty and error states. Flag any
+          that is missing one.
+        - Wrap every JSON parse. A malformed 200 response must raise rather than
+          flow on as data.
+        - Anything async a user can interrupt needs a race guard: take a token
+          before the first `await` and re-check it after every one. The token
+          must be a ref, never state — state read inside a closure returns the
+          value from the render that began the run, which is the stale value the
+          guard exists to catch.
+        - Props should express intent (`variant`, `tone`, `format`), never
+          appearance.
+        - Business and domain logic belongs in `lib/`, not inside components.
+          Flag large multi-purpose components.
+        - Validate and sanitise anything read from a query parameter, especially
+          redirect targets, against open redirects.
+        - Never put user data in URL parameters, and never log secrets.
+        - On-screen copy must not claim something the code does not do. A wrong
+          readout misleads every user, not just the next developer.
+
+        Architecture and design — weigh these as well as line-level defects:
+        - Where a change puts logic, and what it couples together. Flag a
+          component or route that starts owning a rule another surface will
+          also need.
+        - Whether it holds as the product grows: more content types, more
+          platforms, more generation steps. Flag a list, union or switch that a
+          new case would have to be added to by hand in several places.
+        - State that outlives the moment: browser storage survives a sign-out
+          and is shared by every account in the tab. Ask what happens when two
+          accounts, two tabs or two runs meet it.
+        - Edge cases one happy-path run never reaches: a reply that is lost,
+          late, malformed or from a proxy; a retry; a double click.
+
+    - name: Backend tests
+      include:
+        - "backend/tests/**/*.py"
+      description: |
+        - Tests must not require network access or a live database.
+        - Prefer testing the pure layer. A test that mostly asserts a
+          third-party library behaves like itself carries little value and
+          breaks when that library is upgraded.
+        - A test asserting a guarantee should be able to fail. Flag assertions
+          that would pass even if the behaviour under test were removed.
+
+    - name: Frontend check scripts
+      include:
+        - "frontend/scripts/*.mjs"
+      description: |
+        - These checks must not add NEW third-party dependencies. They may
+          import packages the build already depends on — `check-design-tokens`
+          uses `postcss` and `tailwindcss` to inspect the CSS actually
+          generated — but a package added solely for a check is weight the lint
+          step should not carry. `check-fold` imports nothing beyond Node
+          built-ins and the module under test.
+        - They run inside the lint step, so a failure must exit non-zero rather
+          than only printing.
+
+# Pull request descriptions are not generated, and no link is added to them.
+pr_descriptions:
+  generate: false
+  cubic_review_link: false
+
+# Fix buttons, fixes requested in comments, and automatic fixes are all off:
+# changes to a branch are made by its author.
+issues:
+  fix_with_cubic_buttons: false
+  pr_comment_fixes: false
+  auto_fix: "off"

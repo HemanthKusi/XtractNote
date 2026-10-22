@@ -51,7 +51,7 @@ reviews:
   # Generated and vendored files a review has nothing to say about.
   ignore:
     files:
-      - "frontend/package-lock.json"
+      - "**/package-lock.json"
       - "frontend/src/fonts/**"
 
   custom_rules:

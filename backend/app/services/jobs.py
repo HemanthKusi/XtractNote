@@ -29,7 +29,7 @@ from typing import Any
 
 from postgrest.exceptions import APIError
 
-from app.db.supabase import get_supabase_client
+from app.db.supabase import get_heartbeat_client, get_supabase_client
 from app.services.credits import CreditShortfall, shortfall_from
 
 TABLE = "generation_jobs"
@@ -233,7 +233,8 @@ def failure_code_error(code: str) -> str | None:
 HEARTBEAT_EVERY = timedelta(seconds=30)
 
 #: How long an unfinished job's heartbeat may be silent before the sweep fails
-#: it. Several beats long, so one slow or dropped beat does not end a live run.
+#: it. Several beats long, so one slow or dropped beat does not end a live run —
+#: which relies on each beat's request being bounded (`heartbeat`).
 STALE_AFTER = timedelta(minutes=3)
 
 #: How often the sweep runs while the server is up, after the one at startup.
@@ -435,9 +436,12 @@ def heartbeat(job_id: str, user_id: str) -> bool:
 
     Returns False when no unfinished job of this user's matched — the job is
     gone, or has already finished — so the caller can stop beating for it.
+
+    Sent on the heartbeat client, so a stalled request delays the next beat
+    by seconds rather than minutes.
     """
     response = (
-        get_supabase_client()
+        get_heartbeat_client()
         .table(TABLE)
         .update({"heartbeat_at": utc_now_iso()})
         .eq("id", job_id)

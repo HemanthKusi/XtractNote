@@ -43,7 +43,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.dependencies import CurrentUser, get_current_user
 from app.api.rate_limits import take_use
-from app.api.video_checks import VIDEO_ID_PATTERN, length_refusal
+from app.api.video_checks import VIDEO_ID_PATTERN, length_refusal, require_youtube_key
 from app.config import settings
 from app.services import jobs
 from app.services.dispatch import GenerationPool, get_generation_pool
@@ -234,7 +234,8 @@ def start_generation(
       2. the request key — a job already made for it is returned, not repeated
          and not charged again
       3. one use of the user's hourly limit on length lookups — at the limit
-         a 429 `rate-limited`, and YouTube is not called
+         a 429 `rate-limited`, and YouTube is not called; a server with no
+         YouTube key is refused first, as a 503, without taking a use
       4. the price, from the video's length as YouTube reports it — a length
          that cannot be known is a 422 or 503, before a place is taken
       5. a place in the pool — none free is a 503, and no job exists
@@ -258,6 +259,7 @@ def start_generation(
 
     # A start refused later — for credits, the user's limit, a busy pool —
     # made no job, so repeating its key comes back here and takes another use.
+    require_youtube_key()
     take_use(user.id, "video-length")
 
     try:

@@ -26,7 +26,7 @@ from pydantic import BaseModel
 
 from app.api.dependencies import CurrentUser, get_current_user
 from app.api.rate_limits import take_use
-from app.api.video_checks import VIDEO_ID_PATTERN, length_refusal
+from app.api.video_checks import VIDEO_ID_PATTERN, length_refusal, require_youtube_key
 from app.config import settings
 from app.services.credits import balance_for
 from app.services.pricing import BASE_PRICE, price_for
@@ -89,11 +89,13 @@ def get_quote(
 
     A quote takes one use of the same hourly limit on length lookups a start
     takes, since both spend the same quota; at the limit it is a 429
-    `rate-limited`, and YouTube is not called. A length that cannot be known
-    is refused as a start would refuse it.
+    `rate-limited`, and YouTube is not called. A server with no YouTube key is
+    refused before the use is taken. A length that cannot be known is refused
+    as a start would refuse it.
 
     A plain `def`: the limit check and the length lookup are blocking calls.
     """
+    require_youtube_key()
     take_use(user.id, "video-length")
     try:
         length_seconds = video_length(videoId)

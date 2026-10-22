@@ -152,7 +152,10 @@ def pool() -> FakePool:
 
 
 @pytest.fixture
-def client(pool: FakePool, fake_jobs: FakeJobs, length: FakeLength):
+def client(pool: FakePool, fake_jobs: FakeJobs, length: FakeLength, monkeypatch: pytest.MonkeyPatch):
+    # A start is refused before the lookup without a key; the lookup itself is
+    # a stand-in, so this value is never sent anywhere.
+    monkeypatch.setattr(settings, "youtube_api_key", "test-api-key-not-real")
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=USER)
     app.dependency_overrides[get_generation_pool] = lambda: pool
     yield TestClient(app)
@@ -681,4 +684,26 @@ def test_repeating_a_refused_starts_key_at_the_limit_asks_youtube_nothing(
 
 def test_a_malformed_start_takes_no_use(client, rate_limit) -> None:
     assert post(client, videoId="short").status_code == 422
+    assert rate_limit.taken == []
+
+
+def test_a_start_on_a_server_with_no_youtube_key_is_503_and_takes_no_use(
+    client, pool, fake_jobs, length, rate_limit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without a key no lookup can run, so spending the user's allowance on it would be lost."""
+    monkeypatch.setattr(settings, "youtube_api_key", "")
+    response = post(client)
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "youtube-misconfigured"
+    assert rate_limit.taken == [] and length.asked == []
+    assert pool.reserved == 0 and fake_jobs.created == []
+
+
+def test_a_repeated_key_is_answered_even_on_a_server_with_no_youtube_key(
+    client, fake_jobs, rate_limit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A key that already made a job needs no lookup, so it is answered before the key check."""
+    monkeypatch.setattr(settings, "youtube_api_key", "")
+    fake_jobs.existing = [{"id": JOB, "video_id": VALID["videoId"], "content_type": "summary", "platform": None}]
+    assert post(client).json() == {"jobId": JOB}
     assert rate_limit.taken == []

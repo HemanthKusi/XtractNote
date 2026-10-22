@@ -71,7 +71,10 @@ def length(monkeypatch: pytest.MonkeyPatch) -> FakeLength:
 
 
 @pytest.fixture
-def client(balance: FakeBalance, length: FakeLength):
+def client(balance: FakeBalance, length: FakeLength, monkeypatch: pytest.MonkeyPatch):
+    # A quote is refused before the lookup without a key; the lookup itself is
+    # a stand-in, so this value is never sent anywhere.
+    monkeypatch.setattr(settings, "youtube_api_key", "test-api-key-not-real")
     app.dependency_overrides[get_current_user] = lambda: CurrentUser(id=USER)
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -212,3 +215,15 @@ def test_a_malformed_quote_takes_no_use(client, rate_limit) -> None:
 def test_a_signed_out_quote_takes_no_use(signed_out, rate_limit) -> None:
     signed_out.get("/api/credits/quote", params={"videoId": VIDEO})
     assert rate_limit.taken == []
+
+
+def test_a_quote_on_a_server_with_no_youtube_key_is_503_and_takes_no_use(
+    client, length, rate_limit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without a key no lookup can run, so spending the user's allowance on it would be lost."""
+    monkeypatch.setattr(settings, "youtube_api_key", "")
+    response = client.get("/api/credits/quote", params={"videoId": VIDEO})
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "youtube-misconfigured"
+    assert response.headers["Retry-After"] == "30"
+    assert rate_limit.taken == [] and length.asked == []

@@ -5,9 +5,11 @@
 # dependence on remembering, which is where it starts to matter as the backend
 # work grows.
 #
-# Branch protection is deliberately not part of this file. Making a red check
-# actually block a merge is a repository setting, so until that is applied a
-# failing run here is visible but stops nothing.
+# Branch protection is not part of this file: making a red check block a merge
+# is a repository setting. On develop, staging and main both jobs below are
+# required checks, so a failing run blocks the merge. If a job is renamed, rename
+# the required check in that setting too: the old name would never report, and
+# every merge would wait on it.
 
 name: Checks
 

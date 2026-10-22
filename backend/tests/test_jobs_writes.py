@@ -207,10 +207,22 @@ def test_entering_a_stage_of_a_finished_job_is_job_not_updated(monkeypatch) -> N
     assert caught.value.code == "job-not-updated"
 
 
-@pytest.mark.parametrize(("rows", "expected"), [([{"id": "job-1"}], True), ([], False)])
-def test_a_job_is_unfinished_only_while_this_users_unfinished_row_exists(monkeypatch, rows, expected) -> None:
-    table = use_table(monkeypatch, rows)
-    assert jobs.is_unfinished("job-1", "user-1") is expected
-    assert ("eq", ("user_id", "user-1")) in table.calls
-    assert ("not_.in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
+# --- Finishing ----------------------------------------------------------------
+
+
+def test_finishing_sends_the_job_its_owner_and_the_draft(monkeypatch) -> None:
+    call = use(monkeypatch, data=[{"result_id": "draft-1"}])
+    row = {"content_type": "summary"}
+    assert jobs.finish("job-1", "user-1", row) == "draft-1"
+    assert call.function == "finish_generation_job"
+    assert call.params == {"p_job_id": "job-1", "p_user_id": "user-1", "p_draft": row}
+
+
+@pytest.mark.parametrize("data", [[], [{}], [{"result_id": None}], [{"result_id": ""}], ["draft-1"]])
+def test_finishing_a_job_that_matched_nothing_is_job_not_updated(monkeypatch, data) -> None:
+    """No row back means nothing was written: no such job, not this user's, or already finished."""
+    use(monkeypatch, data=data)
+    with pytest.raises(JobError) as caught:
+        jobs.finish("job-1", "user-1", {})
+    assert caught.value.code == "job-not-updated"
 

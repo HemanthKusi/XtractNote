@@ -1,23 +1,20 @@
 """
 XtractNote — Draft rows
 
-Builds and inserts the `generated_content` row a finished generation produces.
+Builds the `generated_content` row a finished generation produces.
 
 A generation that runs in the background has no browser waiting to save its
-result, so the row is written here, with status 'draft'. Saving it to the
-library is a separate step.
+result, so the run writes the row itself, with status 'draft', through
+`jobs.finish`. Saving it to the library is a separate step.
 
 **History, the drafts band and `/output/[id]` read these rows without knowing
 who wrote them**, so the row is built to the shape they already read: the word
 count, the social title, where the platform is stored, the duration format.
 
-**Two layers, as in `jobs.py`.** The rules are pure functions, testable without a
-database. The insert is a thin shell around them.
+Everything here is pure, testable without a database.
 
-**The service key bypasses row-level security**, so the policy that would check
-`user_id` on this insert never fires. The owner is therefore whatever the caller
-passes — and the caller must pass the verified user, never a value from request
-data.
+**The owner must be the verified user, never a value from request data.** The
+service key bypasses row-level security, so no policy checks it.
 """
 
 import math
@@ -25,10 +22,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.db.supabase import get_supabase_client
 from app.services.prompts import ContentType, SocialPlatform
-
-CONTENT_TABLE = "generated_content"
 
 #: The status a generated row is written with. Save promotes it to 'saved'.
 DRAFT_STATUS = "draft"
@@ -45,17 +39,6 @@ SOCIAL_PLATFORM_LABELS: dict[SocialPlatform, str] = {
 }
 
 _WHITESPACE_RE = re.compile(r"\s+")
-
-
-# --- Typed error --------------------------------------------------------------
-
-class DraftError(Exception):
-    """Raised when the draft row cannot be written. `code` is a stable string."""
-
-    def __init__(self, code: str, message: str) -> None:
-        self.code = code
-        self.message = message
-        super().__init__(message)
 
 
 # --- The video the content came from ------------------------------------------
@@ -178,17 +161,3 @@ def build_draft_row(
         "transcript_id": transcript_id,
     }
 
-
-# --- Write --------------------------------------------------------------------
-
-def insert_draft(row: dict[str, Any]) -> str:
-    """
-    Insert a draft row and return its id.
-
-    Raises DraftError("draft-not-saved") when the insert returns nothing, rather
-    than handing back an id of None to fail somewhere less obvious later.
-    """
-    response = get_supabase_client().table(CONTENT_TABLE).insert(row).execute()
-    if not response.data:
-        raise DraftError("draft-not-saved", "The draft could not be saved.")
-    return str(response.data[0]["id"])

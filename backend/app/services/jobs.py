@@ -33,7 +33,6 @@ from app.db.supabase import get_supabase_client
 from app.services.credits import CreditShortfall, shortfall_from
 
 TABLE = "generation_jobs"
-CONTENT_TABLE = "generated_content"
 
 #: Postgres's code for a unique-constraint violation.
 UNIQUE_VIOLATION = "23505"
@@ -49,6 +48,10 @@ CREDITS_SHORT = "XN402"
 
 #: The database function that creates a job and reserves its price.
 ADMIT_FUNCTION = "admit_generation_job"
+
+#: The database function that saves a run's draft and completes its job in
+#: one transaction (migration 016).
+FINISH_FUNCTION = "finish_generation_job"
 
 
 # --- Typed error --------------------------------------------------------------
@@ -162,11 +165,11 @@ def advance_target_error(status: str) -> str | None:
     `advance` writes only the status and sometimes a percentage, so finishing a
     job this way would leave it `completed` with no `result_id` and no
     `completed_at` — and because every update excludes jobs that have already
-    finished, `complete` could never attach them afterwards. The job would be
+    finished, `finish` could never attach them afterwards. The job would be
     permanently done with nothing to show for it.
 
-    Finishing goes through `complete` or `fail`, which write the whole set of
-    fields a finished job needs.
+    The run finishes a job through `finish` or `fail`, which write the whole
+    set of fields a finished job needs.
 
     **The creation state is rejected too.** A job moved back to `pending` would
     have its progress reset to zero, claiming it had not started — and nothing
@@ -187,7 +190,7 @@ def advance_target_error(status: str) -> str | None:
         )
     if status in TERMINAL_STATUSES:
         return (
-            f"{status!r} is terminal — use complete() or fail(), so the row "
+            f"{status!r} is terminal — use finish() or fail(), so the row "
             "carries the fields a finished job needs."
         )
     return None
@@ -453,7 +456,7 @@ def advance(job_id: str, user_id: str, status: str) -> dict[str, Any]:
     goes into the statement's predicate, so a job belonging to someone else is
     never matched — which keeps this safe no matter who calls it later.
 
-    A terminal status is refused: finishing goes through `complete` or `fail`.
+    A terminal status is refused: the run finishes through `finish` or `fail`.
     See `advance_target_error` for why that matters rather than being tidiness.
     """
     if (reason := advance_target_error(status)) is not None:
@@ -484,36 +487,33 @@ def enter_stage(
     )
 
 
-def is_unfinished(job_id: str, user_id: str) -> bool:
-    """Whether this user's job exists and has not finished."""
+def finish(job_id: str, user_id: str, draft_row: dict[str, Any]) -> str:
+    """
+    Save a run's draft and complete its job, in one transaction, and return
+    the draft's id.
+
+    Both are written or neither (migration 016), and only for this user's
+    unfinished job. The draft's owner is `user_id`, whatever `draft_row` says.
+
+    Raises JobError("job-not-updated") when nothing was written: no such job,
+    not this user's, or already finished.
+    """
     response = (
         get_supabase_client()
-        .table(TABLE)
-        .select("id")
-        .eq("id", job_id)
-        .eq("user_id", user_id)
-        .not_.in_("status", sorted(TERMINAL_STATUSES))
-        .limit(1)
+        .rpc(
+            FINISH_FUNCTION,
+            {"p_job_id": job_id, "p_user_id": user_id, "p_draft": draft_row},
+        )
         .execute()
     )
-    return bool(response.data)
-
-
-def complete(job_id: str, user_id: str, result_id: str) -> dict[str, Any]:
-    """
-    Mark a job completed and link the content it produced.
-
-    The foreign key proves `result_id` names a real row. It does not prove the
-    row belongs to this user, and nothing in the database will — the service key
-    bypasses the policies that would. So it is checked here, before linking, or
-    a job could be made to point at someone else's content.
-    """
-    _assert_content_belongs_to(result_id, user_id)
-
-    patch = patch_for_status("completed")
-    patch["result_id"] = result_id
-    patch["completed_at"] = utc_now_iso()
-    return _update_unfinished(job_id, user_id, patch)
+    rows = response.data
+    result_id = rows[0].get("result_id") if rows and isinstance(rows[0], dict) else None
+    if not isinstance(result_id, str) or not result_id:
+        raise JobError(
+            "job-not-updated",
+            "That job does not exist, or has already finished.",
+        )
+    return result_id
 
 
 def fail(job_id: str, user_id: str, code: str, message: str) -> dict[str, Any]:
@@ -555,9 +555,9 @@ def fail_interrupted(silent_for: timedelta) -> int:
     It is bounded by the predicate instead: a job must be unfinished AND silent
     past the threshold. Do not copy it for anything done on a user's behalf.
 
-    If a run is swept while still going, its later updates to the job match
+    If a run is swept while still going, its later writes to the job match
     nothing, because the job is already finished — so the sweep's verdict
-    stands. A draft the run saves is still written, and kept.
+    stands, and the run's draft is not saved (`finish`).
     """
     now = datetime.now(timezone.utc)
     response = (
@@ -631,26 +631,3 @@ def _update_unfinished(
             "That job does not exist, or has already finished.",
         )
     return dict(response.data[0])
-
-
-def _assert_content_belongs_to(result_id: str, user_id: str) -> None:
-    """
-    Raise unless `result_id` names content owned by `user_id`.
-
-    Scoped by owner in the query itself, so content belonging to someone else
-    simply does not come back.
-    """
-    response = (
-        get_supabase_client()
-        .table(CONTENT_TABLE)
-        .select("id")
-        .eq("id", result_id)
-        .eq("user_id", user_id)
-        .limit(1)
-        .execute()
-    )
-    if not response.data:
-        raise JobError(
-            "result-not-owned",
-            "That content does not exist, or does not belong to this user.",
-        )

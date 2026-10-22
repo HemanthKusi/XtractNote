@@ -5,9 +5,9 @@ The generation worker: every path through `run_job`.
 that record each call and can be told to raise. No database, no model call.
 
 What they prove is the ORDER of the calls and which failure code each branch
-records. They cannot prove the real functions behave — that `complete` refuses
-another user's draft, say. That is `jobs.py`'s own tests and the run against the
-real database.
+records. They cannot prove the real functions behave — that `finish` saves
+nothing for a job the sweep has failed, say. That is checked against a
+database, not here.
 """
 
 import time
@@ -76,9 +76,8 @@ class Recorder:
     `raises` names the steps that should raise, and with what.
 
     `generate_takes` makes generation slow enough for heartbeats to land,
-    `job_still_open` is what the heartbeat reports back, `unfinished_before_save`
-    is what the check before saving reports, and `claimed` is the row `claim`
-    returns. The clock hands out t1, t2, … in order.
+    `job_still_open` is what the heartbeat reports back, and `claimed` is the
+    row `claim` returns. The clock hands out t1, t2, … in order.
     """
 
     def __init__(
@@ -86,14 +85,12 @@ class Recorder:
         raises: dict[str, Exception] | None = None,
         generate_takes: float = 0.0,
         job_still_open: bool = True,
-        unfinished_before_save: bool = True,
         claimed: Any = None,
     ) -> None:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
         self.raises = raises or {}
         self.generate_takes = generate_takes
         self.job_still_open = job_still_open
-        self.unfinished_before_save = unfinished_before_save
         self.claimed = {"stage_started_at": {"fetching": "t0"}} if claimed is None else claimed
         self.ticks = 0
 
@@ -120,10 +117,6 @@ class Recorder:
         ) -> None:
             self._call("enter_stage", job_id, user_id, status, dict(stage_started_at), transcript_id)
 
-        def is_unfinished(job_id: str, user_id: str) -> bool:
-            self._call("is_unfinished", job_id, user_id)
-            return self.unfinished_before_save
-
         def now() -> str:
             self.ticks += 1
             return f"t{self.ticks}"
@@ -137,12 +130,9 @@ class Recorder:
             time.sleep(self.generate_takes)
             return BODY
 
-        def insert_draft(row: dict[str, Any]) -> str:
-            self._call("insert_draft", row)
+        def finish(job_id: str, user_id: str, row: dict[str, Any]) -> str:
+            self._call("finish", job_id, user_id, row)
             return DRAFT
-
-        def complete(job_id: str, user_id: str, result_id: str) -> None:
-            self._call("complete", job_id, user_id, result_id)
 
         def fail(job_id: str, user_id: str, code: str, message: str) -> None:
             self._call("fail", job_id, user_id, code, message)
@@ -154,9 +144,7 @@ class Recorder:
             obtain_transcript=obtain_transcript,
             analyse=analyse,
             generate=generate,
-            is_unfinished=is_unfinished,
-            insert_draft=insert_draft,
-            complete=complete,
+            finish=finish,
             fail=fail,
             now=now,
         )
@@ -184,6 +172,11 @@ def run(raises: dict[str, Exception] | None = None, **options: Any) -> tuple[str
     return run_job(JOB, USER, REQUEST, recorder.steps()), recorder
 
 
+def swept() -> jobs.JobError:
+    """What a job write raises once the sweep has failed the job."""
+    return jobs.JobError("job-not-updated", "That job does not exist, or has already finished.")
+
+
 # --- The defaults are the real effects ----------------------------------------
 
 
@@ -192,7 +185,7 @@ def test_default_steps_are_the_real_functions() -> None:
     Every test below passes stand-ins, so none of them would notice a default
     being something other than the real function. This one would.
     """
-    from app.services import drafts, jobs, worker
+    from app.services import jobs, worker
     from app.services.generate import generate_content
 
     steps = Steps()
@@ -201,11 +194,9 @@ def test_default_steps_are_the_real_functions() -> None:
     assert steps.obtain_transcript is worker.obtain_transcript
     assert steps.enter_stage is jobs.enter_stage
     assert steps.analyse is analyse_sections
-    assert steps.is_unfinished is jobs.is_unfinished
     assert steps.now is jobs.utc_now_iso
     assert steps.generate is generate_content
-    assert steps.insert_draft is drafts.insert_draft
-    assert steps.complete is jobs.complete
+    assert steps.finish is jobs.finish
     assert steps.fail is jobs.fail
 
 
@@ -220,9 +211,7 @@ FULL_PATH = [
     "analyse",
     "enter_stage",  # drafting, as `draft` starts
     "generate",
-    "is_unfinished",
-    "insert_draft",
-    "complete",
+    "finish",
 ]
 
 
@@ -282,7 +271,7 @@ def test_generation_reads_the_outline_and_sections_with_its_guidance() -> None:
 
 def test_the_draft_belongs_to_the_given_user_and_holds_the_result() -> None:
     _, recorder = run()
-    (row,) = recorder.args("insert_draft")
+    _, _, row = recorder.args("finish")
     assert row["user_id"] == USER
     assert row["status"] == "draft"
     assert row["content_body"] is BODY
@@ -292,14 +281,14 @@ def test_the_draft_belongs_to_the_given_user_and_holds_the_result() -> None:
     assert row["transcript_id"] == TRANSCRIPT.id
 
 
-def test_the_job_is_completed_with_the_draft_it_produced() -> None:
+def test_the_draft_is_saved_with_this_users_job() -> None:
     _, recorder = run()
-    assert recorder.args("complete") == (JOB, USER, DRAFT)
+    assert recorder.args("finish")[:2] == (JOB, USER)
 
 
 def test_every_job_write_uses_the_same_owner() -> None:
     _, recorder = run()
-    for name in ("claim", "enter_stage", "is_unfinished", "complete"):
+    for name in ("claim", "enter_stage", "finish"):
         assert all(args[1] == USER for args in recorder.all_args(name))
 
 
@@ -341,8 +330,7 @@ def test_any_other_transcript_exception_is_unexpected() -> None:
 
 def test_a_job_failed_under_the_run_stops_it_before_anything_is_spent() -> None:
     """The sweep failed it: entering the next stage matches nothing, so nothing is analysed, generated or written."""
-    swept = jobs.JobError("job-not-updated", "That job does not exist, or has already finished.")
-    outcome, recorder = run({"enter_stage": swept})
+    outcome, recorder = run({"enter_stage": swept()})
     assert outcome == "stopped"
     assert recorder.names == ["claim", "obtain_transcript", "enter_stage"]
 
@@ -354,11 +342,11 @@ def test_a_stage_that_cannot_be_written_fails_the_job_and_generates_nothing() ->
     assert recorder.args("fail")[2] == UNEXPECTED_CODE
 
 
-def test_a_job_failed_while_drafting_gets_no_draft() -> None:
-    """Its draft would be linked to nothing."""
-    outcome, recorder = run(unfinished_before_save=False)
+def test_a_job_failed_while_drafting_gets_no_draft_and_no_second_failure() -> None:
+    """The sweep's verdict stands: `finish` saved nothing, and nothing is written after it."""
+    outcome, recorder = run({"finish": swept()})
     assert outcome == "stopped"
-    assert recorder.names == FULL_PATH[:8]
+    assert recorder.names == FULL_PATH
 
 
 def test_a_failed_analysis_is_recorded_with_its_code_and_nothing_is_drafted() -> None:
@@ -367,13 +355,6 @@ def test_a_failed_analysis_is_recorded_with_its_code_and_nothing_is_drafted() ->
     assert outcome == "failed"
     assert recorder.names == FULL_PATH[:5] + ["fail"]
     assert recorder.args("fail")[2] == "analysis-failed"
-
-
-def test_a_check_before_saving_that_cannot_be_made_still_saves_the_result() -> None:
-    """A paid result is kept rather than lost to a failed read."""
-    outcome, recorder = run({"is_unfinished": RuntimeError("database down")})
-    assert outcome == "completed"
-    assert recorder.names == FULL_PATH
 
 
 def test_a_generation_that_returns_no_body_is_unexpected() -> None:
@@ -385,7 +366,7 @@ def test_a_generation_that_returns_no_body_is_unexpected() -> None:
     outcome = run_job(JOB, USER, REQUEST, replace(recorder.steps(), generate=nothing))
     assert outcome == "failed"
     assert recorder.args("fail")[2] == UNEXPECTED_CODE
-    assert "insert_draft" not in recorder.names
+    assert "finish" not in recorder.names
 
 
 def test_a_generation_error_is_recorded_with_its_own_code() -> None:
@@ -408,18 +389,15 @@ def test_an_unexpected_failure_does_not_store_the_exception_text() -> None:
     assert "secret-ish internals" not in message
 
 
-def test_a_draft_that_cannot_be_saved_is_recorded_and_nothing_is_completed() -> None:
-    outcome, recorder = run({"insert_draft": RuntimeError("insert returned nothing")})
-    assert outcome == "failed"
-    assert recorder.names == FULL_PATH[:9] + ["fail"]
-    assert recorder.args("fail")[2] == "draft-not-saved"
-
-
-def test_a_draft_that_cannot_be_linked_is_kept_and_the_job_fails() -> None:
-    outcome, recorder = run({"complete": RuntimeError("network")})
+@pytest.mark.parametrize(
+    "error",
+    [RuntimeError("network"), jobs.JobError("illegal-status", "Some other refusal.")],
+)
+def test_a_draft_that_cannot_be_saved_fails_the_job(error: Exception) -> None:
+    outcome, recorder = run({"finish": error})
     assert outcome == "failed"
     assert recorder.names == FULL_PATH + ["fail"]
-    assert recorder.args("fail")[2] == UNEXPECTED_CODE
+    assert recorder.args("fail")[2] == "draft-not-saved"
 
 
 # --- It never raises ----------------------------------------------------------
@@ -427,7 +405,7 @@ def test_a_draft_that_cannot_be_linked_is_kept_and_the_job_fails() -> None:
 
 @pytest.mark.parametrize(
     "failing_step",
-    ["obtain_transcript", "enter_stage", "analyse", "generate", "insert_draft", "complete"],
+    ["obtain_transcript", "enter_stage", "analyse", "generate", "finish"],
 )
 def test_a_failure_that_cannot_be_recorded_still_does_not_raise(failing_step: str) -> None:
     outcome, recorder = run(

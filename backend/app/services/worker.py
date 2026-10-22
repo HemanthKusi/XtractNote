@@ -14,9 +14,9 @@ runs it on a thread.
 
 **A run stops when its job finishes under it.** Entering a stage matches only
 an unfinished job, so a job the sweep has already failed stops the run as it
-enters its next stage, before that stage's node runs. The job is checked again
-before the draft is saved; a job failed after that check still gets its
-draft, unlinked, so the check narrows that window without closing it.
+enters its next stage, before that stage's node runs. Saving the draft
+completes the job in the same transaction (`jobs.finish`), so a job failed by
+then gets no draft.
 
 **It does not raise.** Nobody is waiting on it, so an escaped exception would
 leave the job unfinished with only a log line to show for it. Once the job is
@@ -93,9 +93,7 @@ class Steps:
     generate: Callable[
         [str, ContentType, SocialPlatform | None, str], dict[str, Any]
     ] = generate_content
-    is_unfinished: Callable[[str, str], bool] = jobs.is_unfinished
-    insert_draft: Callable[[dict[str, Any]], str] = drafts.insert_draft
-    complete: Callable[[str, str, str], Any] = jobs.complete
+    finish: Callable[[str, str, dict[str, Any]], str] = jobs.finish
     fail: Callable[[str, str, str, str], Any] = jobs.fail
     now: Callable[[], str] = jobs.utc_now_iso
 
@@ -170,19 +168,8 @@ def _run_claimed(
         logger.error("job %s: the graph finished without all of its results", job_id)
         return _fail(steps, job_id, user_id, UNEXPECTED_CODE, UNEXPECTED_MESSAGE)
 
-    # A job already failed by now gets no draft: it would be linked to nothing.
-    # One failed between here and the insert still gets one. If the check
-    # itself cannot be made, the draft is saved anyway — keeping a result that
-    # was paid for beats losing it to a read.
-    try:
-        unfinished = steps.is_unfinished(job_id, user_id)
-    except Exception:
-        logger.warning("job %s: could not check the job before saving", job_id, exc_info=True)
-        unfinished = True
-    if not unfinished:
-        logger.warning("job %s: finished under its run; its result is not saved", job_id)
-        return "stopped"
-
+    # The draft and the job's completion are written together or not at all,
+    # so a job the sweep has failed by now gets no draft.
     try:
         row = drafts.build_draft_row(
             user_id,
@@ -193,22 +180,13 @@ def _run_claimed(
             transcript_id=transcript.id,
             outline=outline_metadata(outline, sections),
         )
-        result_id = steps.insert_draft(row)
-    except Exception:
+        steps.finish(job_id, user_id, row)
+    except Exception as exc:
+        if isinstance(exc, jobs.JobError) and exc.code == "job-not-updated":
+            logger.warning("job %s: finished under its run; its result is not saved", job_id)
+            return "stopped"
         logger.exception("job %s: the draft could not be saved", job_id)
-        return _fail(
-            steps, job_id, user_id, "draft-not-saved", "The draft could not be saved."
-        )
-
-    # The draft already exists here. If linking it fails, it is kept — it is the
-    # user's result, and still reachable from their drafts.
-    try:
-        steps.complete(job_id, user_id, result_id)
-    except Exception:
-        logger.exception(
-            "job %s: draft %s was saved but could not be linked", job_id, result_id
-        )
-        return _fail(steps, job_id, user_id, UNEXPECTED_CODE, UNEXPECTED_MESSAGE)
+        return _fail(steps, job_id, user_id, "draft-not-saved", "The draft could not be saved.")
 
     return "completed"
 

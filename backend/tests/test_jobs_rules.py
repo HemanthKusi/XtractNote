@@ -555,10 +555,16 @@ def test_the_finish_function_is_the_one_the_backend_calls() -> None:
 
 
 def test_the_finish_function_completes_the_job_as_the_backend_would() -> None:
-    """The job's ending is written in SQL, so its status and progress are pinned to patch_for_status."""
+    """
+    The job's ending is written in SQL, so its status and progress are pinned
+    to patch_for_status, and the link and the time are checked alongside them.
+    """
     expected = patch_for_status("completed")
-    sql = finish_sql()
-    assert f"set status = '{expected['status']}', progress = {expected['progress']}," in sql
+    assert (
+        f"set status = '{expected['status']}', progress = {expected['progress']}, "
+        "result_id = finish_generation_job.result_id, completed_at = clock_timestamp() "
+        "where id = p_job_id;"
+    ) in finish_sql()
 
 
 def test_the_finish_function_matches_only_this_users_unfinished_job() -> None:

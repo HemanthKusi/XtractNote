@@ -6,8 +6,8 @@ that record each call and can be told to raise. No database, no model call.
 
 What they prove is the ORDER of the calls and which failure code each branch
 records. They cannot prove the real functions behave — that `finish` saves
-nothing for a job the sweep has failed, say. That is checked against a
-database, not here.
+nothing for a job the sweep has failed, say. That is migration 016's
+behaviour, and no test in this suite runs it.
 """
 
 import time

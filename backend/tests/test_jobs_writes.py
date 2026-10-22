@@ -208,20 +208,23 @@ def test_entering_a_stage_of_a_finished_job_is_job_not_updated(monkeypatch) -> N
 
 
 def test_a_heartbeat_is_sent_on_the_heartbeat_client(monkeypatch) -> None:
-    """Its short timeout is what stops one stalled beat holding back the next."""
+    """Its shorter timeout limits how long one stalled beat can hold back the next."""
     table = FakeTable([{"id": "job-1"}])
     monkeypatch.setattr(jobs, "get_heartbeat_client", lambda: table)
     monkeypatch.setattr(jobs, "get_supabase_client", lambda: pytest.fail("sent on the shared client"))
     assert jobs.heartbeat("job-1", "user-1") is True
+    assert any(name == "update" and "heartbeat_at" in args[0] for name, args in table.calls)
     assert ("eq", ("user_id", "user-1")) in table.calls
     assert ("not_.in_", ("status", sorted(jobs.TERMINAL_STATUSES))) in table.calls
 
 
-def test_the_heartbeat_client_gives_up_sooner_than_the_shared_one(monkeypatch) -> None:
+def test_the_heartbeat_client_has_a_shorter_timeout_than_the_shared_one(monkeypatch) -> None:
     """
-    Built for real, without a request: the timeout is set on the client's HTTP
-    session. The client refuses a key that is not shaped like a JWT, so the
-    test brings its own placeholder rather than relying on the environment's.
+    Built for real, without a request, and read from the client's HTTP
+    session on purpose: checking only the option passed in would stay green
+    if a library upgrade stopped applying it. The client refuses a key that is
+    not shaped like a JWT, so the test brings its own placeholder rather than
+    relying on the environment's.
     """
     from app.db import supabase as db
 

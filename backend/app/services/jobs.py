@@ -437,8 +437,8 @@ def heartbeat(job_id: str, user_id: str) -> bool:
     Returns False when no unfinished job of this user's matched — the job is
     gone, or has already finished — so the caller can stop beating for it.
 
-    Sent on the heartbeat client, so a stalled request delays the next beat
-    by seconds rather than minutes.
+    Sent on the heartbeat client, whose shorter timeout shortens how long a
+    stalled request can hold back the next beat.
     """
     response = (
         get_heartbeat_client()

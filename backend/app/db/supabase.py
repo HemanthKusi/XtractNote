@@ -40,8 +40,9 @@ def get_supabase_client() -> Client:
 
 def get_heartbeat_client() -> Client:
     """
-    A second client, for job heartbeats only, whose requests give up after
-    HEARTBEAT_TIMEOUT_SECONDS instead of the library's default 120.
+    A second client, for job heartbeats only, whose timeout is
+    HEARTBEAT_TIMEOUT_SECONDS for each phase of a request instead of the
+    library's default 120. Each phase is limited, not the request as a whole.
 
     A heartbeat is only useful if it lands before the sweep's threshold, and
     the next beat waits for the last one to return. A beat held for two

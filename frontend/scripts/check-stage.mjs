@@ -29,12 +29,28 @@ import { JOB_STATUSES } from "../src/lib/content/types.ts";
 let failed = 0;
 let run = 0;
 
+// Equal by value, comparing numbers directly. Through JSON, NaN and Infinity
+// both become null, so a check expecting null could not fail on them.
+function same(a, b) {
+  if (typeof a === "number" || typeof b === "number") {
+    return a === b || (Number.isNaN(a) && Number.isNaN(b));
+  }
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return a === b;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && same(a[key], b[key]));
+}
+
+function shown(value) {
+  return typeof value === "number" ? String(value) : JSON.stringify(value);
+}
+
 function check(name, actual, expected) {
   run++;
-  const ok = JSON.stringify(actual) === JSON.stringify(expected);
+  const ok = same(actual, expected);
   if (!ok) {
     failed++;
-    console.error(`  FAIL  ${name}\n          expected ${JSON.stringify(expected)}\n          got      ${JSON.stringify(actual)}`);
+    console.error(`  FAIL  ${name}\n          expected ${shown(expected)}\n          got      ${shown(actual)}`);
   }
 }
 

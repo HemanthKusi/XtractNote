@@ -12,20 +12,19 @@
 
 import { use } from "react";
 import { SavedContentEditor } from "@/components/output/saved-content-editor";
+import { safeRedirectPath } from "@/lib/auth/redirect";
 
 interface OutputPageProps {
     params: Promise<{ id: string }>;
     searchParams: Promise<{ from?: string | string[] }>;
   }
 
-// Accept `from` only if it's an internal absolute path ("/history",
-// "/folders/abc"). Rejects off-site and protocol-relative ("//evil.com") URLs
-// so the Back link can't be turned into an open redirect. Falls back to History.
+// Accept `from` only as a path on this site ("/history", "/folders/abc"), so
+// the Back link can't be turned into an open redirect. Falls back to History.
 function safeBackHref(from: string | string[] | undefined): string {
     // Duplicate query params (?from=a&from=b) arrive as an array — take the first.
     const value = Array.isArray(from) ? from[0] : from;
-    if (value && value.startsWith("/") && !value.startsWith("//")) return value;
-    return "/history";
+    return safeRedirectPath(value ?? null, "/history");
 }
 
 function backLabelFor(href: string): string {

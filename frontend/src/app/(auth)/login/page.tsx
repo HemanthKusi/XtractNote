@@ -10,6 +10,7 @@ import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { ROUTES } from "@/lib/constants/routes";
+import { safeRedirectPath } from "@/lib/auth/redirect";
 import { Button, Input, Card } from "@/components/ui";
 import { Logo } from "@/components/layout";
 
@@ -30,12 +31,8 @@ function LoginForm() {
   const params = useSearchParams();
 
   // Where to land after login. The proxy stashes this when it bounces a
-  // logged-out user. Only honor relative in-app paths (open-redirect guard).
-  const requested = params.get("redirectTo");
-  const dest =
-    requested && requested.startsWith("/") && !requested.startsWith("//")
-      ? requested
-      : ROUTES.DASHBOARD;
+  // logged-out user. Only a path on this site is accepted (open-redirect guard).
+  const dest = safeRedirectPath(params.get("redirectTo"), ROUTES.DASHBOARD);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

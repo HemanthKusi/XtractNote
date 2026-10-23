@@ -5,6 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { safeRedirectPath } from "@/lib/auth/redirect";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -12,13 +13,9 @@ export async function GET(request: Request) {
   // The one-time code Supabase appended after Google / email confirmation.
   const code = searchParams.get("code");
 
-  // Where to send the user afterwards. Only allow relative in-app paths
-  // (must start with a single "/") to prevent open-redirect attacks.
-  const requested = searchParams.get("redirectTo");
-  const redirectTo =
-    requested && requested.startsWith("/") && !requested.startsWith("//")
-      ? requested
-      : "/dashboard";
+  // Where to send the user afterwards. Only a path on this site is accepted,
+  // to prevent open-redirect attacks.
+  const redirectTo = safeRedirectPath(searchParams.get("redirectTo"), "/dashboard");
 
   if (code) {
     const supabase = await createClient();

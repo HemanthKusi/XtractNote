@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     backend_port: int = 8000
     frontend_url: str = "http://localhost:3000"
 
+    # ── LLM tracing ──
+    # Whether the backend may start while a LangSmith/LangChain tracing
+    # variable is on. Tracing sends every prompt, transcript and draft to an
+    # external service, so the backend refuses to start with it on unless this
+    # is true (app/llm_tracing.py). Turning tracing on is meant to be a
+    # deliberate decision, never a variable left over from debugging.
+    allow_llm_tracing: bool = False
+
     # ── Generation ──
     # How many generations this server process runs at once. Requests beyond
     # it are refused as busy rather than queued.

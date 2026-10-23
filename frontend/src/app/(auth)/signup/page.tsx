@@ -10,6 +10,7 @@ import { Mail, Lock, User, Eye, EyeOff, MailCheck } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import { ROUTES } from "@/lib/constants/routes";
+import { safeRedirectPath } from "@/lib/auth/redirect";
 import { Button, Input, Card } from "@/components/ui";
 import { Logo } from "@/components/layout";
 import { OtpVerify } from "@/components/auth/otp-verify";
@@ -30,12 +31,8 @@ function SignupForm() {
   const router = useRouter();
   const params = useSearchParams();
 
-  // Same relative-only redirect guard as login.
-  const requested = params.get("redirectTo");
-  const dest =
-    requested && requested.startsWith("/") && !requested.startsWith("//")
-      ? requested
-      : ROUTES.DASHBOARD;
+  // Same open-redirect guard as login.
+  const dest = safeRedirectPath(params.get("redirectTo"), ROUTES.DASHBOARD);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

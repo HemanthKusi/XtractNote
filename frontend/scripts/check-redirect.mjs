@@ -7,8 +7,10 @@
  * ── Why this exists ──
  * An open redirect renders nothing wrong: sign-in succeeds, and the person
  * lands on someone else's page. The check it replaced passed `/\evil.example`,
- * which a URL parser reads as `https://evil.example/`. Each bypass form is
- * listed here, and every result is parsed again the way the router will.
+ * which a URL parser reads as `https://evil.example/`. The first version of
+ * its replacement passed `/a/..//evil.example`, whose path becomes
+ * `//evil.example`. Each bypass form is listed here, and every result is
+ * parsed again the way the router will.
  *
  * ── Why it imports rather than re-states ──
  * As with check-rate-limit: it imports the real `redirect.ts`, which imports
@@ -58,6 +60,13 @@ const REFUSED = [
   ["a scheme with one slash", "https:/evil.example"],
   ["an absolute URL", "https://evil.example/x"],
   ["a script URL", "javascript:alert(1)"],
+  // Each stays on the site as written, and becomes `//evil.example` once its
+  // dot segments resolve — which the router reads as another host.
+  ["a dot segment that leaves two slashes", "/a/..//evil.example"],
+  ["a leading dot segment that leaves two slashes", "/..//evil.example"],
+  ["a single and a double dot segment", "/./..//evil.example"],
+  ["an encoded dot segment", "/%2e%2e//evil.example"],
+  ["an encoded dot segment in capitals", "/a/%2E%2E//evil.example"],
 ];
 for (const [name, input] of REFUSED) {
   check(`refused: ${name}`, safeRedirectPath(input, FALLBACK), FALLBACK);

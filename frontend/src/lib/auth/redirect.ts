@@ -18,7 +18,7 @@
 // Imports nothing, so scripts/check-redirect.mjs can load it.
 // ─────────────────────────────────────────────────────────────
 
-/** An origin no request can come from; `.invalid` is reserved for this. */
+/** A base to parse against. `.invalid` is a reserved name that never resolves. */
 const PLACEHOLDER_ORIGIN = "https://redirect-check.invalid";
 
 /** `value` parsed against the placeholder, or null when it cannot be. */

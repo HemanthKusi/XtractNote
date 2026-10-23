@@ -1,8 +1,9 @@
 /**
  * check-redirect
  *
- * Fails when the post-sign-in redirect accepts a value that leaves the site,
- * or stops accepting the in-app paths it should.
+ * Fails when the post-sign-in redirect accepts one of the values listed here
+ * that leave the site, or refuses one of the in-app paths listed here. A value
+ * not listed is not checked.
  *
  * ── Why this exists ──
  * An open redirect renders nothing wrong: sign-in succeeds, and the person

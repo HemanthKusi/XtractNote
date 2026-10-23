@@ -45,7 +45,7 @@ def fake_pool(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakePool]:
 
 @pytest.fixture(autouse=True)
 def no_tracing_variables(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A tracing variable in the shell running the tests would stop every lifespan here."""
+    """Each test starts with none of the four tracing variables set."""
     for name in TRACING_VARIABLES:
         monkeypatch.delenv(name, raising=False)
 

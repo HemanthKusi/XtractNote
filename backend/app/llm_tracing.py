@@ -12,8 +12,7 @@ So the backend refuses to start while any tracing variable is on, unless
 
 **The rule is stricter than the library's.** The installed client reads a
 variable as on only when it is exactly "true". Here, anything other than
-empty or "false" (in any letter case) counts as on, so a change to how the
-library parses these values cannot open a path this check does not cover.
+empty or "false" (in any letter case) counts as on.
 
 **Two layers, as elsewhere.** `enabled_tracing_variables` and
 `tracing_refusal` are pure; `refuse_unallowed_tracing` reads the process

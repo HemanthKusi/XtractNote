@@ -42,7 +42,7 @@ def test_each_variable_set_to_true_is_on(name: str) -> None:
 
 @pytest.mark.parametrize("value", ["true", "TRUE", "True", "1", "yes", "0", " ", "false "])
 def test_any_value_but_empty_or_false_is_on(value: str) -> None:
-    """Stricter than the client: anything it might one day read as on is refused now."""
+    """Stricter than the client, which reads only "true" as on."""
     assert enabled_tracing_variables({"LANGSMITH_TRACING": value}) == ["LANGSMITH_TRACING"]
 
 

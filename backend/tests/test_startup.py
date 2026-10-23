@@ -1,7 +1,8 @@
 """
-The app's lifespan: the sweep runs before the server serves, keeps running on a
-timer, and cannot stop the server starting or the timer ticking; at shutdown,
-the generation pool is closed.
+The app's lifespan: it refuses to start while LLM tracing is on and not
+allowed; the sweep runs before the server serves, keeps running on a timer, and
+cannot stop the server starting or the timer ticking; at shutdown, the
+generation pool is closed.
 
 The sweep is replaced with a stand-in throughout, so no database call is made —
 CI has no database to make one against. The timer is shortened to milliseconds
@@ -15,6 +16,8 @@ from datetime import timedelta
 
 import pytest
 
+from app.config import settings
+from app.llm_tracing import TRACING_VARIABLES
 from app.main import app, sweep_every, sweep_interrupted_jobs
 from app.services.jobs import STALE_AFTER, fail_interrupted
 
@@ -38,6 +41,13 @@ def fake_pool(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakePool]:
     pool = FakePool()
     monkeypatch.setattr("app.main.get_generation_pool", lambda: pool)
     yield pool
+
+
+@pytest.fixture(autouse=True)
+def no_tracing_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each test starts with none of the four tracing variables set."""
+    for name in TRACING_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
 
 
 def test_the_default_sweep_is_the_real_one() -> None:
@@ -167,3 +177,35 @@ def test_shutdown_closes_the_generation_pool(
 
     assert asyncio.run(serve_then_stop()) is True
     assert fake_pool.closed is True
+
+
+def test_tracing_on_and_not_allowed_stops_startup_before_the_sweep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Refused before anything runs: no sweep, nothing served."""
+    calls: list[str] = []
+    monkeypatch.setattr("app.main.sweep_interrupted_jobs", lambda: calls.append("swept"))
+    monkeypatch.setattr(settings, "allow_llm_tracing", False)
+    monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
+
+    async def start() -> None:
+        async with app.router.lifespan_context(app):
+            calls.append("serving")
+
+    with pytest.raises(RuntimeError, match="LANGCHAIN_TRACING_V2"):
+        asyncio.run(start())
+    assert calls == []
+
+
+def test_tracing_on_and_allowed_starts(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr("app.main.sweep_interrupted_jobs", lambda: calls.append("swept"))
+    monkeypatch.setattr(settings, "allow_llm_tracing", True)
+    monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
+
+    async def start() -> None:
+        async with app.router.lifespan_context(app):
+            calls.append("serving")
+
+    asyncio.run(start())
+    assert calls[:2] == ["swept", "serving"]

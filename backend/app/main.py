@@ -3,10 +3,11 @@ XtractNote Backend — FastAPI Application Entry Point
 
 This is where the server starts. It:
 1. Creates the FastAPI app
-2. Fails generation jobs left unfinished — at startup, then on a timer
-3. Adds CORS middleware (Layer 1 security)
-4. Registers all API route handlers
-5. Provides a health check endpoint
+2. Refuses to start while LLM tracing is on and not allowed
+3. Fails generation jobs left unfinished — at startup, then on a timer
+4. Adds CORS middleware (Layer 1 security)
+5. Registers all API route handlers
+6. Provides a health check endpoint
 """
 
 import asyncio
@@ -22,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import settings
 from app.api import youtube, generate, content, folders, credits
+from app.llm_tracing import refuse_unallowed_tracing
 from app.services import jobs
 from app.services.dispatch import get_generation_pool
 
@@ -63,10 +65,12 @@ async def sweep_every(interval: timedelta) -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """
-    Sweep before the first request is served, then keep sweeping until shutdown.
-    At shutdown, the generation pool stops admitting work and is given a
-    bounded grace period for the generations still running.
+    Refuse to start while LLM tracing is on and not allowed. Then sweep before
+    the first request is served, and keep sweeping until shutdown. At
+    shutdown, the generation pool stops admitting work and is given a bounded
+    grace period for the generations still running.
     """
+    refuse_unallowed_tracing()
     await run_in_threadpool(sweep_interrupted_jobs)
     # Held in a local so the task is not garbage-collected while it runs.
     timer = asyncio.create_task(sweep_every(jobs.SWEEP_EVERY))

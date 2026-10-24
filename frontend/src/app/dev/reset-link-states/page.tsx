@@ -39,16 +39,16 @@ export default function ResetLinkStatesPage() {
         <p className="font-mono text-micro uppercase tracking-wide text-xn-ink-soft">/reset-password · #438</p>
         <h1 className="mt-1 text-h4 text-xn-ink">When the link cannot be checked</h1>
         <p className="mt-2 max-w-2xl text-sm text-xn-ink-muted">
-          The page checks for a recovery session when it opens. If that check throws, the page stays on
+          The page checks for a session when it opens. Before #438, if that check threw, the page stayed on
           &ldquo;Loading…&rdquo; for good. The new state says what happened without blaming the link.
         </p>
 
-        <h2 className="mt-10 font-mono text-micro uppercase tracking-wide text-xn-ink-soft">Today</h2>
+        <h2 className="mt-10 font-mono text-micro uppercase tracking-wide text-xn-ink-soft">For reference</h2>
         <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(360px,100%),1fr))] gap-5">
           <Frame label="Link expired or invalid" note="The check worked and found no session. Unchanged.">
             <ExpiredCard />
           </Frame>
-          <Frame label="The check throws" note="What a crash leaves on screen now — and never leaves.">
+          <Frame label="The check throws, before #438" note="What a crash left on screen — and never left.">
             <LoadingLine />
           </Frame>
         </div>
@@ -84,10 +84,10 @@ export default function ResetLinkStatesPage() {
             <PasswordForm error="We couldn't update your password. Please try again." />
           </Frame>
           <Frame
-            label="Saved, then sign-out throws"
-            note="Unchanged screen: the password did change, so the page still says so and moves on to sign in."
+            label="Saved, then sign-out fails"
+            note="The password did change, so the page still says so. Still signed in, they go to the dashboard, not to sign in."
           >
-            <UpdatedCard />
+            <UpdatedCard next="Taking you to your dashboard…" />
           </Frame>
         </div>
       </div>
@@ -232,7 +232,7 @@ function LoadingLine() {
   return <p className="text-center text-sm text-xn-ink-soft">Loading…</p>;
 }
 
-function UpdatedCard() {
+function UpdatedCard({ next }: { next: string }) {
   return (
     <Branded>
       <Card padding="lg">
@@ -241,7 +241,7 @@ function UpdatedCard() {
             <CheckCircle2 className="h-6 w-6 text-xn-accent" />
           </div>
           <h1 className="text-xl font-semibold text-xn-ink">Password updated</h1>
-          <p className="mt-2 text-sm text-xn-ink-muted">Taking you to sign in…</p>
+          <p className="mt-2 text-sm text-xn-ink-muted">{next}</p>
         </div>
       </Card>
     </Branded>

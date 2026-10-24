@@ -28,10 +28,14 @@ export function UserMenu() {
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  // Fetch the signed-in user once on mount (browser client).
+  // Fetch the signed-in user once on mount (browser client). A lookup that
+  // throws leaves the menu as it is with no user: "Account", no name.
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    supabase.auth
+      .getUser()
+      .then(({ data }) => setUser(data.user))
+      .catch(() => setUser(null));
   }, []);
 
   // While open, close on outside-click or Escape.
@@ -58,7 +62,14 @@ export function UserMenu() {
   async function handleSignOut() {
     setSigningOut(true);
     const supabase = createClient();
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // The button comes back, so it can be tried again rather than staying
+      // on "Signing out…".
+      setSigningOut(false);
+      return;
+    }
     router.push(ROUTES.LOGIN);
     router.refresh(); // re-run server state so the proxy sees us logged out
   }

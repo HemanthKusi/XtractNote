@@ -14,6 +14,20 @@ import { ROUTES } from "@/lib/constants/routes";
 import { Button, Input, Card } from "@/components/ui";
 import { Logo } from "@/components/layout";
 
+/**
+ * Whether the page arrived through a valid recovery link. `failed` means the
+ * check itself threw, which says nothing about the link — so it gets its own
+ * screen rather than the expired-link one.
+ */
+type LinkCheck = "checking" | "valid" | "invalid" | "failed";
+
+function checkRecoveryLink(): Promise<Exclude<LinkCheck, "checking">> {
+  return createClient()
+    .auth.getSession()
+    .then(({ data }): Exclude<LinkCheck, "checking"> => (data.session ? "valid" : "invalid"))
+    .catch((): Exclude<LinkCheck, "checking"> => "failed");
+}
+
 export default function ResetPasswordPage() {
   const router = useRouter();
 
@@ -24,16 +38,17 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
-  // null = still checking, true/false = whether a recovery session exists.
-  const [hasSession, setHasSession] = useState<boolean | null>(null);
+  const [link, setLink] = useState<LinkCheck>("checking");
 
   // On mount, confirm we actually arrived via a valid recovery link.
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getSession().then(({ data }) => {
-      setHasSession(!!data.session);
-    });
+    checkRecoveryLink().then(setLink);
   }, []);
+
+  function retryLinkCheck() {
+    setLink("checking");
+    checkRecoveryLink().then(setLink);
+  }
 
   async function handleSubmit() {
     if (password.length < 6) return setError("Password must be at least 6 characters.");
@@ -43,7 +58,12 @@ export default function ResetPasswordPage() {
     setError("");
 
     const supabase = createClient();
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    let updateError: { message: string } | null;
+    try {
+      ({ error: updateError } = await supabase.auth.updateUser({ password }));
+    } catch {
+      updateError = { message: "We couldn't update your password. Please try again." };
+    }
 
     if (updateError) {
       setError(updateError.message);
@@ -51,8 +71,14 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    // Sign out of the recovery session so they log in fresh with the new password.
-    await supabase.auth.signOut();
+    // Sign out of the recovery session so they log in fresh with the new
+    // password. If that throws, the password has still changed, so the page
+    // still says so and moves on.
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Nothing to show: the update above is what the person asked for.
+    }
     setDone(true);
     setLoading(false);
 
@@ -61,7 +87,7 @@ export default function ResetPasswordPage() {
   }
 
   // ── Invalid / expired link ──
-  if (hasSession === false && !done) {
+  if (link === "invalid" && !done) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-xn-bg px-4">
         <div className="w-full max-w-sm">
@@ -114,10 +140,48 @@ export default function ResetPasswordPage() {
   }
 
   // ── Loading the session check ──
-  if (hasSession === null) {
+  if (link === "checking") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-xn-bg px-4">
         <p className="text-sm text-xn-ink-soft">Loading…</p>
+      </div>
+    );
+  }
+
+  // ── The check itself failed — not the link ──
+  if (link === "failed") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-xn-bg px-4">
+        <div className="w-full max-w-sm">
+          <div className="flex justify-center mb-8">
+            <Logo size={28} showWordmark />
+          </div>
+          <Card padding="lg">
+            <div className="text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-xn-surface-alt">
+                <AlertTriangle className="h-6 w-6 text-xn-ink-soft" />
+              </div>
+              <h1 className="text-xl font-semibold text-xn-ink">We couldn&apos;t check your link</h1>
+              <p className="mt-2 text-sm text-xn-ink-muted">
+                Something went wrong on our side — your link may still be fine. Try again in a moment.
+              </p>
+              <div className="mt-6">
+                <Button variant="primary" size="lg" fullWidth onClick={retryLinkCheck}>
+                  Try again
+                </Button>
+              </div>
+              <p className="mt-4 text-sm text-xn-ink-muted">
+                Or{" "}
+                <Link
+                  href={ROUTES.FORGOT_PASSWORD}
+                  className="font-medium text-xn-ink underline-offset-2 hover:underline"
+                >
+                  request a new link
+                </Link>
+              </p>
+            </div>
+          </Card>
+        </div>
       </div>
     );
   }

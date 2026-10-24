@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Lock, Eye, EyeOff, CheckCircle2, AlertTriangle } from "lucide-react";
@@ -15,16 +15,18 @@ import { Button, Input, Card } from "@/components/ui";
 import { Logo } from "@/components/layout";
 
 /**
- * Whether the page arrived through a valid recovery link. `failed` means the
- * check itself threw, which says nothing about the link — so it gets its own
- * screen rather than the expired-link one.
+ * Whether there is a session to set the new password with. `failed` means the
+ * check itself failed — it threw, or reported an error — which says nothing
+ * about the link, so it gets its own screen rather than the expired-link one.
  */
 type LinkCheck = "checking" | "valid" | "invalid" | "failed";
 
 function checkRecoveryLink(): Promise<Exclude<LinkCheck, "checking">> {
   return createClient()
     .auth.getSession()
-    .then(({ data }): Exclude<LinkCheck, "checking"> => (data.session ? "valid" : "invalid"))
+    .then(({ data, error }): Exclude<LinkCheck, "checking"> =>
+      error ? "failed" : data.session ? "valid" : "invalid",
+    )
     .catch((): Exclude<LinkCheck, "checking"> => "failed");
 }
 
@@ -37,17 +39,34 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  // Where the success screen sends them: sign in once signed out, or the
+  // dashboard when signing out failed and they are still signed in.
+  const [signedOut, setSignedOut] = useState(true);
 
   const [link, setLink] = useState<LinkCheck>("checking");
+  // Bumped by every check and by unmounting, so only the latest check's
+  // result is applied.
+  const checkToken = useRef(0);
 
-  // On mount, confirm we actually arrived via a valid recovery link.
+  function runLinkCheck() {
+    const token = ++checkToken.current;
+    checkRecoveryLink().then((result) => {
+      if (token === checkToken.current) setLink(result);
+    });
+  }
+
+  // On mount, check for a session to set the new password with.
   useEffect(() => {
-    checkRecoveryLink().then(setLink);
+    runLinkCheck();
+    const checks = checkToken;
+    return () => {
+      checks.current += 1;
+    };
   }, []);
 
   function retryLinkCheck() {
     setLink("checking");
-    checkRecoveryLink().then(setLink);
+    runLinkCheck();
   }
 
   async function handleSubmit() {
@@ -71,19 +90,23 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    // Sign out of the recovery session so they log in fresh with the new
-    // password. If that throws, the password has still changed, so the page
-    // still says so and moves on.
+    // Sign out of the recovery session so they sign in fresh with the new
+    // password. signOut() reports most failures in its result, and can also
+    // throw; either way they are still signed in, so they go to the dashboard
+    // instead. The password has changed regardless.
+    let outcome: boolean;
     try {
-      await supabase.auth.signOut();
+      const { error: signOutError } = await supabase.auth.signOut();
+      outcome = signOutError === null;
     } catch {
-      // Nothing to show: the update above is what the person asked for.
+      outcome = false;
     }
+    setSignedOut(outcome);
     setDone(true);
     setLoading(false);
 
-    // Brief success beat, then to login.
-    setTimeout(() => router.push(ROUTES.LOGIN), 1500);
+    // Brief success beat, then on.
+    setTimeout(() => router.push(outcome ? ROUTES.LOGIN : ROUTES.DASHBOARD), 1500);
   }
 
   // ── Invalid / expired link ──
@@ -130,7 +153,7 @@ export default function ResetPasswordPage() {
               </div>
               <h1 className="text-xl font-semibold text-xn-ink">Password updated</h1>
               <p className="mt-2 text-sm text-xn-ink-muted">
-                Taking you to sign in…
+                {signedOut ? "Taking you to sign in…" : "Taking you to your dashboard…"}
               </p>
             </div>
           </Card>

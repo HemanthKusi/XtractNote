@@ -101,8 +101,8 @@ export function UserMenu() {
     if (failed) {
       setSigningOut(false);
       setSignOutFailed(true);
-      // Starting the sign-out cancelled any lookup still running; the person
-      // is staying, so look the user up again rather than leave the name blank.
+      // Starting the sign-out made any pending lookup's result be ignored; the
+      // person is staying, so look the user up again.
       loadUser();
       return;
     }

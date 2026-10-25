@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/sidebar-modes/page.tsx  →  route: /dev/sidebar-modes
+// src/app/dev/sidebar-modes/page.dev.tsx  →  route: /dev/sidebar-modes
 //
 // Specimens for the three menu modes. A harness; never ships.
 //

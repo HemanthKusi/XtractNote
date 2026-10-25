@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/output-blocks/page.tsx  →  route: /dev/output-blocks
+// src/app/dev/output-blocks/page.dev.tsx  →  route: /dev/output-blocks
 //
 // The block vocabulary, at three densities. Not shipped.
 //

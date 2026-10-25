@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/social-templates/page.tsx  →  route: /dev/social-templates
+// src/app/dev/social-templates/page.dev.tsx  →  route: /dev/social-templates
 //
 // Destination-faithful templates for the social format. Not shipped.
 //

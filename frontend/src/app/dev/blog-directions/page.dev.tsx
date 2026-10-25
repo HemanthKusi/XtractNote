@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/blog-directions/page.tsx  →  route: /dev/blog-directions
+// src/app/dev/blog-directions/page.dev.tsx  →  route: /dev/blog-directions
 //
 // Four directions for the blog output surface. Not shipped.
 //

@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/menu-credits/page.tsx  →  route: /dev/menu-credits
+// src/app/dev/menu-credits/page.dev.tsx  →  route: /dev/menu-credits
 //
 // The credit balance at the foot of the side menu (#460): the directions to
 // choose from, kept as the record. **G2c · Cells was chosen**: in the panel,

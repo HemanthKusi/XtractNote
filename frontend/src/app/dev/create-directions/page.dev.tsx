@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/create-directions/page.tsx  →  route: /dev/create-directions
+// src/app/dev/create-directions/page.dev.tsx  →  route: /dev/create-directions
 //
 // Four directions for the create route, rendered side by side in time: pick a
 // direction, pick a phase, compare. Not shipped.

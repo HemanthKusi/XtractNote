@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
@@ -11,6 +11,14 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { Avatar } from "@/components/ui/avatar";
+
+// The signed-in user, or null when there is none or the lookup fails.
+function lookUpUser(): Promise<User | null> {
+  return createClient()
+    .auth.getUser()
+    .then(({ data }) => data.user)
+    .catch(() => null);
+}
 
 // Build 1–2 letter initials from a name, falling back to the email.
 function initialsFrom(name: string, email: string): string {
@@ -31,29 +39,29 @@ export function UserMenu() {
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutFailed, setSignOutFailed] = useState(false);
-  // Bumped by unmounting and by starting a sign-out, so a lookup that lands
-  // late cannot put a user back into the menu.
+  // Bumped by every lookup, by unmounting and by starting a sign-out, so a
+  // lookup that lands late cannot put a user back into the menu.
   const lookupToken = useRef(0);
 
-  // Fetch the signed-in user once on mount (browser client). A lookup that
-  // fails shows "Account": the name is a label, not a sign-in state, and
-  // there is nothing for the person to do about it.
-  useEffect(() => {
+  // A lookup that fails shows "Account": the name is a label, not a sign-in
+  // state, and there is nothing for the person to do about it.
+  const loadUser = useCallback(() => {
     const token = ++lookupToken.current;
-    createClient()
-      .auth.getUser()
-      .then(({ data }) => data.user)
-      .catch(() => null)
-      .then((found) => {
-        if (token !== lookupToken.current) return;
-        setUser(found);
-        setUserLoaded(true);
-      });
+    lookUpUser().then((found) => {
+      if (token !== lookupToken.current) return;
+      setUser(found);
+      setUserLoaded(true);
+    });
+  }, []);
+
+  // Fetch the signed-in user on mount (browser client).
+  useEffect(() => {
+    loadUser();
     const lookups = lookupToken;
     return () => {
       lookups.current += 1;
     };
-  }, []);
+  }, [loadUser]);
 
   // While open, close on outside-click or Escape.
   useEffect(() => {
@@ -93,6 +101,9 @@ export function UserMenu() {
     if (failed) {
       setSigningOut(false);
       setSignOutFailed(true);
+      // Starting the sign-out cancelled any lookup still running; the person
+      // is staying, so look the user up again rather than leave the name blank.
+      loadUser();
       return;
     }
 

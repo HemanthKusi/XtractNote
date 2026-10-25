@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/reset-link-states/page.tsx  →  route: /dev/reset-link-states
+// src/app/dev/reset-link-states/page.dev.tsx  →  route: /dev/reset-link-states
 //
 // The reset-password page when it cannot check the recovery link because
 // the check itself failed (#438) — as opposed to the link being expired,

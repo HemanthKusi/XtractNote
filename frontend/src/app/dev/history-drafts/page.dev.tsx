@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/history-drafts/page.tsx  →  route: /dev/history-drafts
+// src/app/dev/history-drafts/page.dev.tsx  →  route: /dev/history-drafts
 //
 // How a draft could be marked in the History list (#423): the treatments it
 // was chosen from, kept as the record. B + D with the solid chip shipped.

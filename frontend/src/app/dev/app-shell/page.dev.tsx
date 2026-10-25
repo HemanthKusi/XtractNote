@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/app-shell/page.tsx  →  route: /dev/app-shell
+// src/app/dev/app-shell/page.dev.tsx  →  route: /dev/app-shell
 //
 // Verification harness for the shared app shell. Not shipped.
 //

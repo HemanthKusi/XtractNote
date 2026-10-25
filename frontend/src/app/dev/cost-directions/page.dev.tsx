@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/cost-directions/page.tsx  →  route: /dev/cost-directions
+// src/app/dev/cost-directions/page.dev.tsx  →  route: /dev/cost-directions
 //
 // What a start costs and what the user has, on the create page before they
 // commit (#454): the directions it was chosen from, kept as the record.

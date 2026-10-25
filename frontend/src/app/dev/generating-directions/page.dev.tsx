@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/generating-directions/page.tsx  →  route: /dev/generating-directions
+// src/app/dev/generating-directions/page.dev.tsx  →  route: /dev/generating-directions
 //
 // Four directions for the generating screen once it shows only real steps
 // (#424). A, Checklist, was chosen and is what the real panel renders; the

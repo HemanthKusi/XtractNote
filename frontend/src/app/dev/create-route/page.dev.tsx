@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/create-route/page.tsx  →  route: /dev/create-route
+// src/app/dev/create-route/page.dev.tsx  →  route: /dev/create-route
 //
 // Verification harness for the three components the create route now renders.
 // Not shipped, and deliberately not a design surface — /dev/create-directions

@@ -1,6 +1,6 @@
 "use client";
 
-// src/app/dev/drafts-band-states/page.tsx  →  route: /dev/drafts-band-states
+// src/app/dev/drafts-band-states/page.dev.tsx  →  route: /dev/drafts-band-states
 //
 // The create page's drafts band while it loads, when there are no drafts,
 // and when the fetch fails (#423): the directions each state was chosen

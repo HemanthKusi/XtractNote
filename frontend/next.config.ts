@@ -2,7 +2,19 @@ import path from "node:path";
 
 import type { NextConfig } from "next";
 
+// The extensions a page or route file may have. The design specimens under
+// app/dev are named `page.dev.tsx`, and `dev.tsx` is recognised only outside
+// a production build — so `next dev` serves them, and a production build,
+// preview or live, does not contain them. scripts/check-dev-pages.mjs fails
+// if a file under app/dev is named the way a production page or route is.
+const PRODUCTION_PAGE_EXTENSIONS = ["tsx", "ts", "jsx", "js"];
+
 const nextConfig: NextConfig = {
+  pageExtensions:
+    process.env.NODE_ENV === "production"
+      ? PRODUCTION_PAGE_EXTENSIONS
+      : ["dev.tsx", ...PRODUCTION_PAGE_EXTENSIONS],
+
   // ── Scope Turbopack to this app, not the whole repository ──
   //
   // Turbopack picks its workspace root by looking for lockfiles. Given two in

@@ -1,9 +1,10 @@
-// frontend/src/middleware.ts
+// frontend/src/proxy.ts
 // Runs on every matching request BEFORE the page renders.
 // Job 1: keep the Supabase auth session fresh (refresh cookies).
 // Job 2: redirect logged-out users away from protected app pages.
 
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseUrl, supabaseAnonKey } from "@/lib/supabase/env";
 
@@ -39,8 +40,18 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // Verifies the token with Supabase (not just trusting the cookie).
-  const { data: { user } } = await supabase.auth.getUser();
+  // Verifies the token with Supabase (not just trusting the cookie). A check
+  // that throws — a lock timeout, say — is treated as signed out: protected
+  // pages send the visitor to sign in, never through. Without this, the throw
+  // failed every request, public pages included.
+  let user: User | null = null;
+  try {
+    ({ data: { user } } = await supabase.auth.getUser());
+  } catch (error) {
+    // Server-side, so this reaches the server's log: otherwise a failing
+    // check would look like every visitor being signed out.
+    console.error("proxy: the sign-in check threw; treated as signed out", error);
+  }
 
   const { pathname } = request.nextUrl;
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));

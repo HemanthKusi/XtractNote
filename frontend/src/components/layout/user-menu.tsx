@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
@@ -11,6 +11,14 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { ROUTES } from "@/lib/constants/routes";
 import { Avatar } from "@/components/ui/avatar";
+
+// The signed-in user, or null when there is none or the lookup fails.
+function lookUpUser(): Promise<User | null> {
+  return createClient()
+    .auth.getUser()
+    .then(({ data }) => data.user)
+    .catch(() => null);
+}
 
 // Build 1–2 letter initials from a name, falling back to the email.
 function initialsFrom(name: string, email: string): string {
@@ -25,14 +33,35 @@ export function UserMenu() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [user, setUser] = useState<User | null>(null);
+  // Until the lookup settles the name is left blank, rather than showing
+  // "Account" and then replacing it.
+  const [userLoaded, setUserLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
+  // Bumped by every lookup, by unmounting and by starting a sign-out, so a
+  // lookup that lands late cannot put a user back into the menu.
+  const lookupToken = useRef(0);
 
-  // Fetch the signed-in user once on mount (browser client).
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+  // A lookup that fails shows "Account": the name is a label, not a sign-in
+  // state, and there is nothing for the person to do about it.
+  const loadUser = useCallback(() => {
+    const token = ++lookupToken.current;
+    lookUpUser().then((found) => {
+      if (token !== lookupToken.current) return;
+      setUser(found);
+      setUserLoaded(true);
+    });
   }, []);
+
+  // Fetch the signed-in user on mount (browser client).
+  useEffect(() => {
+    loadUser();
+    const lookups = lookupToken;
+    return () => {
+      lookups.current += 1;
+    };
+  }, [loadUser]);
 
   // While open, close on outside-click or Escape.
   useEffect(() => {
@@ -56,9 +85,28 @@ export function UserMenu() {
   }, [open]);
 
   async function handleSignOut() {
+    lookupToken.current++;
     setSigningOut(true);
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    setSignOutFailed(false);
+
+    // signOut() reports most failures in its result, and can also throw.
+    // Either way the session may still be there, so the person stays here.
+    let failed: boolean;
+    try {
+      const { error } = await createClient().auth.signOut();
+      failed = error !== null;
+    } catch {
+      failed = true;
+    }
+    if (failed) {
+      setSigningOut(false);
+      setSignOutFailed(true);
+      // Starting the sign-out made any pending lookup's result be ignored; the
+      // person is staying, so look the user up again.
+      loadUser();
+      return;
+    }
+
     router.push(ROUTES.LOGIN);
     router.refresh(); // re-run server state so the proxy sees us logged out
   }
@@ -67,7 +115,7 @@ export function UserMenu() {
   const fullName = (user?.user_metadata?.full_name as string) || "";
   const email = user?.email || "";
   const avatarUrl = (user?.user_metadata?.avatar_url as string) || undefined;
-  const displayName = fullName || email.split("@")[0] || "Account";
+  const displayName = userLoaded ? fullName || email.split("@")[0] || "Account" : "";
   const initials = initialsFrom(fullName, email);
 
   return (
@@ -96,7 +144,8 @@ export function UserMenu() {
         >
           {/* Identity header */}
           <div className="px-3 py-2.5 border-b border-xn-border">
-            <p className="text-sm font-medium text-xn-ink truncate">{displayName}</p>
+            {/* A non-breaking space keeps the line's height while the name loads. */}
+            <p className="text-sm font-medium text-xn-ink truncate">{displayName || "\u00a0"}</p>
             {email && <p className="text-xs text-xn-ink-soft truncate">{email}</p>}
           </div>
 
@@ -118,6 +167,11 @@ export function UserMenu() {
               <LogOut className="w-4 h-4 text-xn-ink-soft" />
               {signingOut ? "Signing out…" : "Sign out"}
             </button>
+            {signOutFailed && (
+              <p role="alert" className="px-2.5 pb-1.5 pt-0.5 text-xs text-xn-danger">
+                Couldn&apos;t sign out. Try again.
+              </p>
+            )}
           </div>
         </div>
       )}

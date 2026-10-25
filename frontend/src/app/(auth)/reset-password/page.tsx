@@ -32,8 +32,8 @@ function checkRecoveryLink(): Promise<Exclude<LinkCheck, "checking">> {
 
 /**
  * Where the success screen goes after signing out of the recovery session.
- * `unknown` when even the session cannot be read: it goes to sign in, and
- * the proxy forwards anyone still signed in from there to the dashboard.
+ * `unknown` when the session cannot be read: it goes to sign in, with copy
+ * that names no destination.
  */
 type NextStop = "sign-in" | "dashboard" | "unknown";
 
@@ -81,9 +81,8 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const [nextStop, setNextStop] = useState<NextStop>("sign-in");
-  // Bumped by every submit and by unmounting, so a submit the person has left
-  // behind writes nothing and redirects nowhere; the redirect timer is
-  // cancelled on unmount too.
+  // Bumped by every submit and by unmounting; a submit's later steps run only
+  // while its token is current. The redirect timer is cleared on unmount.
   const submitToken = useRef(0);
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

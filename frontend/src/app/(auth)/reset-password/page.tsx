@@ -30,6 +30,47 @@ function checkRecoveryLink(): Promise<Exclude<LinkCheck, "checking">> {
     .catch((): Exclude<LinkCheck, "checking"> => "failed");
 }
 
+/**
+ * Where the success screen goes after signing out of the recovery session.
+ * `unknown` when even the session cannot be read: it goes to sign in, and
+ * the proxy forwards anyone still signed in from there to the dashboard.
+ */
+type NextStop = "sign-in" | "dashboard" | "unknown";
+
+const NEXT_COPY: Record<NextStop, string> = {
+  "sign-in": "Taking you to sign in…",
+  dashboard: "Taking you to your dashboard…",
+  unknown: "Taking you on…",
+};
+
+const NEXT_ROUTE: Record<NextStop, string> = {
+  "sign-in": ROUTES.LOGIN,
+  dashboard: ROUTES.DASHBOARD,
+  unknown: ROUTES.LOGIN,
+};
+
+/**
+ * Sign out, and say where to go next. signOut() reports most failures in its
+ * result and can also throw — and it can fail after it has already removed
+ * the session — so a failure is followed by reading what session is left.
+ */
+async function signOutAndFindNextStop(): Promise<NextStop> {
+  const supabase = createClient();
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error === null) return "sign-in";
+  } catch {
+    // Read the session below.
+  }
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return "unknown";
+    return data.session ? "dashboard" : "sign-in";
+  } catch {
+    return "unknown";
+  }
+}
+
 export default function ResetPasswordPage() {
   const router = useRouter();
 
@@ -39,9 +80,21 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
-  // Where the success screen sends them: sign in once signed out, or the
-  // dashboard when signing out failed and they are still signed in.
-  const [signedOut, setSignedOut] = useState(true);
+  const [nextStop, setNextStop] = useState<NextStop>("sign-in");
+  // Bumped by every submit and by unmounting, so a submit the person has left
+  // behind writes nothing and redirects nowhere; the redirect timer is
+  // cancelled on unmount too.
+  const submitToken = useRef(0);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const submits = submitToken;
+    const timer = redirectTimer;
+    return () => {
+      submits.current += 1;
+      if (timer.current !== null) clearTimeout(timer.current);
+    };
+  }, []);
 
   const [link, setLink] = useState<LinkCheck>("checking");
   // Bumped by every check and by unmounting, so only the latest check's
@@ -73,6 +126,7 @@ export default function ResetPasswordPage() {
     if (password.length < 6) return setError("Password must be at least 6 characters.");
     if (password !== confirm) return setError("Passwords don't match.");
 
+    const token = ++submitToken.current;
     setLoading(true);
     setError("");
 
@@ -83,6 +137,7 @@ export default function ResetPasswordPage() {
     } catch {
       updateError = { message: "We couldn't update your password. Please try again." };
     }
+    if (token !== submitToken.current) return;
 
     if (updateError) {
       setError(updateError.message);
@@ -91,22 +146,15 @@ export default function ResetPasswordPage() {
     }
 
     // Sign out of the recovery session so they sign in fresh with the new
-    // password. signOut() reports most failures in its result, and can also
-    // throw; either way they are still signed in, so they go to the dashboard
-    // instead. The password has changed regardless.
-    let outcome: boolean;
-    try {
-      const { error: signOutError } = await supabase.auth.signOut();
-      outcome = signOutError === null;
-    } catch {
-      outcome = false;
-    }
-    setSignedOut(outcome);
+    // password. The password has changed whatever happens here.
+    const next = await signOutAndFindNextStop();
+    if (token !== submitToken.current) return;
+    setNextStop(next);
     setDone(true);
     setLoading(false);
 
     // Brief success beat, then on.
-    setTimeout(() => router.push(outcome ? ROUTES.LOGIN : ROUTES.DASHBOARD), 1500);
+    redirectTimer.current = setTimeout(() => router.push(NEXT_ROUTE[next]), 1500);
   }
 
   // ── Invalid / expired link ──
@@ -153,7 +201,7 @@ export default function ResetPasswordPage() {
               </div>
               <h1 className="text-xl font-semibold text-xn-ink">Password updated</h1>
               <p className="mt-2 text-sm text-xn-ink-muted">
-                {signedOut ? "Taking you to sign in…" : "Taking you to your dashboard…"}
+                {NEXT_COPY[nextStop]}
               </p>
             </div>
           </Card>
